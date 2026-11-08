@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aun_browse_root">Al Ummah Now</string>
+    <string name="aun_player_play">Play</string>
+    <string name="aun_player_pause">Pause</string>
+    <string name="aun_player_back10">Back 10 seconds</string>
+    <string name="aun_player_forward10">Forward 10 seconds</string>
+    <string name="aun_player_settings">Playback settings</string>
+    <string name="aun_player_fullscreen">Full screen</string>
+    <string name="aun_player_exit_fullscreen">Exit full screen</string>
+    <string name="aun_player_quality">Quality</string>
+    <string name="aun_player_quality_auto">Auto</string>
+    <string name="aun_player_quality_p">%1$dp</string>
+    <string name="aun_player_speed">Speed</string>
+    <string name="aun_player_speed_normal">Normal</string>
+    <string name="aun_player_speed_x">%1$s×</string>
+    <string name="aun_player_subtitles">Subtitles</string>
+    <string name="aun_player_subtitles_off">Off</string>
+    <string name="aun_player_error">This video can\'t be played right now.</string>
+    <string name="aun_player_seek">Seek</string>
+</resources>

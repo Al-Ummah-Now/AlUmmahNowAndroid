@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,6 +42,9 @@ data class VideoCardData(
     val views: Long
 )
 
+/** Test tag on every clickable video card (instrumented tests find cards without depending on locale). */
+const val VIDEO_CARD_TAG = "aun-video-card"
+
 @Composable
 fun VideoCard(
     data: VideoCardData,
@@ -53,6 +57,7 @@ fun VideoCard(
             .then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
+            .testTag(VIDEO_CARD_TAG)
             .padding(bottom = FanousTokens.Spacing.sm)
     ) {
         Thumbnail(data.thumbnailUrl, data.durationSeconds)

@@ -36,3 +36,11 @@ fun durationLabel(seconds: Long): String =
 @Composable
 fun localizedDigits(text: String): String =
     AunFormat.digits(text, currentLocale(), LocalAunDisplayPrefs.current.easternArabicDigits)
+
+/** Like [localizedDigits] but also uses the Arabic decimal separator (٫) for numbers such as "1.5". */
+@Composable
+fun localizedDecimal(text: String): String {
+    val locale = currentLocale()
+    val separated = if (locale.language == "ar") text.replace('.', '\u066B') else text
+    return AunFormat.digits(separated, locale, LocalAunDisplayPrefs.current.easternArabicDigits)
+}

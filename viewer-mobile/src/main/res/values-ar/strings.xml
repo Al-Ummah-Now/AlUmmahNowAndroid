@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">الأمة الآن</string>
+    <string name="settings_theme">المظهر</string>
+    <string name="settings_theme_system">مطابقة الجهاز</string>
+    <string name="settings_theme_dark">الليل (داكن)</string>
+    <string name="settings_theme_light">الرَّق (فاتح)</string>
+    <string name="settings_language">اللغة</string>
+    <string name="settings_language_system">مطابقة الجهاز</string>
 </resources>
