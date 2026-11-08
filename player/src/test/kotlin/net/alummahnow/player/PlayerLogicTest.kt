@@ -110,4 +110,10 @@ class PlayerLogicTest {
         assertTrue(videos.all { it.mediaMetadata.isPlayable == true && it.localConfiguration == null })
         assertEquals(emptyList<Any>(), tree.children("aun:rail:NOPE", Locale.ENGLISH))
     }
+
+    @Test fun `only our own package may pass prebuilt media items`() {
+        assertTrue(acceptsPrebuiltItems("net.alummahnow.app", "net.alummahnow.app"))
+        assertFalse(acceptsPrebuiltItems("com.google.android.projection.gearhead", "net.alummahnow.app"))
+        assertFalse(acceptsPrebuiltItems("com.example.other", "net.alummahnow.app"))
+    }
 }

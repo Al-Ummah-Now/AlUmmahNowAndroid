@@ -67,13 +67,21 @@ internal class LibraryCallback(
         controller: MediaSession.ControllerInfo,
         mediaItems: MutableList<MediaItem>
     ): ListenableFuture<MutableList<MediaItem>> = scope.future {
+        val trusted = acceptsPrebuiltItems(controller.packageName, context.packageName)
         mediaItems.map { item ->
-            if (item.localConfiguration != null) item else MediaItems.playable(catalog.video(item.mediaId), locale())
+            if (trusted && item.localConfiguration != null) item else MediaItems.playable(catalog.video(item.mediaId), locale())
         }.toMutableList()
     }
 
     private fun locale(): Locale = context.resources.configuration.locales[0]
 }
+
+/**
+ * The session service is exported (Android Auto, system media controls), so a foreign controller could
+ * otherwise hand us an item pointing at any URI. Only our own process may pass a ready-made item; every
+ * other caller gets the item rebuilt from the catalog by `mediaId`.
+ */
+internal fun acceptsPrebuiltItems(callerPackage: String, ownPackage: String): Boolean = callerPackage == ownPackage
 
 /** Pure browse-tree logic, unit-tested without a session. */
 internal class BrowseTree(
