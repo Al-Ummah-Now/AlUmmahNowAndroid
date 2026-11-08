@@ -24,7 +24,7 @@ run `publish*` tasks locally.
    ```
 3. **Play service account JSON** with the "Release manager" permission on the three apps
    (Play Console → Users and permissions; the Google Cloud project must enable the Android Publisher API).
-4. **GitHub secrets**, stored in the `play-release` environment (protected: only `main` tags):
+4. **GitHub secrets**, stored in the `play-release` environment. Protect it: deployment tags limited to `v*`, a required reviewer, and a tag ruleset so only admins can create `v*` tags.
 
    | Secret | Value |
    |---|---|
