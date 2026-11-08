@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aun_count_thousand">%1$sK</string>
+    <string name="aun_count_million">%1$sM</string>
+    <string name="aun_count_billion">%1$sB</string>
+    <plurals name="aun_views">
+        <item quantity="one">%1$s view</item>
+        <item quantity="other">%1$s views</item>
+    </plurals>
+    <string name="aun_retry">Try again</string>
+    <string name="aun_loading">Loading</string>
+    <string name="aun_error_network">Can\'t reach Al Ummah Now. Check your connection.</string>
+    <string name="aun_error_generic">Something went wrong.</string>
+    <string name="aun_error_not_found">This video isn\'t available.</string>
+    <string name="aun_duration_cd">Duration %1$s</string>
+</resources>

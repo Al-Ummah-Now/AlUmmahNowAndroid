@@ -1,0 +1,135 @@
+{
+ "id": "ddd1c77b-4833-4d75-b1ce-105a4d083480",
+ "title": "QA Lecture 1 — Introduction to Tafsir",
+ "description": "Seeded QA video: an introduction to tafsir. Generated test pattern with tone.",
+ "userId": "usr_redacted",
+ "channelId": "b4beecaf-7cec-4b4a-a3bf-6ae32f15dce7",
+ "thumbnailUrl": "https://vz-cb79844a-c5d.b-cdn.net/ddd1c77b-4833-4d75-b1ce-105a4d083480/thumbnail.jpg?token=REDACTED&expires=1794175200",
+ "thumbnailType": "auto",
+ "playUrl": "https://vz-cb79844a-c5d.b-cdn.net/bcdn_token=REDACTED&expires=1794175200&token_path=%2Fddd1c77b-4833-4d75-b1ce-105a4d083480%2F/ddd1c77b-4833-4d75-b1ce-105a4d083480/playlist.m3u8",
+ "dateCreated": "2026-11-07T00:24:09.606Z",
+ "dateModified": "2026-11-08T15:58:25.909Z",
+ "views": 4194,
+ "availableResolutions": [
+  "240p",
+  "360p"
+ ],
+ "comments": [],
+ "likes": [
+  {
+   "id": "933a1b0e-27e2-4c25-b9c5-f7850ca4b503",
+   "userId": "usr_redacted",
+   "channelId": "23cb3cb4-dfdc-416e-bd75-cc53fd5448de",
+   "entityId": "ddd1c77b-4833-4d75-b1ce-105a4d083480",
+   "dateCreated": "2026-11-07T04:09:26.598Z"
+  }
+ ],
+ "dislikes": [],
+ "isPublic": true,
+ "isLive": false,
+ "tags": [
+  "qa-seed",
+  "tafsir",
+  "lecture"
+ ],
+ "uploadStatus": "ready",
+ "fileSize": 29738711,
+ "originalFormat": "video/mp4",
+ "duration": 75,
+ "titleLocalized": {
+  "en": "QA Lecture 1 — Introduction to Tafsir",
+  "ar": "محاضرة اختبار ١ — مقدمة في التفسير"
+ },
+ "descriptionLocalized": {
+  "en": "Seeded QA video: an introduction to tafsir. Generated test pattern with tone.",
+  "ar": "فيديو اختبار: مقدمة في التفسير. نمط اختبار مولد مع نغمة."
+ },
+ "language": "en",
+ "category": "quran_tafsir",
+ "chapters": {
+  "chapters": [
+   {
+    "id": "6f1c9a52-6d0b-4c1e-9a51-0a1b2c3d4e01",
+    "startTime": 0,
+    "endTime": 15,
+    "title": "Introduction",
+    "titleLocalized": {
+     "en": "Introduction",
+     "ar": "المقدمة"
+    }
+   },
+   {
+    "id": "6f1c9a52-6d0b-4c1e-9a51-0a1b2c3d4e02",
+    "startTime": 15,
+    "endTime": 30,
+    "title": "What is tafsir?",
+    "titleLocalized": {
+     "en": "What is tafsir?",
+     "ar": "ما هو التفسير؟"
+    }
+   },
+   {
+    "id": "6f1c9a52-6d0b-4c1e-9a51-0a1b2c3d4e03",
+    "startTime": 30,
+    "endTime": 45,
+    "title": "Sources of tafsir",
+    "titleLocalized": {
+     "en": "Sources of tafsir",
+     "ar": "مصادر التفسير"
+    }
+   },
+   {
+    "id": "6f1c9a52-6d0b-4c1e-9a51-0a1b2c3d4e04",
+    "startTime": 45,
+    "endTime": 74,
+    "title": "Closing remarks",
+    "titleLocalized": {
+     "en": "Closing remarks",
+     "ar": "الخاتمة"
+    }
+   }
+  ],
+  "source": "manual",
+  "parsedAt": "2026-11-07T04:09:15.818Z",
+  "version": 1
+ },
+ "hasChapters": true,
+ "subtitles": [
+  {
+   "id": "042a2f20-1775-41af-9a6a-793674f4740f",
+   "language": "en",
+   "label": "English",
+   "kind": "subtitles",
+   "uploadedBy": "usr_redacted",
+   "uploadedAt": "2026-11-07T04:09:16.669Z",
+   "fileSize": 355,
+   "format": "vtt",
+   "status": "ready",
+   "url": "https://videos.api.qa.alummahnow.net/api/videos/ddd1c77b-4833-4d75-b1ce-105a4d083480/subtitles/en",
+   "isDefault": true
+  },
+  {
+   "id": "ec839849-4505-4457-b106-a5143683db1f",
+   "language": "ar",
+   "label": "العربية",
+   "kind": "subtitles",
+   "uploadedBy": "usr_redacted",
+   "uploadedAt": "2026-11-07T04:09:17.876Z",
+   "fileSize": 487,
+   "format": "vtt",
+   "status": "ready",
+   "url": "https://videos.api.qa.alummahnow.net/api/videos/ddd1c77b-4833-4d75-b1ce-105a4d083480/subtitles/ar",
+   "isDefault": false
+  }
+ ],
+ "hasSubtitles": true,
+ "subtitleLanguages": [
+  "en",
+  "ar"
+ ],
+ "commentSettings": "on",
+ "channelName": "Al Ummah Now QA — Lectures",
+ "likesCount": 1,
+ "dislikesCount": 0,
+ "commentsCount": 0
+}

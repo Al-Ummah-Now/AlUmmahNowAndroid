@@ -19,7 +19,12 @@ dependencies {
     testImplementation(libs.turbine)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
+    testImplementation(libs.androidx.test.junit)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)
     testImplementation(libs.compose.ui.test.junit4)
+}
+
+roborazzi {
+    outputDir.set(file("src/test/screenshots"))
 }
