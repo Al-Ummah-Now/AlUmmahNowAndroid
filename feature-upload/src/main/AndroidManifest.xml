@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- RTL is first-class (Arabic). Declared here too so library screenshot tests render RTL. -->
+    <application android:supportsRtl="true" />
+</manifest>

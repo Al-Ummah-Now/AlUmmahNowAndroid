@@ -1,0 +1,74 @@
+{
+ "success": true,
+ "data": [
+  {
+   "id": "ddd1c77b-4833-4d75-b1ce-105a4d083480",
+   "title": "QA Lecture 1 — Introduction to Tafsir",
+   "description": "Seeded QA video: an introduction to tafsir. Generated test pattern with tone.",
+   "thumbnailUrl": "https://vz-cb79844a-c5d.b-cdn.net/ddd1c77b-4833-4d75-b1ce-105a4d083480/thumbnail.jpg?token=REDACTED&expires=1794175200",
+   "channelId": "b4beecaf-7cec-4b4a-a3bf-6ae32f15dce7",
+   "dateCreated": "2026-11-07T00:24:09.606Z",
+   "views": 4194,
+   "likesCount": 0,
+   "dislikesCount": 0,
+   "commentsCount": 0,
+   "duration": 75,
+   "category": "quran_tafsir",
+   "isPublic": true,
+   "trendingMetadata": {
+    "rank": 1,
+    "score": 34659,
+    "viewsVelocity": 174.20833333333334,
+    "percentageIncrease": 1742
+   }
+  },
+  {
+   "id": "0bf913f0-5e00-47e8-aa6c-d81a3add9ab0",
+   "title": "QA Lecture 3 — Seerah Overview",
+   "description": "Seeded QA video on Islamic history (seerah).",
+   "thumbnailUrl": "https://vz-cb79844a-c5d.b-cdn.net/0bf913f0-5e00-47e8-aa6c-d81a3add9ab0/thumbnail.jpg?token=REDACTED&expires=1794175200",
+   "channelId": "b4beecaf-7cec-4b4a-a3bf-6ae32f15dce7",
+   "dateCreated": "2026-11-07T00:24:34.930Z",
+   "views": 1630,
+   "likesCount": 0,
+   "dislikesCount": 0,
+   "commentsCount": 0,
+   "duration": 65,
+   "category": "islamic_history",
+   "isPublic": true,
+   "trendingMetadata": {
+    "rank": 2,
+    "score": 13469,
+    "viewsVelocity": 67.375,
+    "percentageIncrease": 674
+   }
+  },
+  {
+   "id": "443418c1-dc70-43d9-944d-5388ab7dc4c3",
+   "title": "المتسابق المتمكن عمرو محمد إبراهيم من مصر",
+   "description": "",
+   "thumbnailUrl": "https://vz-cb79844a-c5d.b-cdn.net/443418c1-dc70-43d9-944d-5388ab7dc4c3/thumbnail.jpg?token=REDACTED&expires=1794175200",
+   "channelId": "69eec10e-0a94-4129-ba7e-872139f44e82",
+   "dateCreated": "2026-11-07T04:57:00.526Z",
+   "views": 1422,
+   "likesCount": 0,
+   "dislikesCount": 0,
+   "commentsCount": 0,
+   "duration": 146,
+   "isPublic": true,
+   "trendingMetadata": {
+    "rank": 3,
+    "score": 11182,
+    "viewsVelocity": 55.875,
+    "percentageIncrease": 559
+   }
+  }
+ ],
+ "cursor": "eyJvZmZzZXQiOjN9",
+ "metadata": {
+  "algorithmVersion": "1.0.0",
+  "lastCalculated": "2026-11-08T15:50:13.946Z",
+  "nextUpdate": "2026-11-08T16:13:27.537Z",
+  "fromIndex": true
+ }
+}

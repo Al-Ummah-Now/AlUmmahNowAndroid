@@ -37,4 +37,6 @@ of aun-core) · `design` (Fanous theme) · `player` (Media3) · `feature-*` · a
 - Small PRs into `main`, CI green, squash-merge.
 - Fanous tokens in `:design` are placeholders from the spec (§3) until Epic 10 ships the generated theme;
   don't hand-tune colours elsewhere.
+- Screenshot tests set the layout direction explicitly (`ar-ldrtl`, `en-ldltr`): Robolectric does not derive it
+  from the locale the way a device does.
 - Golden screenshots are recorded on Linux. Re-record them with the "Record screenshots" workflow, not on macOS.

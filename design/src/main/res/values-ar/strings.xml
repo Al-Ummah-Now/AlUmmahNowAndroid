@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aun_count_thousand">%1$s ألف</string>
+    <string name="aun_count_million">%1$s مليون</string>
+    <string name="aun_count_billion">%1$s مليار</string>
+    <plurals name="aun_views">
+        <item quantity="zero">لا مشاهدات</item>
+        <item quantity="one">مشاهدة واحدة</item>
+        <item quantity="two">مشاهدتان</item>
+        <item quantity="few">%1$s مشاهدات</item>
+        <item quantity="many">%1$s مشاهدة</item>
+        <item quantity="other">%1$s مشاهدة</item>
+    </plurals>
+    <string name="aun_retry">إعادة المحاولة</string>
+    <string name="aun_loading">جارٍ التحميل</string>
+    <string name="aun_error_network">تعذّر الوصول إلى الأمة الآن. تحقّق من اتصالك.</string>
+    <string name="aun_error_generic">حدث خطأ ما.</string>
+    <string name="aun_error_not_found">هذا الفيديو غير متاح.</string>
+    <string name="aun_duration_cd">المدة %1$s</string>
+</resources>

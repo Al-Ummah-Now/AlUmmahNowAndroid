@@ -1,5 +1,7 @@
 # Built on detekt defaults (buildUponDefaultConfig). Compose-friendly tweaks only.
 naming:
+  MatchingDeclarationName:
+    active: false  # ktlint standard:filename covers this; Compose files pair a model with its composables
   FunctionNaming:
     ignoreAnnotated: ['Composable']
   TopLevelPropertyNaming:

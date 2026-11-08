@@ -10,12 +10,18 @@ dependencies {
     api(libs.compose.material3)
     api(libs.compose.foundation)
     api(libs.compose.material.icons)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
+    testImplementation(libs.androidx.test.junit)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)
     testImplementation(libs.compose.ui.test.junit4)
+}
+
+roborazzi {
+    outputDir.set(file("src/test/screenshots"))
 }
