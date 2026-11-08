@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
@@ -35,6 +37,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import kotlinx.coroutines.launch
+import net.alummahnow.core.bridge.CoreRuntime
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.home.HomeScreen
@@ -152,7 +155,22 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, onPipEligible
             languageSwitchSupported = AppLanguage.isSupported,
             onTheme = { scope.launch { container.displayPrefs.setTheme(it) } },
             onLanguage = { AppLanguage.set(context, it) },
-            onDismiss = { settingsOpen = false }
+            onDismiss = { settingsOpen = false },
+            account = {
+                val authState by container.auth.state.collectAsStateWithLifecycle()
+                val failed by container.signInFailed.collectAsStateWithLifecycle()
+                AccountSection(
+                    state = authState,
+                    signInAvailable = container.auth.isSignInAvailable,
+                    signInFailed = failed,
+                    onSignIn = {
+                        container.markSignInStarted()
+                        scope.launch { CustomTabsIntent.Builder().build().launchUrl(context, container.auth.beginPkceSignIn().toUri()) }
+                    },
+                    onSignOut = { scope.launch { container.auth.signOut() } }
+                )
+            },
+            coreVersion = CoreRuntime.version
         )
     }
 }

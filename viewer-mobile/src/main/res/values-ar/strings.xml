@@ -7,4 +7,11 @@
     <string name="settings_theme_light">الرَّق (فاتح)</string>
     <string name="settings_language">اللغة</string>
     <string name="settings_language_system">مطابقة الجهاز</string>
+    <string name="settings_account">الحساب</string>
+    <string name="settings_sign_in">تسجيل الدخول</string>
+    <string name="settings_sign_in_hint">سجّل الدخول لمزامنة سجلّك وقوائمك بين أجهزتك.</string>
+    <string name="settings_sign_in_failed">لم يكتمل تسجيل الدخول. حاول مرة أخرى.</string>
+    <string name="settings_signed_in_as">تم تسجيل الدخول باسم</string>
+    <string name="settings_sign_out">تسجيل الخروج</string>
+    <string name="settings_core_version">النواة %1$s</string>
 </resources>

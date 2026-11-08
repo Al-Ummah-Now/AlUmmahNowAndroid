@@ -27,10 +27,14 @@ fun DisplaySettingsSheet(
     languageSwitchSupported: Boolean,
     onTheme: (ThemeMode) -> Unit,
     onLanguage: (String?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    account: @Composable () -> Unit = {},
+    coreVersion: String? = null
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(bottom = 24.dp)) {
+            account()
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Title(stringResource(R.string.settings_theme))
             Option(stringResource(R.string.settings_theme_system), theme == ThemeMode.SYSTEM) { onTheme(ThemeMode.SYSTEM) }
             Option(stringResource(R.string.settings_theme_dark), theme == ThemeMode.DARK) { onTheme(ThemeMode.DARK) }
@@ -42,6 +46,14 @@ fun DisplaySettingsSheet(
                 // Language names are shown in their own script so either speaker can find theirs.
                 Option("العربية", language == "ar") { onLanguage("ar") }
                 Option("English", language == "en") { onLanguage("en") }
+            }
+            coreVersion?.let {
+                Text(
+                    stringResource(R.string.settings_core_version, it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                )
             }
         }
     }

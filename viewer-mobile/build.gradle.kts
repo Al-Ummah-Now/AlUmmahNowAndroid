@@ -13,6 +13,11 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
     }
     androidResources { generateLocaleConfig = true }
+    // Public native OAuth client "Viewer (iOS / Android)" (auth migration 0013_native_clients). Not a secret.
+    productFlavors {
+        getByName("qa") { buildConfigField("String", "OAUTH_CLIENT_ID", "\"31389afb-d4f8-4c26-9492-4c77f4d07e65\"") }
+        getByName("prod") { buildConfigField("String", "OAUTH_CLIENT_ID", "\"567a2cbc-dab8-4d5c-9437-a9e61c7120f5\"") }
+    }
 }
 
 play {
@@ -33,6 +38,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.splashscreen)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.browser)
     implementation(libs.media3.session)
     implementation(libs.media3.cast)
     implementation(libs.compose.material3.window.size)

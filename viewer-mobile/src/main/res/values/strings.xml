@@ -7,4 +7,11 @@
     <string name="settings_theme_light">Parchment (light)</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_system">Match device</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_sign_in">Sign in</string>
+    <string name="settings_sign_in_hint">Sign in to sync your history and lists across devices.</string>
+    <string name="settings_sign_in_failed">Sign-in didn’t finish. Please try again.</string>
+    <string name="settings_signed_in_as">Signed in as</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="settings_core_version">Core %1$s</string>
 </resources>

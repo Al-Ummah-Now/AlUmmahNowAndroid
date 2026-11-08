@@ -26,6 +26,11 @@ android {
             buildConfigField("String", "STORE", "\"amazon\"")
         }
     }
+    // Public native OAuth client "Viewer (TV), device flow" (auth migration 0013_native_clients). Not a secret.
+    productFlavors {
+        getByName("qa") { buildConfigField("String", "OAUTH_CLIENT_ID", "\"9c3a81c8-3f9c-4873-abb1-a51e4f1d9543\"") }
+        getByName("prod") { buildConfigField("String", "OAUTH_CLIENT_ID", "\"111648c6-24e6-4c35-8bcf-f50ab5c0d96d\"") }
+    }
 }
 
 play {

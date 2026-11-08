@@ -13,6 +13,11 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
     }
     androidResources { generateLocaleConfig = true }
+    // Public native OAuth client "Studio (iOS / Android)" (auth migration 0013_native_clients). Not a secret.
+    productFlavors {
+        getByName("qa") { buildConfigField("String", "OAUTH_CLIENT_ID", "\"45364a42-21f4-4359-a76c-0a1e6615fd7b\"") }
+        getByName("prod") { buildConfigField("String", "OAUTH_CLIENT_ID", "\"6f8073c6-754b-4d63-bf80-0546214e0d62\"") }
+    }
 }
 
 play {

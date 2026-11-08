@@ -4,6 +4,8 @@ kotlin = "2.4.21"
 coroutines = "1.11.0"
 serialization = "1.12.0"
 okhttp = "5.5.1"
+aunCore = "0.1.0"
+browser = "1.10.0"
 composeBom = "2026.09.00"
 activity = "1.13.0"
 lifecycle = "2.11.0"
@@ -33,6 +35,8 @@ detekt = "2.0.0-alpha.6"
 playPublisher = "4.1.1"
 
 [libraries]
+aun-core = { module = "net.alummahnow:aun-core", version.ref = "aunCore" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 compose-compiler-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }

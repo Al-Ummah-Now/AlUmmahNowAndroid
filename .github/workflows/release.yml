@@ -7,6 +7,12 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  # aun-core AAR from GitHub Packages (settings.gradle.kts, repository "aunCore").
+  ORG_GRADLE_PROJECT_aunCoreUsername: ${{ github.actor }}
+  ORG_GRADLE_PROJECT_aunCorePassword: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   release:
