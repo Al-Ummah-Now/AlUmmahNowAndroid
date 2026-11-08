@@ -16,7 +16,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Refuse to run on main
         if: github.ref == 'refs/heads/main'
-        run: { echo "::error::Run this on a PR branch"; exit 1; }
+        run: |
+          echo "::error::Run this on a PR branch"
+          exit 1
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
