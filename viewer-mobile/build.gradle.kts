@@ -32,6 +32,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.splashscreen)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.media3.session)
+    implementation(libs.media3.cast)
     implementation(libs.compose.material3.window.size)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
@@ -44,6 +47,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.espresso)
     androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.kotlinx.coroutines.guava)
 }
 
 roborazzi {

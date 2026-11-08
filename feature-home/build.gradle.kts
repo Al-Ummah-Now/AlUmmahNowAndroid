@@ -11,6 +11,7 @@ dependencies {
     implementation(project(":design"))
 
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.compose.adaptive)
     implementation(libs.androidx.lifecycle.runtime.compose)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

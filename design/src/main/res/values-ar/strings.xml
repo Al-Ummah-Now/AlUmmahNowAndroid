@@ -17,4 +17,10 @@
     <string name="aun_error_generic">حدث خطأ ما.</string>
     <string name="aun_error_not_found">هذا الفيديو غير متاح.</string>
     <string name="aun_duration_cd">المدة %1$s</string>
+    <string name="aun_rail_continue">متابعة المشاهدة</string>
+    <string name="aun_rail_trending">الأكثر رواجاً</string>
+    <string name="aun_rail_recommended">مقترحة لك</string>
+    <string name="aun_rail_popular">الأكثر مشاهدة</string>
+    <string name="aun_rail_recent">جديد</string>
+    <string name="aun_rail_category">تصفّح</string>
 </resources>

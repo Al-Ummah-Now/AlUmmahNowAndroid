@@ -13,4 +13,10 @@
     <string name="aun_error_generic">Something went wrong.</string>
     <string name="aun_error_not_found">This video isn\'t available.</string>
     <string name="aun_duration_cd">Duration %1$s</string>
+    <string name="aun_rail_continue">Continue watching</string>
+    <string name="aun_rail_trending">Trending</string>
+    <string name="aun_rail_recommended">Recommended</string>
+    <string name="aun_rail_popular">Popular</string>
+    <string name="aun_rail_recent">New</string>
+    <string name="aun_rail_category">Browse</string>
 </resources>

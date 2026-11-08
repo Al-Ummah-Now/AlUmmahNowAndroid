@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aun_browse_root">الأمة الآن</string>
+    <string name="aun_player_play">تشغيل</string>
+    <string name="aun_player_pause">إيقاف مؤقت</string>
+    <string name="aun_player_back10">رجوع ١٠ ثوانٍ</string>
+    <string name="aun_player_forward10">تقديم ١٠ ثوانٍ</string>
+    <string name="aun_player_settings">إعدادات التشغيل</string>
+    <string name="aun_player_fullscreen">ملء الشاشة</string>
+    <string name="aun_player_exit_fullscreen">الخروج من ملء الشاشة</string>
+    <string name="aun_player_quality">الجودة</string>
+    <string name="aun_player_quality_auto">تلقائي</string>
+    <string name="aun_player_quality_p">%1$dp</string>
+    <string name="aun_player_speed">السرعة</string>
+    <string name="aun_player_speed_normal">عادية</string>
+    <string name="aun_player_speed_x">%1$s×</string>
+    <string name="aun_player_subtitles">الترجمة</string>
+    <string name="aun_player_subtitles_off">إيقاف</string>
+    <string name="aun_player_error">لا يمكن تشغيل هذا الفيديو الآن.</string>
+    <string name="aun_player_seek">تقديم أو ترجيع</string>
+</resources>
