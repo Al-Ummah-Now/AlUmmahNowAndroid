@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lantern logo inside the adaptive-icon safe zone (66 of 108 dp). -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/aun_logo"
+    android:inset="19%" />

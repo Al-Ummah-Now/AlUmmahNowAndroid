@@ -1,0 +1,78 @@
+name: Release (Play internal track)
+
+# Releases are cut ONLY from a vYYYY.MM.DD[.N] tag on main. Never publish by hand.
+on:
+  push:
+    tags: ['v[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: play-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag must point at a commit on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::Tag $GITHUB_REF_NAME is not on main"; exit 1; }
+      - name: Required secrets present
+        env:
+          KEYSTORE: ${{ secrets.AUN_UPLOAD_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          missing=0
+          for v in KEYSTORE KS_PASS KEY_ALIAS KEY_PASS PLAY_JSON; do
+            if [ -z "${!v}" ]; then echo "::error::Missing secret for $v (see docs/RELEASE.md)"; missing=1; fi
+          done
+          exit $missing
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Decode upload keystore
+        env:
+          KEYSTORE: ${{ secrets.AUN_UPLOAD_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+      - name: Version from tag
+        id: ver
+        run: |
+          name="${GITHUB_REF_NAME#v}"
+          # versionCode = days since 2026-01-01 * 100 + build suffix: monotonic and fits in an int.
+          y=${name:0:4}; m=${name:5:2}; d=${name:8:2}; n=$(echo "$name" | cut -d. -f4); n=${n:-0}
+          days=$(( ( $(date -ud "$y-$m-$d" +%s) - $(date -ud 2026-01-01 +%s) ) / 86400 ))
+          echo "code=$(( days * 100 + n ))" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - name: Publish prod bundles to the Play internal track
+        env:
+          AUN_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
+          AUN_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
+          AUN_UPLOAD_KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
+          AUN_UPLOAD_KEY_PASSWORD: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
+          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: >
+          ./gradlew
+          :viewer-mobile:publishProdReleaseBundle
+          :viewer-tv:publishProdGoogleReleaseBundle
+          :studio-mobile:publishProdReleaseBundle
+          -PversionCode=${{ steps.ver.outputs.code }} -PversionName=${{ steps.ver.outputs.name }}
+      - name: Fire TV bundle (uploaded to Amazon by the owner until an Appstore API key exists)
+        env:
+          AUN_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
+          AUN_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
+          AUN_UPLOAD_KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
+          AUN_UPLOAD_KEY_PASSWORD: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew :viewer-tv:assembleProdAmazonRelease -PversionCode=${{ steps.ver.outputs.code }} -PversionName=${{ steps.ver.outputs.name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fire-tv-apk
+          path: viewer-tv/build/outputs/apk/prodAmazon/release/*.apk

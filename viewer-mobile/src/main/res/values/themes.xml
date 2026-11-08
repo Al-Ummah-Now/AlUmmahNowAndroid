@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Aun" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/aun_night</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <color name="aun_night">#FF093041</color>
+    <color name="aun_lantern">#FFFFA037</color>
+</resources>
