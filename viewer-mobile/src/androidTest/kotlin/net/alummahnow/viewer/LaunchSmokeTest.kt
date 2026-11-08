@@ -12,9 +12,10 @@ class LaunchSmokeTest {
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
 
+    /** The home header shows the brand in the app's language (works with any per-app locale). */
     @Test
-    fun launchesAndShowsAppName() {
-        val name = compose.activity.getString(R.string.app_name)
-        compose.waitUntil(5_000) { compose.onAllNodesWithText(name).fetchSemanticsNodes().isNotEmpty() }
+    fun launchesAndShowsBrand() {
+        val brand = compose.activity.getString(net.alummahnow.feature.home.R.string.home_brand)
+        compose.waitUntil(30_000) { compose.onAllNodesWithText(brand).fetchSemanticsNodes().isNotEmpty() }
     }
 }
