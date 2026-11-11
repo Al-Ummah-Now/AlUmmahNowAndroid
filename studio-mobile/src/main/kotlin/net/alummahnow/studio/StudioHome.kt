@@ -34,7 +34,13 @@ enum class StudioTab(val label: Int, val icon: ImageVector) {
 
 /** Bottom navigation on phones, a navigation rail on tablets and unfolded foldables. */
 @Composable
-fun StudioHome(tabs: List<StudioTab>, selected: StudioTab, onSelect: (StudioTab) -> Unit, modifier: Modifier = Modifier, content: @Composable (StudioTab) -> Unit) {
+fun StudioHome(
+    tabs: List<StudioTab>,
+    selected: StudioTab,
+    onSelect: (StudioTab) -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable (StudioTab) -> Unit
+) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         if (maxWidth >= RAIL_WIDTH) {
             Row(Modifier.fillMaxSize()) {
