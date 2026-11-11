@@ -44,3 +44,9 @@ fun localizedDecimal(text: String): String {
     val separated = if (locale.language == "ar") text.replace('.', '\u066B') else text
     return AunFormat.digits(separated, locale, LocalAunDisplayPrefs.current.easternArabicDigits)
 }
+
+/**
+ * Isolates user-supplied text (names, e-mails, titles) inside a localised sentence (FSI … PDI), so
+ * Latin text in an Arabic sentence (and the reverse) does not reorder the punctuation around it.
+ */
+fun isolate(text: String): String = "\u2068$text\u2069"

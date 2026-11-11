@@ -18,6 +18,9 @@ object FanousTokens {
     val Verified = Color(0xFF16A34A)
     val Error = Color(0xFFB00020)
 
+    /** Error on night surfaces: [Error] is too dark there (≈2:1); this is ≥ 4.5:1 on Night and NightSurfaceHigh. */
+    val ErrorOnNight = Color(0xFFFFB4AB)
+
     // Derived surfaces (not in the spec table; chosen for AA contrast on night / parchment).
     val NightSurface = Color(0xFF0D3B4F)
     val NightSurfaceHigh = Color(0xFF134A61)
