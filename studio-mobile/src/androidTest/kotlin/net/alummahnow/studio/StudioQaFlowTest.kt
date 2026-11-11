@@ -58,7 +58,14 @@ class StudioQaFlowTest {
         val clip = copyAsset(compose.activity, "qa-test-clip.mp4")
         runBlocking {
             app.container.uploads.enqueue(
-                listOf(UploadDraft(clip.absolutePath, clip.name, clip.length(), "video/mp4", title, "Instrumented test", channel, Visibility.PRIVATE, tags = listOf("qa-instrumented")))
+                listOf(
+                    UploadDraft(
+                        clip.absolutePath, clip.name, clip.length(), "video/mp4", title, "Instrumented test", channel, Visibility.PRIVATE,
+                        tags = listOf(
+                            "qa-instrumented"
+                        )
+                    )
+                )
             )
         }
         compose.waitUntil(UPLOAD_TIMEOUT_MS) {
@@ -89,10 +96,29 @@ class StudioQaFlowTest {
         compose.onNodeWithTag("bulk-apply").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { runBlocking { app.container.repository.video(videoId) }.tags.contains("qa-bulk") }
 
-        // Clean up through the UI: delete asks first (Cancel focused), then deletes.
+        // Delete through the UI (asks first), restore it from Recently deleted, then delete it for good.
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("selection-bar").fetchSemanticsNodes().isEmpty() }
-        compose.onNodeWithTag("video-$videoId").performTouchInput { longClick() }
-        compose.onNodeWithTag("bulk-delete").performClick()
+        deleteFromList(videoId)
+        compose.onNodeWithTag("status-deleted").performClick()
+        compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("video-$videoId").performClick() // selects in this tab
+        compose.onNodeWithTag("bulk-restore").performClick()
+        compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isEmpty() }
+        assertEquals(title, runBlocking { app.container.repository.video(videoId) }.title)
+
+        compose.onNodeWithTag("status-processing").performClick()
+        compose.waitUntil(UPLOAD_TIMEOUT_MS) {
+            val found = compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isNotEmpty()
+            if (!found) {
+                val tab = if (System.currentTimeMillis() / TAB_SWITCH_MS % 2 == 0L) "status-processing" else "status-published"
+                runCatching { compose.onNodeWithTag(tab).performClick() }
+            }
+            found
+        }
+        deleteFromList(videoId)
+        compose.onNodeWithTag("status-deleted").performClick()
+        compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("forever-$videoId").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("forever-$videoId").performClick()
         compose.onNodeWithTag("confirm-ok").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isEmpty() }
 
@@ -103,6 +129,13 @@ class StudioQaFlowTest {
         compose.onNodeWithTag("confirm-ok").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { app.container.session.accounts.value.none { it.userId == user } }
         device.pressBack()
+    }
+
+    private fun deleteFromList(videoId: String) {
+        compose.onNodeWithTag("video-$videoId").performTouchInput { longClick() }
+        compose.onNodeWithTag("bulk-delete").performClick()
+        compose.onNodeWithTag("confirm-ok").performClick()
+        compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isEmpty() }
     }
 
     private fun signIn(email: String, password: String) {
@@ -136,7 +169,10 @@ class StudioQaFlowTest {
         return app.container.session.active.value!!.activeChannelId!!
     }
 
-    private val channelRow = SemanticsMatcher("channel row") { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("channel-") == true }
+    private val channelRow = SemanticsMatcher("channel row") {
+        it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("channel-") ==
+            true
+    }
 
     private fun copyAsset(context: Context, name: String): File {
         val out = File(context.cacheDir, name)

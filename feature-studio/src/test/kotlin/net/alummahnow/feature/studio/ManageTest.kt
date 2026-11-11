@@ -1,10 +1,10 @@
 package net.alummahnow.feature.studio
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.longClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -158,7 +158,9 @@ class ManageTest {
     fun `delete asks first and Cancel keeps the videos`() {
         RuntimeEnvironment.setQualifiers("en-ldltr")
         val log = mutableListOf<String>()
-        compose.setContent { AunTheme { ContentScreen(ContentUiState(videos = sampleVideos, selected = setOf("v1"), loading = false), actions(log)) } }
+        compose.setContent {
+            AunTheme { ContentScreen(ContentUiState(videos = sampleVideos, selected = setOf("v1"), loading = false), actions(log)) }
+        }
         compose.onNodeWithTag("bulk-delete").performClick()
         compose.onNodeWithTag("confirm-cancel").performClick()
         assertTrue("delete" !in log)
@@ -181,7 +183,14 @@ class ManageTest {
 
     private val list = ContentUiState(videos = sampleVideos, loading = false)
     private val selecting = list.copy(selected = setOf("v1", "v3"))
-    private val deletedTab = ContentUiState(status = ContentStatus.DELETED, loading = false, videos = sampleVideos.take(2).map { it.copy(status = ContentStatus.DELETED, restorableUntil = "2026-12-10T09:00:00Z") })
+    private val deletedTab =
+        ContentUiState(
+            status = ContentStatus.DELETED,
+            loading = false,
+            videos = sampleVideos.take(2).map {
+                it.copy(status = ContentStatus.DELETED, restorableUntil = "2026-12-10T09:00:00Z")
+            }
+        )
     private val noop = actions(mutableListOf())
     private val form = EditForm("Introduction to Tafsir", "Lesson one of the series.", true, "quran_tafsir", "ar", "tafsir, قرآن")
     private val edit = VideoEditUiState(loading = false, original = form, form = form.copy(title = "Introduction to Tafsir (revised)"))
@@ -202,9 +211,15 @@ class ManageTest {
 
     @Test fun editArDark() = shoot("edit", Lang.AR, ThemeMode.DARK) { VideoEditScreen(edit, {}, {}, {}, {}) }
 
-    @Test fun analyticsEnDark() = shoot("analytics", Lang.EN, ThemeMode.DARK) { AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {}) }
+    @Test fun analyticsEnDark() = shoot("analytics", Lang.EN, ThemeMode.DARK) {
+        AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {})
+    }
 
-    @Test fun analyticsArLight() = shoot("analytics", Lang.AR, ThemeMode.LIGHT) { AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {}) }
+    @Test fun analyticsArLight() = shoot("analytics", Lang.AR, ThemeMode.LIGHT) {
+        AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {})
+    }
 
-    @Test fun analyticsTabletArDark() = shoot("analytics", Lang.AR, ThemeMode.DARK, Device.TABLET) { AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {}) }
+    @Test fun analyticsTabletArDark() = shoot("analytics", Lang.AR, ThemeMode.DARK, Device.TABLET) {
+        AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {})
+    }
 }

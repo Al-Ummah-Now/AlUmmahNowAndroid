@@ -80,10 +80,15 @@ fun VideoEditScreen(
             )
             when {
                 state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                state.original == null -> ErrorState(stringResource(state.error ?: net.alummahnow.design.R.string.aun_error_generic), onRetry)
+                state.original == null -> ErrorState(
+                    stringResource(state.error ?: net.alummahnow.design.R.string.aun_error_generic),
+                    onRetry
+                )
                 else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     Column(
-                        Modifier.widthIn(max = 720.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(FanousTokens.Spacing.lg),
+                        Modifier.widthIn(
+                            max = 720.dp
+                        ).fillMaxWidth().verticalScroll(rememberScrollState()).padding(FanousTokens.Spacing.lg),
                         verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
                     ) { Fields(state, onChange, onSave) }
                 }
@@ -133,8 +138,12 @@ private fun Fields(state: VideoEditUiState, onChange: ((EditForm) -> EditForm) -
             ) { Text(stringResource(label)) }
         }
     }
-    Choice(stringResource(R.string.studio_category), f.category, VideoCategories.all, { StudioLabels.category(it) }, "edit-category") { v -> onChange { it.copy(category = v) } }
-    Choice(stringResource(R.string.studio_field_language), f.language, VideoLanguages.all, { StudioLabels.language(it) }, "edit-language") { v -> onChange { it.copy(language = v) } }
+    Choice(stringResource(R.string.studio_category), f.category, VideoCategories.all, {
+        StudioLabels.category(it)
+    }, "edit-category") { v -> onChange { it.copy(category = v) } }
+    Choice(stringResource(R.string.studio_field_language), f.language, VideoLanguages.all, {
+        StudioLabels.language(it)
+    }, "edit-language") { v -> onChange { it.copy(language = v) } }
     OutlinedTextField(
         value = f.tagsText,
         onValueChange = { v -> onChange { it.copy(tagsText = v) } },
@@ -144,10 +153,24 @@ private fun Fields(state: VideoEditUiState, onChange: ((EditForm) -> EditForm) -
         modifier = Modifier.fillMaxWidth().testTag("edit-tags")
     )
     state.error?.let {
-        Text(stringResource(it), color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
+        Text(
+            stringResource(it),
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.semantics {
+                liveRegion =
+                    LiveRegionMode.Assertive
+            }
+        )
     }
     if (state.saved) {
-        Text(stringResource(R.string.studio_saved), color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("edit-saved").semantics { liveRegion = LiveRegionMode.Polite })
+        Text(
+            stringResource(R.string.studio_saved),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.testTag("edit-saved").semantics {
+                liveRegion =
+                    LiveRegionMode.Polite
+            }
+        )
     }
     Button(onClick = onSave, enabled = state.dirty && !state.saving, modifier = Modifier.fillMaxWidth().testTag("edit-save")) {
         Text(stringResource(R.string.studio_save))
@@ -156,7 +179,14 @@ private fun Fields(state: VideoEditUiState, onChange: ((EditForm) -> EditForm) -
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Choice(label: String, value: String?, options: List<String>, labelRes: (String?) -> Int?, tag: String, onSelect: (String?) -> Unit) {
+private fun Choice(
+    label: String,
+    value: String?,
+    options: List<String>,
+    labelRes: (String?) -> Int?,
+    tag: String,
+    onSelect: (String?) -> Unit
+) {
     var open by remember { mutableStateOf(false) }
     val text = @Composable { v: String? -> labelRes(v)?.let { stringResource(it) } ?: v ?: stringResource(R.string.studio_category_none) }
     ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {

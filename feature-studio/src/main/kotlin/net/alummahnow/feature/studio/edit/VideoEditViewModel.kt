@@ -40,7 +40,11 @@ data class VideoEditUiState(
     val dirty: Boolean get() = original != null && original != form
 }
 
-class VideoEditViewModel(private val repository: StudioRepository, private val channelId: String, private val videoId: String) : ViewModel() {
+class VideoEditViewModel(
+    private val repository: StudioRepository,
+    private val channelId: String,
+    private val videoId: String
+) : ViewModel() {
     private val mutableState = MutableStateFlow(VideoEditUiState())
     val state: StateFlow<VideoEditUiState> = mutableState.asStateFlow()
 
@@ -52,7 +56,9 @@ class VideoEditViewModel(private val repository: StudioRepository, private val c
         mutableState.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             attempt("studio", "video") { repository.video(videoId) }.fold(
-                onSuccess = { v -> mutableState.update { VideoEditUiState(loading = false, original = EditForm.of(v), form = EditForm.of(v)) } },
+                onSuccess = { v ->
+                    mutableState.update { VideoEditUiState(loading = false, original = EditForm.of(v), form = EditForm.of(v)) }
+                },
                 onFailure = { e -> mutableState.update { it.copy(loading = false, error = e.studioMessage()) } }
             )
         }
@@ -80,7 +86,11 @@ class VideoEditViewModel(private val repository: StudioRepository, private val c
         mutableState.update { it.copy(saving = true) }
         viewModelScope.launch {
             attempt("studio", "save video") { repository.update(videoId, channelId, edit) }.fold(
-                onSuccess = { v -> mutableState.update { VideoEditUiState(loading = false, original = EditForm.of(v), form = EditForm.of(v), saved = true) } },
+                onSuccess = { v ->
+                    mutableState.update {
+                        VideoEditUiState(loading = false, original = EditForm.of(v), form = EditForm.of(v), saved = true)
+                    }
+                },
                 onFailure = { e -> mutableState.update { it.copy(saving = false, error = e.studioMessage()) } }
             )
         }
