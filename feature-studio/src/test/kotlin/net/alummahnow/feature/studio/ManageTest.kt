@@ -8,6 +8,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.Dispatchers
@@ -191,7 +192,8 @@ class ManageTest {
         // sampleAnalytics peaks at 539 views: ticks 0, 200, 400, 600
         compose.onNodeWithText("600").assertExists()
         compose.onNodeWithText("200").assertExists()
-        compose.onNodeWithTag("views-chart").performTouchInput { click(Offset(2f, centerY)) }
+        // Below the stat cards: scroll it on screen so the tap lands on it
+        compose.onNodeWithTag("views-chart").performScrollTo().performTouchInput { click(Offset(2f, centerY)) }
         compose.onNodeWithTag("chart-readout").assertTextContains("77", substring = true)
     }
 
