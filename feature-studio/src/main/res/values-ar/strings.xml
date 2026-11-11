@@ -40,7 +40,7 @@
     <string name="studio_status_drafts">مسودات</string>
     <string name="studio_status_processing">قيد المعالجة</string>
     <string name="studio_status_failed">فشلت</string>
-    <string name="studio_status_deleted">محذوفة</string>
+    <string name="studio_status_deleted">المحذوفة مؤخرًا</string>
     <string name="studio_search_hint">ابحث في مقاطعك</string>
     <string name="studio_search_clear_cd">مسح البحث</string>
     <string name="studio_suggestions_count">%1$d اقتراحات</string>
@@ -52,7 +52,7 @@
     <string name="studio_delete">حذف</string>
     <string name="studio_restore">استعادة</string>
     <string name="studio_delete_forever">حذف نهائي</string>
-    <string name="studio_delete_body_soft">يمكنك استعادة المقاطع المحذوفة من تبويب «محذوفة» خلال 30 يومًا.</string>
+    <string name="studio_delete_body_soft">يمكنك استعادة المقاطع المحذوفة من «المحذوفة مؤخرًا» خلال 30 يومًا.</string>
     <string name="studio_delete_body_hard">لا يمكن التراجع عن ذلك. ستُحذف المقاطع ومشاهداتها وإعجاباتها وتعليقاتها.</string>
     <string name="studio_delete_forever_title">حذف «%1$s» نهائيًا؟</string>
     <string name="studio_bulk_partial">نجح %1$d، وفشل %2$d</string>

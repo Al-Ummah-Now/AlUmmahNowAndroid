@@ -21,8 +21,18 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 class UploadScreenshotTest {
     private val state = UploadUiState(
-        files = listOf(PickedFile("u1", "dars-01.mp4", 734_003_200, "video/mp4"), PickedFile("u2", "dars-02.mp4", 512_000_000, "video/mp4")),
-        form = SetForAll(titlePattern = "Tafsir {{nn}}", category = "quran_tafsir", language = "ar", playlistIds = setOf("p1"), tagsText = "tafsir, قرآن"),
+        files = listOf(
+            PickedFile("u1", "dars-01.mp4", 734_003_200, "video/mp4"),
+            PickedFile("u2", "dars-02.mp4", 512_000_000, "video/mp4")
+        ),
+        form = SetForAll(
+            titlePattern = "Tafsir {n}",
+            padNumbers = true,
+            category = "quran_tafsir",
+            language = "ar",
+            playlistIds = setOf("p1"),
+            tagsText = "tafsir, قرآن"
+        ),
         playlists = listOf(StudioPlaylist("p1", "Tafsir series", true), StudioPlaylist("p2", "Khutbahs", false)),
         queue = listOf(
             UploadItem("q1", "Ramadan reminder", UploadPhase.UPLOADING, 300_000_000, 700_000_000, null, null),

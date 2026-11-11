@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -34,9 +33,9 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,11 +79,11 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import net.alummahnow.core.bridge.studio.UploadItem
-import net.alummahnow.core.bridge.studio.core.describeDocument
 import net.alummahnow.core.bridge.studio.UploadPhase
 import net.alummahnow.core.bridge.studio.VideoCategories
 import net.alummahnow.core.bridge.studio.VideoLanguages
 import net.alummahnow.core.bridge.studio.Visibility
+import net.alummahnow.core.bridge.studio.core.describeDocument
 import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.format.StudioLabels
 import net.alummahnow.design.format.currentLocale
@@ -153,12 +152,17 @@ fun UploadScreen(state: UploadUiState, titles: List<String>, actions: UploadActi
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (maxWidth >= TWO_PANE_WIDTH) {
-                Row(Modifier.fillMaxSize().padding(FanousTokens.Spacing.lg), horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xl)) {
+                Row(
+                    Modifier.fillMaxSize().padding(FanousTokens.Spacing.lg),
+                    horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xl)
+                ) {
                     Column(Modifier.weight(3f).verticalScroll(rememberScrollState())) { Form(state, titles, actions) }
                     Column(Modifier.weight(2f).verticalScroll(rememberScrollState())) { QueueList(state.queue, actions) }
                 }
             } else {
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(FanousTokens.Spacing.lg).testTag("upload-scroll")) {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(FanousTokens.Spacing.lg).testTag("upload-scroll")
+                ) {
                     Form(state, titles, actions)
                     Spacer(Modifier.height(FanousTokens.Spacing.xl))
                     QueueList(state.queue, actions)
@@ -183,7 +187,10 @@ private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActi
             Text(stringResource(R.string.upload_no_files, UploadViewModel.MAX_FILES), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         state.files.forEachIndexed { i, f ->
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.testTag("upload-file-$i")) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                modifier = Modifier.testTag("upload-file-$i")
+            ) {
                 Column(Modifier.padding(FanousTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -209,25 +216,17 @@ private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActi
             }
         }
 
+        SetForAllSection(state, actions)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SetForAllSection(state: UploadUiState, actions: UploadActions) {
+    val context = LocalContext.current
+    Column(verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
         Heading(stringResource(R.string.upload_set_for_all))
-        OutlinedTextField(
-            value = state.form.titlePattern,
-            onValueChange = { v -> actions.onForm { it.copy(titlePattern = v) } },
-            label = { Text(stringResource(R.string.upload_title_pattern)) },
-            supportingText = { Text(stringResource(R.string.upload_title_pattern_help)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag("upload-pattern")
-        )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
-            TitlePattern.TOKENS.forEach { token ->
-                FilterChip(
-                    selected = false,
-                    onClick = { actions.onForm { it.copy(titlePattern = (it.titlePattern + " " + token).trim()) } },
-                    label = { Text(isolate(token)) },
-                    modifier = Modifier.semantics { contentDescription = context.getString(R.string.upload_insert_token_cd, token) }
-                )
-            }
-        }
+        TitlePatternField(state, actions)
         OutlinedTextField(
             value = state.form.description,
             onValueChange = { v -> actions.onForm { it.copy(description = v) } },
@@ -326,7 +325,11 @@ private fun ScheduleRow(scheduleAt: ZonedDateTime?, actions: UploadActions) {
         Column(Modifier.weight(1f)) {
             Text(stringResource(R.string.upload_schedule), style = MaterialTheme.typography.labelLarge)
             Text(
-                scheduleAt?.let { localizedDigits(it.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale))) }
+                scheduleAt?.let {
+                    localizedDigits(
+                        it.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale))
+                    )
+                }
                     ?: stringResource(R.string.upload_schedule_off),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -341,17 +344,22 @@ private fun ScheduleRow(scheduleAt: ZonedDateTime?, actions: UploadActions) {
     }
     if (pickDate) {
         val base = scheduleAt ?: actions.defaultSchedule()
-        val dateState = rememberDatePickerState(initialSelectedDateMillis = base.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
+        val dateState =
+            rememberDatePickerState(initialSelectedDateMillis = base.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
         DatePickerDialog(
             onDismissRequest = { pickDate = false },
             confirmButton = {
                 TextButton(onClick = {
                     pickDate = false
-                    val day = dateState.selectedDateMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() } ?: base.toLocalDate()
+                    val day =
+                        dateState.selectedDateMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+                            ?: base.toLocalDate()
                     pickTime = base.with(day)
                 }) { Text(stringResource(R.string.upload_next)) }
             },
-            dismissButton = { TextButton(onClick = { pickDate = false }) { Text(stringResource(net.alummahnow.design.R.string.aun_cancel)) } }
+            dismissButton = {
+                TextButton(onClick = { pickDate = false }) { Text(stringResource(net.alummahnow.design.R.string.aun_cancel)) }
+            }
         ) { DatePicker(dateState) }
     }
     pickTime?.let { day ->
@@ -364,7 +372,9 @@ private fun ScheduleRow(scheduleAt: ZonedDateTime?, actions: UploadActions) {
                     actions.onForm { it.copy(scheduleAt = day.withHour(timeState.hour).withMinute(timeState.minute)) }
                 }) { Text(stringResource(R.string.upload_done)) }
             },
-            dismissButton = { TextButton(onClick = { pickTime = null }) { Text(stringResource(net.alummahnow.design.R.string.aun_cancel)) } },
+            dismissButton = {
+                TextButton(onClick = { pickTime = null }) { Text(stringResource(net.alummahnow.design.R.string.aun_cancel)) }
+            },
             text = { TimePicker(timeState) }
         )
     }
@@ -438,7 +448,13 @@ private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> U
                     Text(
                         if (item.isActive && item.totalBytes > 0) "$phase · $percentText" else phase,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (item.phase == UploadPhase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (item.phase ==
+                            UploadPhase.FAILED
+                        ) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                         modifier = Modifier.testTag("upload-phase-${item.id}")
                     )
                 }
@@ -470,6 +486,38 @@ private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> U
                     modifier = Modifier.fillMaxWidth().semantics { stateDescription = percentText }
                 )
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TitlePatternField(state: UploadUiState, actions: UploadActions) {
+    val resources = androidx.compose.ui.platform.LocalResources.current
+    OutlinedTextField(
+        value = state.form.titlePattern,
+        onValueChange = { v -> actions.onForm { it.copy(titlePattern = v) } },
+        label = { Text(stringResource(R.string.upload_title_pattern)) },
+        supportingText = { Text(stringResource(R.string.upload_title_pattern_help)) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("upload-pattern")
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.upload_pad_numbers), modifier = Modifier.weight(1f))
+        Switch(
+            checked = state.form.padNumbers,
+            onCheckedChange = { on -> actions.onForm { it.copy(padNumbers = on) } },
+            modifier = Modifier.testTag("upload-pad")
+        )
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
+        TitlePattern.TOKENS.forEach { token ->
+            FilterChip(
+                selected = false,
+                onClick = { actions.onForm { it.copy(titlePattern = (it.titlePattern + " " + token).trim()) } },
+                label = { Text(isolate(token)) },
+                modifier = Modifier.semantics { contentDescription = resources.getString(R.string.upload_insert_token_cd, token) }
+            )
         }
     }
 }
