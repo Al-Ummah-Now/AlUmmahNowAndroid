@@ -16,7 +16,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import net.alummahnow.core.bridge.studio.UploadDraft
@@ -28,6 +27,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
 import org.junit.runner.RunWith
 
 /**
@@ -37,8 +38,17 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class StudioQaFlowTest {
-    @get:Rule
+    @get:Rule(order = 1)
     val compose = createAndroidComposeRule<MainActivity>()
+
+    /** On failure, a device screenshot lands in the connected-test additional output (uploaded by CI). */
+    @get:Rule(order = 0)
+    val screenshotOnFailure = object : TestWatcher() {
+        override fun failed(e: Throwable?, description: Description) {
+            val dir = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir") ?: return
+            runCatching { device.takeScreenshot(File(dir, "${description.methodName}-failure.png")) }
+        }
+    }
 
     private val args = InstrumentationRegistry.getArguments()
     private val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -138,31 +148,43 @@ class StudioQaFlowTest {
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isEmpty() }
     }
 
+    /** True when a node with [tag] is on screen. While the browser covers the app there is no
+     *  Compose hierarchy at all, which counts as "not there yet". */
+    private fun has(
+        tag: String
+    ): Boolean = runCatching { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false)
+
     private fun signIn(email: String, password: String) {
-        compose.waitUntil(LIST_TIMEOUT_MS) {
-            compose.onAllNodesWithTag("signin-button").fetchSemanticsNodes().isNotEmpty() ||
-                compose.onAllNodesWithTag("account-button").fetchSemanticsNodes().isNotEmpty()
-        }
-        if (compose.onAllNodesWithTag("account-button").fetchSemanticsNodes().isNotEmpty()) return
+        compose.waitUntil(LIST_TIMEOUT_MS) { has("signin-button") || has("account-button") }
+        if (has("account-button")) return
         compose.onNodeWithTag("signin-button").performClick()
-        // The auth form in the Custom Tab (Chrome). The browser may already be signed in.
-        val emailField = device.wait(Until.findObject(By.clazz("android.widget.EditText")), BROWSER_TIMEOUT_MS)
-        if (emailField != null) {
-            emailField.text = email
-            val fields = device.findObjects(By.clazz("android.widget.EditText"))
-            fields.last().text = password
-            device.findObject(By.text("Continue"))?.click() ?: device.pressEnter()
+        // The auth form in a Chrome Custom Tab. A fresh emulator's Chrome may first ask about terms,
+        // sign-in or notifications; the browser may also already be signed in (then it returns at once).
+        val deadline = System.currentTimeMillis() + SIGN_IN_TIMEOUT_MS
+        var submitted = false
+        while (System.currentTimeMillis() < deadline && !has("account-button")) {
+            val prompt = CHROME_PROMPTS.firstNotNullOfOrNull { device.findObject(By.text(it)) }
+            if (prompt != null) {
+                prompt.click()
+            } else if (!submitted) {
+                val fields = device.findObjects(By.clazz("android.widget.EditText"))
+                if (fields.size >= 2) {
+                    fields.first().text = email
+                    fields.last().text = password
+                    device.findObject(By.text("Continue"))?.click() ?: device.pressEnter()
+                    submitted = true
+                }
+            }
+            device.waitForIdle(POLL_MS)
+            Thread.sleep(POLL_MS)
         }
-        compose.waitUntil(SIGN_IN_TIMEOUT_MS) { compose.onAllNodesWithTag("account-button").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(LIST_TIMEOUT_MS) { has("account-button") }
     }
 
     /** Picks the seed channel "Al Ummah Now QA — Lectures" (or the only one). */
     private fun pickChannel(): String {
-        compose.waitUntil(LIST_TIMEOUT_MS) {
-            compose.onAllNodesWithTag("channel-list").fetchSemanticsNodes().isNotEmpty() ||
-                compose.onAllNodesWithTag("dashboard").fetchSemanticsNodes().isNotEmpty()
-        }
-        if (compose.onAllNodesWithTag("channel-list").fetchSemanticsNodes().isNotEmpty()) {
+        compose.waitUntil(LIST_TIMEOUT_MS) { has("channel-list") || has("dashboard") }
+        if (has("channel-list")) {
             compose.onNode(hasText("Lectures", substring = true) and channelRow).performClick()
         }
         compose.waitUntil(LIST_TIMEOUT_MS) { app.container.session.active.value?.activeChannelId != null }
@@ -186,8 +208,9 @@ class StudioQaFlowTest {
     }
 
     private companion object {
-        const val BROWSER_TIMEOUT_MS = 20_000L
-        const val SIGN_IN_TIMEOUT_MS = 30_000L
+        const val SIGN_IN_TIMEOUT_MS = 90_000L
+        const val POLL_MS = 1_000L
+        val CHROME_PROMPTS = listOf("Accept & continue", "Use without an account", "No thanks", "No, thanks", "Got it", "Continue as guest")
         const val LIST_TIMEOUT_MS = 30_000L
         const val UPLOAD_TIMEOUT_MS = 180_000L
         const val TAB_SWITCH_MS = 3_000L
