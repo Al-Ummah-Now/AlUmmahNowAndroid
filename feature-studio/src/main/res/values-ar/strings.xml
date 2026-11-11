@@ -96,6 +96,7 @@
     <string name="studio_stat_videos">المقاطع</string>
     <string name="studio_chart_views">المشاهدات يوميًا</string>
     <string name="studio_chart_cd">المشاهدات يوميًا. المجموع %1$s. الأعلى %2$s في %3$s.</string>
+    <string name="studio_chart_empty_views">لا توجد مشاهدات في هذه الفترة.</string>
     <string name="studio_top_videos">أفضل المقاطع</string>
     <string name="studio_analytics_empty">لا توجد بيانات لهذه الفترة بعد.</string>
     <plurals name="studio_selected_count">

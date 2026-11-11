@@ -1,8 +1,12 @@
 package net.alummahnow.feature.studio
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -177,6 +181,27 @@ class ManageTest {
         compose.onNodeWithTag("video-v2").performClick()
         compose.onNodeWithTag("video-v3").performTouchInput { longClick() }
         assertEquals(listOf("edit:v2", "toggle:v3"), log)
+    }
+
+    @Test
+    fun `the views chart has a value axis and reads out the tapped day`() {
+        RuntimeEnvironment.setQualifiers("en-ldltr")
+        compose.setContent { AunTheme { AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {}) } }
+        compose.onNodeWithTag("chart-y-axis").assertExists()
+        // sampleAnalytics peaks at 539 views: ticks 0, 200, 400, 600
+        compose.onNodeWithText("600").assertExists()
+        compose.onNodeWithText("200").assertExists()
+        compose.onNodeWithTag("views-chart").performTouchInput { click(Offset(2f, centerY)) }
+        compose.onNodeWithTag("chart-readout").assertTextContains("77", substring = true)
+    }
+
+    @Test
+    fun `a period with no views keeps the axis and says so`() {
+        RuntimeEnvironment.setQualifiers("en-ldltr")
+        val none = sampleAnalytics.copy(daily = sampleAnalytics.daily.map { it.copy(views = 0) })
+        compose.setContent { AunTheme { AnalyticsScreen(AnalyticsUiState(loading = false, data = none), {}, {}) } }
+        compose.onNodeWithTag("chart-empty").assertExists()
+        compose.onNodeWithTag("chart-y-axis").assertExists()
     }
 
     // --- Screenshots ---

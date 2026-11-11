@@ -27,6 +27,7 @@ import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.design.format.localizedDecimal
 import net.alummahnow.design.format.localizedDigits
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
@@ -100,7 +101,8 @@ fun StatTile(label: String, value: Number, modifier: Modifier = Modifier) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {
         Column(Modifier.padding(FanousTokens.Spacing.lg)) {
-            Text(localizedDigits(value.toString()), style = MaterialTheme.typography.headlineSmall)
+            val text = if (value is Double) localizedDecimal(value.toString()) else localizedDigits(value.toString())
+            Text(text, style = MaterialTheme.typography.headlineSmall)
             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
