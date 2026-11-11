@@ -27,6 +27,10 @@ data class PickedFile(val uri: String, val name: String, val sizeBytes: Long, va
 /** Values applied to every file in the batch ("set for all"). */
 data class SetForAll(
     val titlePattern: String = TitlePattern.DEFAULT,
+    /** First number for `{n}`. */
+    val numberStart: Int = 1,
+    /** Zero-pad `{n}` to the batch size (01 … 12). */
+    val padNumbers: Boolean = false,
     val description: String = "",
     val category: String? = null,
     val language: String? = null,
@@ -55,7 +59,8 @@ class UploadViewModel(
     private val channelName: String,
     private val today: () -> LocalDate = { LocalDate.now() },
     private val now: () -> Instant = { Instant.now() },
-    private val zone: () -> ZoneId = { ZoneId.systemDefault() }
+    private val zone: () -> ZoneId = { ZoneId.systemDefault() },
+    private val locale: () -> java.util.Locale = { java.util.Locale.getDefault() }
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(UploadUiState())
     val state: StateFlow<UploadUiState> = mutableState.asStateFlow()
@@ -71,8 +76,17 @@ class UploadViewModel(
 
     /** Titles as they will be sent: the override, else the pattern. */
     fun titles(s: UploadUiState = mutableState.value): List<String> = s.files.mapIndexed { i, f ->
-        f.titleOverride?.takeIf { it.isNotBlank() }?.trim()
-            ?: TitlePattern.apply(s.form.titlePattern, f.name, i, s.files.size, today(), channelName)
+        f.titleOverride?.takeIf { it.isNotBlank() }
+            ?: TitlePattern.apply(
+                s.form.titlePattern,
+                f.name,
+                i,
+                today(),
+                channelName,
+                locale(),
+                s.form.numberStart,
+                if (s.form.padNumbers) s.files.size.toString().length else 1
+            )
     }
 
     fun addFiles(files: List<PickedFile>) = mutableState.update { s ->
@@ -83,12 +97,22 @@ class UploadViewModel(
     fun removeFile(index: Int) = mutableState.update { s -> s.copy(files = s.files.filterIndexed { i, _ -> i != index }) }
 
     fun setTitle(index: Int, title: String) = mutableState.update { s ->
-        s.copy(files = s.files.mapIndexed { i, f -> if (i == index) f.copy(titleOverride = title.take(TitlePattern.MAX_TITLE)) else f })
+        s.copy(files = s.files.mapIndexed { i, f -> if (i == index) f.copy(titleOverride = title) else f })
     }
 
     fun updateForm(transform: (SetForAll) -> SetForAll) = mutableState.update { it.copy(form = transform(it.form), error = null) }
 
-    fun togglePlaylist(id: String) = updateForm { f -> f.copy(playlistIds = if (id in f.playlistIds) f.playlistIds - id else f.playlistIds + id) }
+    fun togglePlaylist(id: String) = updateForm { f ->
+        f.copy(
+            playlistIds = if (id in
+                f.playlistIds
+            ) {
+                f.playlistIds - id
+            } else {
+                f.playlistIds + id
+            }
+        )
+    }
 
     fun consumeQueued() = mutableState.update { it.copy(queuedCount = 0) }
 
@@ -126,7 +150,14 @@ class UploadViewModel(
             runCatching { queue.enqueue(drafts) }.fold(
                 onSuccess = {
                     AunLog.i("upload", "batch queued", "count" to drafts.size)
-                    mutableState.update { UploadUiState(form = it.form.copy(scheduleAt = null), playlists = it.playlists, queue = it.queue, queuedCount = drafts.size) }
+                    mutableState.update {
+                        UploadUiState(
+                            form = it.form.copy(scheduleAt = null),
+                            playlists = it.playlists,
+                            queue = it.queue,
+                            queuedCount = drafts.size
+                        )
+                    }
                 },
                 onFailure = { e ->
                     if (e is CancellationException) throw e
@@ -142,13 +173,17 @@ class UploadViewModel(
         return when {
             s.files.isEmpty() -> R.string.upload_error_no_files
             titles(s).any { it.isBlank() } -> R.string.upload_error_title
+            titles(s).any { TitlePattern.length(it) > TitlePattern.MAX_TITLE } -> R.string.upload_error_title_long
             schedule != null && Duration.between(now(), schedule) < MIN_SCHEDULE_AHEAD -> R.string.upload_error_schedule_soon
             schedule != null && Duration.between(now(), schedule) > MAX_SCHEDULE_AHEAD -> R.string.upload_error_schedule_far
             else -> null
         }
     }
 
-    fun defaultScheduleTime(): ZonedDateTime = ZonedDateTime.ofInstant(now(), zone()).plusDays(1).withHour(DEFAULT_HOUR).withMinute(0).withSecond(0).withNano(0)
+    fun defaultScheduleTime(): ZonedDateTime = ZonedDateTime.ofInstant(
+        now(),
+        zone()
+    ).plusDays(1).withHour(DEFAULT_HOUR).withMinute(0).withSecond(0).withNano(0)
 
     fun pause(id: String) = queue.pause(id)
     fun resume(id: String) = queue.resume(id)

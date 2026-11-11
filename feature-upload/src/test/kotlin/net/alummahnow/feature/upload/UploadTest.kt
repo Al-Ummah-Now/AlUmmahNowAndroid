@@ -24,6 +24,7 @@ import net.alummahnow.core.bridge.studio.Visibility
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -38,13 +39,18 @@ class UploadTest {
     @After fun reset() = Dispatchers.resetMain()
 
     @Test
-    fun `title tokens`() {
-        assertEquals("Fajr reminder", TitlePattern.apply("{{filename}}", "Fajr reminder.mp4", 0, 1, today, "Lectures"))
-        assertEquals("Tafsir 03 of 12 · 2026-11-10", TitlePattern.apply("Tafsir {{nn}} of {{total}} · {{date}}", "a.mp4", 2, 12, today, "C"))
-        assertEquals("Lectures part 2", TitlePattern.apply("{{channel_name}} part {{n}}", "x.mov", 1, 3, today, "Lectures"))
-        assertEquals("{{oops}} a", TitlePattern.apply("{{oops}} {{filename}}", "a.mp4", 0, 1, today, "C"))
-        assertEquals("clip", TitlePattern.apply("  ", "clip.mp4", 0, 1, today, "C"))
-        assertEquals(TitlePattern.MAX_TITLE, TitlePattern.apply("{{filename}}", "x".repeat(300) + ".mp4", 0, 1, today, "C").length)
+    fun `title tokens follow the shared web rename engine`() {
+        val ar = java.util.Locale.forLanguageTag("ar")
+        assertEquals("Fajr reminder", TitlePattern.apply("{filename}", "Fajr reminder.mp4", 0, today, "Lectures"))
+        assertEquals("Lesson 03.final", TitlePattern.apply("{filename}", "Lesson 03.final.mp4", 0, today, "C"))
+        assertEquals("Tafsir 03 · 10 November 2026", TitlePattern.apply("Tafsir {n} · {date}", "a.mp4", 2, today, "C", pad = 2))
+        assertEquals("Lectures part 12", TitlePattern.apply("{channel} part {n}", "x.mov", 1, today, "Lectures", start = 11))
+        assertEquals("{oops} a", TitlePattern.apply("{oops} {filename}", "a.mp4", 0, today, "C"))
+        assertEquals("  clip ", TitlePattern.apply("  {filename} ", "clip.mp4", 0, today, "C"))
+        assertEquals("clip", TitlePattern.apply("", "clip.mp4", 0, today, "C"))
+        assertEquals(" ", TitlePattern.apply("{title} ", "clip.mp4", 0, today, "C"))
+        assertTrue(TitlePattern.apply("{date}", "a", 0, today, "C", ar).contains("نوفمبر"))
+        assertEquals("-1", TitlePattern.number(0, start = -1))
     }
 
     @Test
@@ -59,7 +65,16 @@ class UploadTest {
         assertEquals(listOf("p1"), vm.state.value.playlists.map { it.id })
         vm.addFiles(listOf(file("a.mp4"), file("b.mp4"), file("a.mp4")))
         assertEquals(2, vm.state.value.files.size)
-        vm.updateForm { it.copy(titlePattern = "Dars {{n}}", description = "d", category = "fiqh", language = "ar", visibility = Visibility.PRIVATE, tagsText = "x, y") }
+        vm.updateForm {
+            it.copy(
+                titlePattern = "Dars {n}",
+                description = "d",
+                category = "fiqh",
+                language = "ar",
+                visibility = Visibility.PRIVATE,
+                tagsText = "x, y"
+            )
+        }
         vm.togglePlaylist("p1")
         vm.setTitle(1, "Custom title")
         assertEquals(listOf("Dars 1", "Custom title"), vm.titles())
@@ -95,6 +110,17 @@ class UploadTest {
         val d = queue.drafts.single().single()
         assertEquals(at.toInstant().toString(), d.scheduleAtIso)
         assertEquals("Asia/Riyadh", d.timezone)
+    }
+
+    @Test
+    fun `titles over 100 characters are refused, not cut`() = runTest {
+        val queue = FakeQueue()
+        val vm = UploadViewModel(queue, FakeRepo(), "c1", "C", { today }, { now }, { zone })
+        vm.addFiles(listOf(file("a.mp4")))
+        vm.setTitle(0, "x".repeat(101))
+        vm.start()
+        assertEquals(R.string.upload_error_title_long, vm.state.value.error)
+        assertTrue(queue.drafts.isEmpty())
     }
 
     @Test

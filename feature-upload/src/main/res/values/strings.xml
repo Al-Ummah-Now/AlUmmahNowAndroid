@@ -71,4 +71,6 @@
         <item quantity="one">%1$d video uploaded</item>
         <item quantity="other">%1$d videos uploaded</item>
     </plurals>
+    <string name="upload_pad_numbers">Pad {n} with zeros (01, 02 …)</string>
+    <string name="upload_error_title_long">A title can have at most 100 characters.</string>
 </resources>

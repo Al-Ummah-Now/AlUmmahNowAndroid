@@ -87,4 +87,6 @@
         <item quantity="many">رُفع %1$d مقطعًا</item>
         <item quantity="other">رُفع %1$d مقطع</item>
     </plurals>
+    <string name="upload_pad_numbers">إكمال {n} بالأصفار (01، 02 …)</string>
+    <string name="upload_error_title_long">يجب ألا يزيد العنوان على 100 حرف.</string>
 </resources>

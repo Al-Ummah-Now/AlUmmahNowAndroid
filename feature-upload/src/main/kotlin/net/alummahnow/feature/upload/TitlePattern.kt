@@ -1,45 +1,68 @@
 package net.alummahnow.feature.upload
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
 /**
- * Batch title pattern ("set for all"). Tokens use the web upload templates' `{{…}}` syntax:
- * - `{{filename}}`: the file name without its extension
- * - `{{n}}`: position in the batch (1, 2, 3 …); `{{nn}}` zero-pads to the batch size (01 … 12)
- * - `{{total}}`: number of files in the batch
- * - `{{date}}`: today, ISO (2026-11-10); `{{year}}`, `{{month}}`, `{{day}}`
- * - `{{channel_name}}`: the channel uploaded to
- * Unknown tokens are left as typed so a typo is visible in the preview.
+ * Batch title pattern ("set for all"), the same tokens and rules as the web's shared rename engine
+ * (`packages/shared-types/src/bulk-rename.ts`, AlUmmahNow#765):
+ * - `{n}`: position among the files, from [start], zero-padded to [pad] digits
+ * - `{filename}`: the file name without its last extension
+ * - `{date}`: today as a long date in the title's language ("10 November 2026" / "١٠ نوفمبر ٢٠٢٦")
+ * - `{channel}`: the channel's name
+ * Nothing else is touched: no trimming, no normalisation. Unknown `{…}` text stays as typed.
+ * A title over [MAX_TITLE] characters is refused, not cut.
  */
 object TitlePattern {
-    const val DEFAULT = "{{filename}}"
+    const val DEFAULT = "{filename}"
     const val MAX_TITLE = 100
-    val TOKENS = listOf("{{filename}}", "{{n}}", "{{nn}}", "{{total}}", "{{date}}", "{{channel_name}}")
+    val TOKENS = listOf("{n}", "{filename}", "{date}", "{channel}")
 
-    private val token = Regex("""\{\{\s*([a-z_]+)\s*\}\}""")
+    private val token = Regex("""\{(n|filename|date|channel|title)\}""")
 
-    fun apply(pattern: String, fileName: String, index: Int, total: Int, today: LocalDate, channelName: String): String {
-        val n = index + 1
-        val width = total.toString().length
-        val values = mapOf(
-            "filename" to fileName.substringBeforeLast('.').ifBlank { fileName },
-            "n" to n.toString(),
-            "nn" to n.toString().padStart(width, '0'),
-            "total" to total.toString(),
-            "date" to today.toString(),
-            "year" to today.year.toString(),
-            "month" to today.monthValue.toString().padStart(2, '0'),
-            "day" to today.dayOfMonth.toString().padStart(2, '0'),
-            "channel_name" to channelName
-        )
-        val out = token.replace(pattern.ifBlank { DEFAULT }) { m -> values[m.groupValues[1]] ?: m.value }
-        return out.replace(Regex("\\s+"), " ").trim().take(MAX_TITLE)
+    fun apply(
+        pattern: String,
+        fileName: String,
+        index: Int,
+        today: LocalDate,
+        channelName: String,
+        locale: Locale = Locale.ENGLISH,
+        start: Int = 1,
+        pad: Int = 1
+    ): String = pattern.ifEmpty { DEFAULT }.replace(token) { m ->
+        when (m.groupValues[1]) {
+            "n" -> number(index, start, pad)
+            "filename" -> stripExtension(fileName)
+            "date" -> date(today, locale)
+            "channel" -> channelName
+            else -> "" // {title}: a new upload has no title yet
+        }
     }
 
-    /** Tags typed as "a, b ,c" → unique, trimmed, ≤ 30 tags of ≤ 50 chars. */
+    fun number(index: Int, start: Int = 1, pad: Int = 1): String {
+        val value = start + index
+        val text = kotlin.math.abs(value).toString().padStart(pad.coerceIn(1, MAX_PAD), '0')
+        return if (value < 0) "-$text" else text
+    }
+
+    /** "Lesson 03.final.mp4" → "Lesson 03.final" (only the last extension). */
+    fun stripExtension(name: String): String = name.lastIndexOf('.').let { if (it > 0) name.substring(0, it) else name }
+
+    fun date(day: LocalDate, locale: Locale): String =
+        day.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(if (locale.language == "ar") locale else Locale.UK))
+
+    /** Characters (code points), the way the server counts the limit. */
+    fun length(text: String): Int = text.codePointCount(0, text.length)
+
+    /** Tags typed as "a, b ،c" → unique, trimmed, ≤ 30 tags of ≤ 50 chars. */
     fun tags(text: String): List<String> =
-        text.split(',', '،').map { it.trim() }.filter { it.isNotEmpty() }.map { it.take(MAX_TAG) }.distinctBy { it.lowercase() }.take(MAX_TAGS)
+        text.split(',', '،').map {
+            it.trim()
+        }.filter { it.isNotEmpty() }.map { it.take(MAX_TAG) }.distinctBy { it.lowercase() }.take(MAX_TAGS)
 
     private const val MAX_TAG = 50
     private const val MAX_TAGS = 30
+    private const val MAX_PAD = 9
 }
