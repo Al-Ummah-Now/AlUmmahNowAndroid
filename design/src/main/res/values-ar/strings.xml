@@ -23,4 +23,24 @@
     <string name="aun_rail_popular">الأكثر مشاهدة</string>
     <string name="aun_rail_recent">جديد</string>
     <string name="aun_rail_category">تصفّح</string>
+    <string name="aun_cancel">إلغاء</string>
+    <string name="aun_category_quran_recitation">تلاوة القرآن</string>
+    <string name="aun_category_quran_tafsir">تفسير القرآن</string>
+    <string name="aun_category_hadith_studies">دراسات الحديث</string>
+    <string name="aun_category_islamic_history">التاريخ الإسلامي</string>
+    <string name="aun_category_fiqh">الفقه</string>
+    <string name="aun_category_aqeedah">العقيدة</string>
+    <string name="aun_category_dawah">الدعوة</string>
+    <string name="aun_category_khutbah">خطبة الجمعة</string>
+    <string name="aun_category_islamic_lectures">محاضرات إسلامية</string>
+    <string name="aun_category_islamic_nasheed">الأناشيد الإسلامية</string>
+    <string name="aun_category_islamic_kids">محتوى إسلامي للأطفال</string>
+    <string name="aun_category_islamic_news">أخبار إسلامية</string>
+    <string name="aun_category_hajj_umrah">الحج والعمرة</string>
+    <string name="aun_category_ramadan">رمضان</string>
+    <string name="aun_category_islamic_lifestyle">نمط الحياة الإسلامي</string>
+    <string name="aun_language_ar">العربية</string>
+    <string name="aun_language_en">الإنجليزية</string>
+    <string name="aun_language_ur">الأردية</string>
+    <string name="aun_language_fr">الفرنسية</string>
 </resources>
