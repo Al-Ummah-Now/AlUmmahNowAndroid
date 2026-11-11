@@ -183,10 +183,21 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
             }
             when {
                 state.error != null && state.videos.isEmpty() -> ErrorState(stringResource(state.error), actions.onRetry)
-                state.loading && state.videos.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                state.videos.isEmpty() -> Box(Modifier.fillMaxSize().padding(FanousTokens.Spacing.xl), contentAlignment = Alignment.Center) {
+                state.loading && state.videos.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                state.videos.isEmpty() -> Box(
+                    Modifier.fillMaxSize().padding(FanousTokens.Spacing.xl),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        if (state.query.isBlank()) stringResource(R.string.studio_content_empty) else stringResource(R.string.studio_content_empty_search, isolate(state.query)),
+                        if (state.query.isBlank()) {
+                            stringResource(
+                                R.string.studio_content_empty
+                            )
+                        } else {
+                            stringResource(R.string.studio_content_empty_search, isolate(state.query))
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.testTag("content-empty")
                     )
@@ -240,7 +251,9 @@ private fun SearchBox(state: ContentUiState, actions: ContentActions) {
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
                 if (state.query.isNotEmpty()) {
-                    IconButton(onClick = { actions.onQuery("") }) { Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.studio_search_clear_cd)) }
+                    IconButton(onClick = {
+                        actions.onQuery("")
+                    }) { Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.studio_search_clear_cd)) }
                 }
             },
             singleLine = true,
@@ -262,7 +275,9 @@ private fun SearchBox(state: ContentUiState, actions: ContentActions) {
                             .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.md)
                     ) {
                         Text(s.text, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        s.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        s.subtitle?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -274,16 +289,23 @@ private fun SearchBox(state: ContentUiState, actions: ContentActions) {
 private fun SelectionBar(state: ContentUiState, deleted: Boolean, onBulkEdit: () -> Unit, onDelete: () -> Unit, actions: ContentActions) {
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = FanousTokens.Spacing.sm, vertical = FanousTokens.Spacing.xs).testTag("selection-bar"),
+            Modifier.fillMaxWidth().padding(
+                horizontal = FanousTokens.Spacing.sm,
+                vertical = FanousTokens.Spacing.xs
+            ).testTag("selection-bar"),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = actions.onClearSelection) { Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.studio_clear_selection)) }
+            IconButton(onClick = actions.onClearSelection) {
+                Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.studio_clear_selection))
+            }
             Text(
                 pluralStringResource(R.plurals.studio_selected_count, state.selected.size, state.selected.size),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
             )
-            IconButton(onClick = actions.onSelectAll) { Icon(Icons.Filled.SelectAll, contentDescription = stringResource(R.string.studio_select_all)) }
+            IconButton(onClick = actions.onSelectAll) {
+                Icon(Icons.Filled.SelectAll, contentDescription = stringResource(R.string.studio_select_all))
+            }
             if (deleted) {
                 TextButton(onClick = actions.onRestore, enabled = !state.busy, modifier = Modifier.testTag("bulk-restore")) {
                     Icon(Icons.Filled.Restore, contentDescription = null)
@@ -331,13 +353,22 @@ private fun VideoList(state: ContentUiState, actions: ContentActions, onDeleteFo
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VideoRow(v: StudioVideo, selected: Boolean, selecting: Boolean, deleted: Boolean, actions: ContentActions, onDeleteForever: () -> Unit) {
+private fun VideoRow(
+    v: StudioVideo,
+    selected: Boolean,
+    selecting: Boolean,
+    deleted: Boolean,
+    actions: ContentActions,
+    onDeleteForever: () -> Unit
+) {
     val language = currentLocale().language
     val title = v.titleLocalized[language]?.takeIf { it.isNotBlank() } ?: v.title
     val selectLabel = stringResource(R.string.studio_selection_cd, isolate(title))
     val selectedState = pluralStringResource(R.plurals.studio_selected_count, 1, 1)
     Card(
-        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer
+        ),
         modifier = Modifier
             .widthIn(max = 960.dp)
             .fillMaxWidth()
@@ -354,7 +385,11 @@ private fun VideoRow(v: StudioVideo, selected: Boolean, selecting: Boolean, dele
             }
             .testTag("video-${v.id}")
     ) {
-        Row(Modifier.padding(FanousTokens.Spacing.sm), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
+        Row(
+            Modifier.padding(FanousTokens.Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+        ) {
             Checkbox(
                 checked = selected,
                 onCheckedChange = { actions.onToggle(v.id) },
@@ -363,11 +398,20 @@ private fun VideoRow(v: StudioVideo, selected: Boolean, selecting: Boolean, dele
             Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(120.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(meta(v, deleted), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                Text(
+                    meta(v, deleted),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
+                )
             }
             if (deleted) {
                 IconButton(onClick = onDeleteForever, modifier = Modifier.testTag("forever-${v.id}")) {
-                    Icon(Icons.Filled.DeleteForever, contentDescription = stringResource(R.string.studio_delete_forever), tint = MaterialTheme.colorScheme.error)
+                    Icon(
+                        Icons.Filled.DeleteForever,
+                        contentDescription = stringResource(R.string.studio_delete_forever),
+                        tint = MaterialTheme.colorScheme.error
+                    )
                 }
             } else if (!selecting) {
                 IconButton(onClick = { actions.onEdit(v.id) }) {
@@ -401,7 +445,9 @@ private fun meta(v: StudioVideo, deleted: Boolean): String {
 internal fun formatDate(iso: String): String {
     val locale = currentLocale()
     val text = runCatching {
-        Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+        Instant.parse(
+            iso
+        ).atZone(ZoneId.systemDefault()).toLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
     }.getOrDefault(iso.take(DATE_CHARS))
     return localizedDigits(text)
 }

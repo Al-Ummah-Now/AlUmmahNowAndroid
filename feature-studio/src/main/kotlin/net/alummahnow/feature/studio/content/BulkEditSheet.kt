@@ -47,14 +47,28 @@ fun BulkEditSheet(count: Int, onApply: (BulkChanges) -> Unit, onDismiss: () -> U
     var addTags by remember { mutableStateOf("") }
     var removeTags by remember { mutableStateOf("") }
     val changes = BulkChanges(isPublic = visibility, category = category, addTags = tags(addTags), removeTags = tags(removeTags))
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.testTag("bulk-sheet")) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.testTag("bulk-sheet")
+    ) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(FanousTokens.Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
         ) {
-            Text(pluralStringResource(R.plurals.studio_bulk_title, count, count), style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+            Text(
+                pluralStringResource(R.plurals.studio_bulk_title, count, count),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics {
+                    heading()
+                }
+            )
             Text(stringResource(R.string.studio_visibility), style = MaterialTheme.typography.labelLarge)
-            val options = listOf(null to R.string.studio_no_change, true to R.string.studio_visibility_public, false to R.string.studio_visibility_private)
+            val options = listOf(
+                null to R.string.studio_no_change,
+                true to R.string.studio_visibility_public,
+                false to R.string.studio_visibility_private
+            )
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 options.forEachIndexed { i, (value, label) ->
                     SegmentedButton(

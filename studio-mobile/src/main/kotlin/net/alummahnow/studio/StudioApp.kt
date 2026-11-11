@@ -41,22 +41,22 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.feature.studio.analytics.AnalyticsScreen
+import net.alummahnow.feature.studio.analytics.AnalyticsViewModel
+import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.channels.AccountSheet
 import net.alummahnow.feature.studio.channels.ChannelAvatar
 import net.alummahnow.feature.studio.channels.ChannelPickerScreen
 import net.alummahnow.feature.studio.channels.ChannelsUiState
 import net.alummahnow.feature.studio.channels.ChannelsViewModel
-import net.alummahnow.feature.studio.dashboard.DashboardScreen
-import net.alummahnow.feature.studio.dashboard.DashboardViewModel
-import net.alummahnow.feature.studio.signin.SignInScreen
-import net.alummahnow.feature.studio.signin.SignInViewModel
-import net.alummahnow.feature.studio.attempt
-import net.alummahnow.feature.studio.analytics.AnalyticsScreen
-import net.alummahnow.feature.studio.analytics.AnalyticsViewModel
 import net.alummahnow.feature.studio.content.ContentRoute
 import net.alummahnow.feature.studio.content.ContentViewModel
+import net.alummahnow.feature.studio.dashboard.DashboardScreen
+import net.alummahnow.feature.studio.dashboard.DashboardViewModel
 import net.alummahnow.feature.studio.edit.VideoEditScreen
 import net.alummahnow.feature.studio.edit.VideoEditViewModel
+import net.alummahnow.feature.studio.signin.SignInScreen
+import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
 import net.alummahnow.feature.upload.UploadRoute
 import net.alummahnow.feature.upload.UploadViewModel
@@ -124,7 +124,8 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
                             UploadRoute(upload)
                         }
                         StudioTab.ANALYTICS -> {
-                            val analytics: AnalyticsViewModel = viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
+                            val analytics: AnalyticsViewModel =
+                                viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
                             val analyticsState by analytics.state.collectAsStateWithLifecycle()
                             AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
                         }

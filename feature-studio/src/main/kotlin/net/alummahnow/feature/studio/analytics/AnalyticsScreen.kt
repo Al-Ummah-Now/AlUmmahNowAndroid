@@ -69,12 +69,16 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
             val width = Modifier.widthIn(max = 960.dp).fillMaxWidth()
             FlowRow(width, horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
                 ranges.forEach { (r, label) ->
-                    FilterChip(selected = state.range == r, onClick = { onRange(r) }, label = { Text(stringResource(label)) }, modifier = Modifier.testTag("range-${r.days}"))
+                    FilterChip(selected = state.range == r, onClick = {
+                        onRange(r)
+                    }, label = { Text(stringResource(label)) }, modifier = Modifier.testTag("range-${r.days}"))
                 }
             }
             val data = state.data
             when {
-                data == null && state.loading -> Box(width.height(240.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                data == null && state.loading -> Box(width.height(240.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
                 data == null -> ErrorState(stringResource(state.error ?: net.alummahnow.design.R.string.aun_error_generic), onRetry)
                 else -> Content(data, width)
             }
@@ -85,7 +89,11 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Content(data: ChannelAnalytics, width: Modifier) {
-    FlowRow(width, horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
+    FlowRow(
+        width,
+        horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+    ) {
         StatTile(stringResource(R.string.studio_stat_views), data.totalViews)
         StatTile(stringResource(R.string.studio_stat_watch_hours), data.watchTimeSeconds / SECONDS_PER_HOUR)
         StatTile(stringResource(R.string.studio_stat_subscribers), data.totalSubscribers)
@@ -93,14 +101,26 @@ private fun Content(data: ChannelAnalytics, width: Modifier) {
         StatTile(stringResource(R.string.studio_stat_comments), data.totalComments)
         StatTile(stringResource(R.string.studio_stat_videos), data.totalVideos)
     }
-    Text(stringResource(R.string.studio_chart_views), style = MaterialTheme.typography.titleMedium, modifier = width.semantics { heading() })
+    Text(
+        stringResource(R.string.studio_chart_views),
+        style = MaterialTheme.typography.titleMedium,
+        modifier = width.semantics {
+            heading()
+        }
+    )
     if (data.daily.isEmpty()) {
         Text(stringResource(R.string.studio_analytics_empty), modifier = width)
     } else {
         ViewsChart(data, width)
     }
     if (data.topVideos.isNotEmpty()) {
-        Text(stringResource(R.string.studio_top_videos), style = MaterialTheme.typography.titleMedium, modifier = width.semantics { heading() })
+        Text(
+            stringResource(R.string.studio_top_videos),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = width.semantics {
+                heading()
+            }
+        )
         Card(width, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
             data.topVideos.forEachIndexed { i, v ->
                 Row(Modifier.fillMaxWidth().padding(FanousTokens.Spacing.md), verticalAlignment = Alignment.CenterVertically) {
@@ -122,7 +142,9 @@ private fun ViewsChart(data: ChannelAnalytics, modifier: Modifier) {
     val max = data.daily.maxOf { it.views }.coerceAtLeast(1)
     val peak = data.daily.maxBy { it.views }
     val locale = currentLocale()
-    val peakDate = runCatching { LocalDate.parse(peak.date.take(DATE_CHARS)).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)) }
+    val peakDate = runCatching {
+        LocalDate.parse(peak.date.take(DATE_CHARS)).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+    }
         .getOrDefault(peak.date)
     val description = stringResource(
         R.string.studio_chart_cd,

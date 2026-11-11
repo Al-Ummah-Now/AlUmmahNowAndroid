@@ -104,7 +104,20 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
         mutableState.update { it.copy(loading = true, error = null) }
         loadJob = viewModelScope.launch {
             attempt("studio", "content") { repository.content(ContentQuery(channelId, s.status, s.query)) }.fold(
-                onSuccess = { page -> mutableState.update { it.copy(videos = page.items, cursor = page.cursor, loading = false, selected = it.selected.intersect(page.items.map { v -> v.id }.toSet())) } },
+                onSuccess = { page ->
+                    mutableState.update {
+                        it.copy(
+                            videos = page.items,
+                            cursor = page.cursor,
+                            loading = false,
+                            selected = it.selected.intersect(
+                                page.items.map { v ->
+                                    v.id
+                                }.toSet()
+                            )
+                        )
+                    }
+                },
                 onFailure = { e -> mutableState.update { it.copy(loading = false, error = e.studioMessage()) } }
             )
         }
@@ -117,7 +130,11 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
         mutableState.update { it.copy(loadingMore = true) }
         viewModelScope.launch {
             attempt("studio", "content more") { repository.content(ContentQuery(channelId, s.status, s.query, cursor = cursor)) }.fold(
-                onSuccess = { page -> mutableState.update { it.copy(videos = (it.videos + page.items).distinctBy { v -> v.id }, cursor = page.cursor, loadingMore = false) } },
+                onSuccess = { page ->
+                    mutableState.update {
+                        it.copy(videos = (it.videos + page.items).distinctBy { v -> v.id }, cursor = page.cursor, loadingMore = false)
+                    }
+                },
                 onFailure = { e -> mutableState.update { it.copy(loadingMore = false, notice = ContentNotice.Failed(e.studioMessage())) } }
             )
         }
@@ -125,7 +142,13 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
 
     fun toggle(id: String) = mutableState.update { s ->
         val next = if (id in s.selected) s.selected - id else s.selected + id
-        if (next.size > BulkChanges.MAX_BULK) s.copy(notice = ContentNotice.Failed(net.alummahnow.feature.studio.R.string.studio_error_invalid)) else s.copy(selected = next)
+        if (next.size >
+            BulkChanges.MAX_BULK
+        ) {
+            s.copy(notice = ContentNotice.Failed(net.alummahnow.feature.studio.R.string.studio_error_invalid))
+        } else {
+            s.copy(selected = next)
+        }
     }
 
     fun selectAll() = mutableState.update { s -> s.copy(selected = s.videos.take(BulkChanges.MAX_BULK).map { it.id }.toSet()) }
@@ -134,7 +157,9 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
 
     fun consumeNotice() = mutableState.update { it.copy(notice = null) }
 
-    fun bulkEdit(changes: BulkChanges) = act("bulk edit", { ids -> repository.bulkUpdate(ids, changes) }) { r -> ContentNotice.Updated(r.succeeded, r.failed) }
+    fun bulkEdit(changes: BulkChanges) = act("bulk edit", { ids ->
+        repository.bulkUpdate(ids, changes)
+    }) { r -> ContentNotice.Updated(r.succeeded, r.failed) }
 
     fun delete(ids: Collection<String> = mutableState.value.selected) =
         act("delete", { repository.delete(it, channelId) }, ids) { r -> ContentNotice.Deleted(r.succeeded, r.failed) }
@@ -146,7 +171,17 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
         mutableState.update { it.copy(busy = true) }
         viewModelScope.launch {
             attempt("studio", "delete forever") { repository.deletePermanently(id, channelId) }.fold(
-                onSuccess = { mutableState.update { it.copy(busy = false, videos = it.videos.filterNot { v -> v.id == id }, selected = it.selected - id, notice = ContentNotice.Deleted(1, 0)) } },
+                onSuccess = {
+                    mutableState.update {
+                        it.copy(
+                            busy = false,
+                            videos = it.videos.filterNot { v -> v.id == id },
+                            selected =
+                            it.selected - id,
+                            notice = ContentNotice.Deleted(1, 0)
+                        )
+                    }
+                },
                 onFailure = { e -> mutableState.update { it.copy(busy = false, notice = ContentNotice.Failed(e.studioMessage())) } }
             )
         }
