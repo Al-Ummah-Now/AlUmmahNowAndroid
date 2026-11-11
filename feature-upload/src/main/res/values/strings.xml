@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="upload_files">Videos</string>
+    <string name="upload_pick">Choose videos</string>
+    <string name="upload_no_files">Choose up to %1$d videos to upload together.</string>
+    <string name="upload_remove_file_cd">Remove %1$s</string>
+    <string name="upload_title_n">Title %1$d</string>
+    <string name="upload_set_for_all">Set for all</string>
+    <string name="upload_title_pattern">Title pattern</string>
+    <string name="upload_title_pattern_help">Tap a token to add it. You can still edit each title above.</string>
+    <string name="upload_insert_token_cd">Add %1$s to the title pattern</string>
+    <string name="upload_description">Description</string>
+    <string name="upload_category">Category</string>
+    <string name="upload_language">Language</string>
+    <string name="upload_none">None</string>
+    <string name="upload_visibility">Visibility</string>
+    <string name="upload_public">Public</string>
+    <string name="upload_private">Private</string>
+    <string name="upload_playlists">Add to playlists</string>
+    <string name="upload_tags">Tags</string>
+    <string name="upload_tags_help">Separate tags with commas</string>
+    <string name="upload_schedule">Schedule</string>
+    <string name="upload_schedule_off">Publish when processing finishes</string>
+    <string name="upload_schedule_change">Change</string>
+    <string name="upload_next">Next</string>
+    <string name="upload_done">Done</string>
+    <string name="upload_start_none">Choose videos to upload</string>
+    <string name="upload_queue">Uploads</string>
+    <string name="upload_queue_empty">Nothing uploading.</string>
+    <string name="upload_cancel_title">Cancel the upload of %1$s?</string>
+    <string name="upload_cancel_body">The part already uploaded is discarded. You can choose the video again later.</string>
+    <string name="upload_cancel_confirm">Cancel upload</string>
+    <string name="upload_cancel_cd">Cancel upload of %1$s</string>
+    <string name="upload_pause_cd">Pause %1$s</string>
+    <string name="upload_resume_cd">Resume %1$s</string>
+    <string name="upload_retry_cd">Retry %1$s</string>
+    <string name="upload_dismiss_cd">Remove %1$s from the list</string>
+    <string name="upload_phase_preparing">Preparing</string>
+    <string name="upload_phase_queued">Waiting to start</string>
+    <string name="upload_phase_waiting">Waiting for a connection</string>
+    <string name="upload_phase_uploading">Uploading</string>
+    <string name="upload_phase_finishing">Finishing</string>
+    <string name="upload_phase_paused">Paused</string>
+    <string name="upload_phase_done">Uploaded. Processing on the server.</string>
+    <string name="upload_phase_failed">Upload failed</string>
+    <string name="upload_phase_cancelled">Cancelled</string>
+    <string name="upload_error_no_files">Choose at least one video.</string>
+    <string name="upload_error_title">Every video needs a title.</string>
+    <string name="upload_error_too_many">You can upload up to 15 videos at a time.</string>
+    <string name="upload_error_schedule_soon">Pick a time at least 5 minutes from now.</string>
+    <string name="upload_error_schedule_far">Pick a time within a year.</string>
+    <string name="upload_error_queue">The videos couldn\'t be queued. Try again.</string>
+    <string name="upload_channel_name">Uploads</string>
+    <string name="upload_channel_description">Progress of videos you upload</string>
+    <string name="upload_notify_title">Uploads finished</string>
+    <string name="upload_notify_partial">%1$d uploaded, %2$d failed</string>
+    <string name="upload_notify_percent">%1$d%% uploaded</string>
+    <plurals name="upload_start">
+        <item quantity="one">Upload %1$d video</item>
+        <item quantity="other">Upload %1$d videos</item>
+    </plurals>
+    <plurals name="upload_queued">
+        <item quantity="one">%1$d video added to uploads</item>
+        <item quantity="other">%1$d videos added to uploads</item>
+    </plurals>
+    <plurals name="upload_notify_running">
+        <item quantity="one">Uploading %1$d video</item>
+        <item quantity="other">Uploading %1$d videos</item>
+    </plurals>
+    <plurals name="upload_notify_done">
+        <item quantity="one">%1$d video uploaded</item>
+        <item quantity="other">%1$d videos uploaded</item>
+    </plurals>
+</resources>

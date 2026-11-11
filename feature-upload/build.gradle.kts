@@ -10,6 +10,8 @@ dependencies {
     implementation(project(":core-bridge"))
     implementation(project(":design"))
     implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
     testImplementation(libs.androidx.work.testing)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

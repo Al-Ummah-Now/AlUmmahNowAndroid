@@ -8,6 +8,8 @@ import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.core.CoreAccountSession
 import net.alummahnow.core.bridge.studio.core.CoreStudioRepository
+import net.alummahnow.core.bridge.studio.core.CoreUploadQueue
+import net.alummahnow.feature.upload.UploadWorker
 import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
 
@@ -42,6 +44,14 @@ class AppContainer(context: Context) {
     private fun activeClient(): ApiClient = clientFor(session.active.value?.userId ?: throw CoreError.NotSignedIn())
 
     val repository: StudioRepository = CoreStudioRepository(::activeClient)
+
+    val uploads: CoreUploadQueue = CoreUploadQueue(
+        context = context,
+        activeUserId = { session.active.value?.userId },
+        clientFor = ::clientFor,
+        repository = { repository },
+        onWorkNeeded = { UploadWorker.start(context) }
+    )
 
     companion object {
         const val REDIRECT_URI = "alummahnow-studio://auth/callback"
