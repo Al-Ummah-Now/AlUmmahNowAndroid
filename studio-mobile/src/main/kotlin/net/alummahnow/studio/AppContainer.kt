@@ -9,9 +9,9 @@ import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.core.CoreAccountSession
 import net.alummahnow.core.bridge.studio.core.CoreStudioRepository
 import net.alummahnow.core.bridge.studio.core.CoreUploadQueue
-import net.alummahnow.feature.upload.UploadWorker
 import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
+import net.alummahnow.feature.upload.UploadWorker
 
 /** Manual DI for Studio. Everything network- or token-related goes through aun-core. */
 class AppContainer(context: Context) {
