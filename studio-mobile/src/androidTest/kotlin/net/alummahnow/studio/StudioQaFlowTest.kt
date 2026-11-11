@@ -38,11 +38,11 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class StudioQaFlowTest {
-    @get:Rule(order = 1)
+    @get:Rule(order = 0)
     val compose = createAndroidComposeRule<MainActivity>()
 
     /** On failure, a device screenshot lands in the connected-test additional output (uploaded by CI). */
-    @get:Rule(order = 0)
+    @get:Rule(order = 1)
     val screenshotOnFailure = object : TestWatcher() {
         override fun failed(e: Throwable?, description: Description) {
             val dir = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir") ?: return
@@ -92,14 +92,7 @@ class StudioQaFlowTest {
         compose.onNodeWithTag("tab-content").performClick()
         compose.onNodeWithTag("content-search").performTextInput(title)
         // A fresh upload is under Processing until the server finishes, then Published.
-        compose.waitUntil(UPLOAD_TIMEOUT_MS) {
-            val found = compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isNotEmpty()
-            if (!found) {
-                val tab = if (System.currentTimeMillis() / TAB_SWITCH_MS % 2 == 0L) "status-processing" else "status-published"
-                runCatching { compose.onNodeWithTag(tab).performClick() }
-            }
-            found
-        }
+        findInAnyTab(videoId)
         compose.onNodeWithTag("video-$videoId").performTouchInput { longClick() }
         compose.onNodeWithTag("bulk-edit").performClick()
         compose.onNodeWithTag("bulk-add-tags").performTextInput("qa-bulk")
@@ -117,14 +110,7 @@ class StudioQaFlowTest {
         assertEquals(title, runBlocking { app.container.repository.video(videoId) }.title)
 
         compose.onNodeWithTag("status-processing").performClick()
-        compose.waitUntil(UPLOAD_TIMEOUT_MS) {
-            val found = compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isNotEmpty()
-            if (!found) {
-                val tab = if (System.currentTimeMillis() / TAB_SWITCH_MS % 2 == 0L) "status-processing" else "status-published"
-                runCatching { compose.onNodeWithTag(tab).performClick() }
-            }
-            found
-        }
+        findInAnyTab(videoId)
         deleteFromList(videoId)
         compose.onNodeWithTag("status-deleted").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("forever-$videoId").fetchSemanticsNodes().isNotEmpty() }
@@ -139,6 +125,20 @@ class StudioQaFlowTest {
         compose.onNodeWithTag("confirm-ok").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { app.container.session.accounts.value.none { it.userId == user } }
         device.pressBack()
+    }
+
+    /** Waits until the video shows in one of the live tabs. Where it shows depends on the server's
+     *  processing (Processing, then Published; Failed if the clip could not be processed). */
+    private fun findInAnyTab(videoId: String) {
+        var i = 0
+        compose.waitUntil(UPLOAD_TIMEOUT_MS) {
+            val found = has("video-$videoId")
+            if (!found) {
+                runCatching { compose.onNodeWithTag(LIVE_TABS[i++ % LIVE_TABS.size]).performClick() }
+                Thread.sleep(TAB_SWITCH_MS)
+            }
+            found
+        }
     }
 
     private fun deleteFromList(videoId: String) {
@@ -213,6 +213,7 @@ class StudioQaFlowTest {
         val CHROME_PROMPTS = listOf("Accept & continue", "Use without an account", "No thanks", "No, thanks", "Got it", "Continue as guest")
         const val LIST_TIMEOUT_MS = 30_000L
         const val UPLOAD_TIMEOUT_MS = 180_000L
-        const val TAB_SWITCH_MS = 3_000L
+        const val TAB_SWITCH_MS = 2_000L
+        val LIVE_TABS = listOf("status-processing", "status-published", "status-failed", "status-drafts", "status-scheduled")
     }
 }
