@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,8 @@ import net.alummahnow.feature.studio.dashboard.DashboardViewModel
 import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
+import net.alummahnow.feature.upload.UploadRoute
+import net.alummahnow.feature.upload.UploadViewModel
 
 /** Studio's top level: sign-in, then the channel picker, then the channel's Studio. */
 @Composable
@@ -90,11 +93,25 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
         if (selected == null) {
             ChannelPickerScreen(channelsState, onSelect = channels::select, onRetry = channels::load, modifier = body)
         } else {
-            val dashboard: DashboardViewModel = viewModel(key = "dashboard-${current.userId}-${selected.id}") {
-                DashboardViewModel(container.repository, selected.id)
+            var tab by rememberSaveable(selected.id) { mutableStateOf(StudioTab.DASHBOARD) }
+            val key = "${current.userId}-${selected.id}"
+            StudioHome(listOf(StudioTab.DASHBOARD, StudioTab.UPLOAD), tab, onSelect = { tab = it }, modifier = body) { t ->
+                when (t) {
+                    StudioTab.UPLOAD -> {
+                        val upload: UploadViewModel = viewModel(key = "upload-$key") {
+                            UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                        }
+                        UploadRoute(upload)
+                    }
+                    else -> {
+                        val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") {
+                            DashboardViewModel(container.repository, selected.id)
+                        }
+                        val dashboardState by dashboard.state.collectAsStateWithLifecycle()
+                        DashboardScreen(selected, dashboardState, onRetry = dashboard::load)
+                    }
+                }
             }
-            val dashboardState by dashboard.state.collectAsStateWithLifecycle()
-            DashboardScreen(selected, dashboardState, onRetry = dashboard::load, modifier = body)
         }
     }
 
