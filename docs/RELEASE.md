@@ -4,6 +4,25 @@
 `vYYYY.MM.DD` tag (optionally `.N` for a second release that day) on `main`. Never upload by hand, and never
 run `publish*` tasks locally.
 
+## What a release tag does today
+
+A `vYYYY.MM.DD[.N]` tag on `main` runs `.github/workflows/release.yml`:
+
+| Job | Output | Needs |
+|---|---|---|
+| `github-release` | GitHub Release with `AlUmmahNowStudio-<v>.apk` (prod), `-qa.apk`, `.aab`, `SHA256SUMS.txt` | the upload key secrets, **or** the pre-release key secrets (set) |
+| `play` | prod bundles to the Play **internal** track (viewer, TV, Studio) + Fire TV APK artifact | the upload key secrets **and** `PLAY_SERVICE_ACCOUNT_JSON` |
+
+Until the owner provides the upload key, the GitHub release is a **pre-release** signed with the CI
+**pre-release key** (`AUN_PRERELEASE_*` secrets, alias `aun-prerelease`, certificate SHA-256
+`5A:1B:3D:2B:57:6E:9A:2D:F0:BF:1B:E3:F1:8C:40:20:13:F9:5C:09:EA:EE:7C:F7:31:10:C4:2F:B5:69:DD:C0`).
+Testers can install and update it from the release page. Play never accepts it, and a copy installed
+from Play can't be updated with it (or the other way round). The `play` job is skipped with a warning
+until its secrets exist; it does not fail the release.
+
+Every CI run also uploads `studio-apks-debug-signed`: QA debug plus QA/prod **release** (R8) APKs
+signed with that run's debug key, for quick testing.
+
 ## Application IDs
 
 | App | Play / Amazon id | QA build id |
@@ -24,7 +43,8 @@ run `publish*` tasks locally.
    ```
 3. **Play service account JSON** with the "Release manager" permission on the three apps
    (Play Console → Users and permissions; the Google Cloud project must enable the Android Publisher API).
-4. **GitHub secrets**, stored in the `play-release` environment. Protect it: deployment tags limited to `v*`, a required reviewer, and a tag ruleset so only admins can create `v*` tags.
+4. **GitHub secrets**, stored in the `play-release` environment **and** in the `github-release`
+   environment (or as repository secrets, which both environments can read). Protect it: deployment tags limited to `v*`, a required reviewer, and a tag ruleset so only admins can create `v*` tags.
 
    | Secret | Value |
    |---|---|

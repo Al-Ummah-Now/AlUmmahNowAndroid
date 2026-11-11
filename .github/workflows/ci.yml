@@ -81,6 +81,18 @@ jobs:
           name: debug-apks
           path: '**/build/outputs/apk/**/debug/*.apk'
           retention-days: 7
+      - name: Studio release variant (R8), debug-signed for testers
+        # The release build type with R8 and resource shrinking, signed with this run's debug key so
+        # it installs. Not for Play. Proves the release variant (keep rules, JNA/UniFFI) works on every PR.
+        run: |
+          ./gradlew :studio-mobile:assembleQaRelease :studio-mobile:assembleProdRelease -PaunDebugSignRelease=true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: studio-apks-debug-signed
+          path: |
+            studio-mobile/build/outputs/apk/qa/debug/*.apk
+            studio-mobile/build/outputs/apk/*/release/*.apk
+          retention-days: 14
 
   instrumented:
     name: Instrumented tests on emulator (API 35)
