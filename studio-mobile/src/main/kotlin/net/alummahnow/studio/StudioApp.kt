@@ -40,6 +40,7 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.channels.AccountSheet
 import net.alummahnow.feature.studio.channels.ChannelAvatar
 import net.alummahnow.feature.studio.channels.ChannelPickerScreen
@@ -49,7 +50,6 @@ import net.alummahnow.feature.studio.dashboard.DashboardScreen
 import net.alummahnow.feature.studio.dashboard.DashboardViewModel
 import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
-import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.studioMessage
 
 /** Studio's top level: sign-in, then the channel picker, then the channel's Studio. */
