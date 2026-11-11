@@ -102,6 +102,10 @@ jobs:
         run: ./gradlew :viewer-mobile:assembleQaDebug :viewer-mobile:assembleQaDebugAndroidTest :studio-mobile:assembleQaDebugAndroidTest :viewer-tv:assembleQaGoogleDebugAndroidTest
       - name: Run on emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # QA seed creator account: Studio's QA flow test signs in, uploads, bulk-edits and cleans up.
+          # Without it (fork PRs) that test is skipped.
+          QA_SEED_PASSWORD: ${{ secrets.QA_SEED_PASSWORD }}
         with:
           api-level: 35
           target: google_apis

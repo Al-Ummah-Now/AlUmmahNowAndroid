@@ -41,7 +41,6 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.format.currentLocale
-import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.channels.AccountSheet
 import net.alummahnow.feature.studio.channels.ChannelAvatar
 import net.alummahnow.feature.studio.channels.ChannelPickerScreen
@@ -51,6 +50,13 @@ import net.alummahnow.feature.studio.dashboard.DashboardScreen
 import net.alummahnow.feature.studio.dashboard.DashboardViewModel
 import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
+import net.alummahnow.feature.studio.attempt
+import net.alummahnow.feature.studio.analytics.AnalyticsScreen
+import net.alummahnow.feature.studio.analytics.AnalyticsViewModel
+import net.alummahnow.feature.studio.content.ContentRoute
+import net.alummahnow.feature.studio.content.ContentViewModel
+import net.alummahnow.feature.studio.edit.VideoEditScreen
+import net.alummahnow.feature.studio.edit.VideoEditViewModel
 import net.alummahnow.feature.studio.studioMessage
 import net.alummahnow.feature.upload.UploadRoute
 import net.alummahnow.feature.upload.UploadViewModel
@@ -94,21 +100,41 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
             ChannelPickerScreen(channelsState, onSelect = channels::select, onRetry = channels::load, modifier = body)
         } else {
             var tab by rememberSaveable(selected.id) { mutableStateOf(StudioTab.DASHBOARD) }
+            var editing by rememberSaveable(selected.id) { mutableStateOf<String?>(null) }
             val key = "${current.userId}-${selected.id}"
-            StudioHome(listOf(StudioTab.DASHBOARD, StudioTab.UPLOAD), tab, onSelect = { tab = it }, modifier = body) { t ->
-                when (t) {
-                    StudioTab.UPLOAD -> {
-                        val upload: UploadViewModel = viewModel(key = "upload-$key") {
-                            UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+            val content: ContentViewModel = viewModel(key = "content-$key") { ContentViewModel(container.repository, selected.id) }
+            val openVideo = editing
+            if (openVideo != null) {
+                val edit: VideoEditViewModel = viewModel(key = "edit-$key-$openVideo") {
+                    VideoEditViewModel(container.repository, selected.id, openVideo)
+                }
+                val editState by edit.state.collectAsStateWithLifecycle()
+                VideoEditScreen(editState, edit::update, edit::save, edit::load, onClose = {
+                    editing = null
+                    content.load()
+                }, modifier = body)
+            } else {
+                StudioHome(StudioTab.entries, tab, onSelect = { tab = it }, modifier = body) { t ->
+                    when (t) {
+                        StudioTab.CONTENT -> ContentRoute(content, onEdit = { editing = it })
+                        StudioTab.UPLOAD -> {
+                            val upload: UploadViewModel = viewModel(key = "upload-$key") {
+                                UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                            }
+                            UploadRoute(upload)
                         }
-                        UploadRoute(upload)
-                    }
-                    else -> {
-                        val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") {
-                            DashboardViewModel(container.repository, selected.id)
+                        StudioTab.ANALYTICS -> {
+                            val analytics: AnalyticsViewModel = viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
+                            val analyticsState by analytics.state.collectAsStateWithLifecycle()
+                            AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
                         }
-                        val dashboardState by dashboard.state.collectAsStateWithLifecycle()
-                        DashboardScreen(selected, dashboardState, onRetry = dashboard::load)
+                        StudioTab.DASHBOARD -> {
+                            val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") {
+                                DashboardViewModel(container.repository, selected.id)
+                            }
+                            val dashboardState by dashboard.state.collectAsStateWithLifecycle()
+                            DashboardScreen(selected, dashboardState, onRetry = dashboard::load)
+                        }
                     }
                 }
             }
