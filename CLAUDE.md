@@ -34,7 +34,7 @@ of aun-core) · `design` (Fanous theme) · `player` (Media3) · `feature-*` · a
 - **Never call the backend directly from features.** Go through `:core-bridge` interfaces; they will be
   backed by the Rust core (UniFFI AAR).
 - **Logging:** use `AunLog` from `:core-bridge` (tagged, stripped of PII). No `println`. Use `Log.*` only inside `AunLog`.
-- Small PRs into `main`, CI green, squash-merge.
+- Small PRs into `main`, CI green, then a rebase merge (`gh pr merge --rebase`). Never squash: a squash commit carries the merging account's email.
 - Fanous tokens in `:design` are placeholders from the spec (§3) until Epic 10 ships the generated theme;
   don't hand-tune colours elsewhere.
 - Screenshot tests set the layout direction explicitly (`ar-ldrtl`, `en-ldltr`): Robolectric does not derive it
