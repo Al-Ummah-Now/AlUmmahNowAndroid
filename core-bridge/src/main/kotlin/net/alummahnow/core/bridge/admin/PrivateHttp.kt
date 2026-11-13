@@ -12,18 +12,32 @@ import okhttp3.Request
  * `MediaNeverOnDiskTest` fails if anything it loads lands in the app's cache or files directories.
  */
 object PrivateHttp {
-    /** Refuses plain HTTP to anything but loopback, and asks every cache on the way not to store. */
+    /**
+     * TLS only (loopback excepted, for tests and the local stack), checked before every hop connects. OkHttp's own
+     * redirects are off; this follows them itself so a redirect to plain HTTP is refused, not fetched. Every request
+     * and response is marked `no-store`.
+     */
     val noStore = Interceptor { chain ->
-        val request = chain.request()
-        val url = request.url
-        require(url.isHttps || isLoopback(url.host)) { "Admin traffic is TLS only" }
-        val response = chain.proceed(
-            request.newBuilder()
-                .header("Cache-Control", "no-store")
-                .header("Pragma", "no-cache")
-                .build()
-        )
-        response.newBuilder().header("Cache-Control", "no-store").removeHeader("ETag").build()
+        var request = chain.request()
+        var hops = 0
+        while (true) {
+            val url = request.url
+            require(url.isHttps || isLoopback(url.host)) { "Admin traffic is TLS only" }
+            val response = chain.proceed(request.newBuilder().header("Cache-Control", "no-store").header("Pragma", "no-cache").build())
+            val next = response.header("Location")?.takeIf { response.isRedirect }?.let { url.resolve(it) }
+            if (next == null || hops++ >= MAX_REDIRECTS) {
+                return@Interceptor response.newBuilder().header("Cache-Control", "no-store").removeHeader("ETag").build()
+            }
+            response.close()
+            // A 303, or a 301/302 after POST, becomes a GET as browsers do; 307/308 keep the method and body.
+            val keep = response.code == HTTP_TEMP_REDIRECT || response.code == HTTP_PERM_REDIRECT
+            request = request.newBuilder().url(next).apply {
+                if (!keep && request.method != "GET" && request.method != "HEAD") method("GET", null)
+                if (next.host != url.host) removeHeader("Authorization")
+            }.build()
+        }
+        @Suppress("UNREACHABLE_CODE")
+        error("unreachable")
     }
 
     fun isLoopback(host: String): Boolean = host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2" || host == "[::1]"
@@ -32,8 +46,9 @@ object PrivateHttp {
     fun newClient(): OkHttpClient = OkHttpClient.Builder()
         .cache(null)
         .cookieJar(okhttp3.CookieJar.NO_COOKIES)
-        .followSslRedirects(true)
-        .followRedirects(true)
+        // Redirects are followed by [noStore], which checks every hop before it connects.
+        .followRedirects(false)
+        .followSslRedirects(false)
         .connectTimeout(TIMEOUT_S, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_S, TimeUnit.SECONDS)
         .addInterceptor(noStore)
@@ -45,4 +60,7 @@ object PrivateHttp {
     fun request(url: String): Request.Builder = Request.Builder().url(url).header("Cache-Control", "no-store")
 
     private const val TIMEOUT_S = 30L
+    private const val MAX_REDIRECTS = 5
+    private const val HTTP_TEMP_REDIRECT = 307
+    private const val HTTP_PERM_REDIRECT = 308
 }
