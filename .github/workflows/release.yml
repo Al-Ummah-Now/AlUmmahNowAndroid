@@ -195,7 +195,8 @@ jobs:
           rm -f admin-mobile/google-services.json
       - name: Admin app not published yet
         if: steps.ready.outputs.ok == 'true' && vars.ADMIN_PLAY_READY != 'true'
-        run: echo "::warning::Admin app skipped: create net.alummahnow.admin in Play Console, then set the repo variable ADMIN_PLAY_READY=true (docs/RELEASE.md)."
+        run: |
+          echo "::warning::Admin app skipped: create net.alummahnow.admin in Play Console, then set the repo variable ADMIN_PLAY_READY=true (docs/RELEASE.md)."
       - name: Fire TV APK (uploaded to Amazon by the owner until an Appstore API key exists)
         if: steps.ready.outputs.ok == 'true'
         env:

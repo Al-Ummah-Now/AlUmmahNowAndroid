@@ -137,4 +137,12 @@ class HttpReviewServiceTest {
             PrivateHttp.client.newCall(PrivateHttp.request("http://example.com/").build()).execute()
         }
     }
+
+    @Test fun `a redirect off loopback to plain HTTP is refused on that hop`() {
+        server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "http://example.com/stolen"))
+        val e = runCatching {
+            PrivateHttp.client.newCall(PrivateHttp.request(server.url("/r").toString()).build()).execute()
+        }.exceptionOrNull()
+        assertTrue("refused: $e", e is IllegalArgumentException)
+    }
 }
