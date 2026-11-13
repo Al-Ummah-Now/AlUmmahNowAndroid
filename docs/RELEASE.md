@@ -11,7 +11,7 @@ A `vYYYY.MM.DD[.N]` tag on `main` runs `.github/workflows/release.yml`:
 | Job | Output | Needs |
 |---|---|---|
 | `github-release` | GitHub Release with `AlUmmahNowStudio-<v>.apk` (prod), `-qa.apk`, `.aab`, `SHA256SUMS.txt` | the upload key secrets, **or** the pre-release key secrets (set) |
-| `play` | prod bundles to the Play **internal** track (viewer, TV, Studio) + Fire TV APK artifact | the upload key secrets **and** `PLAY_SERVICE_ACCOUNT_JSON` |
+| `play` | prod bundles to the Play **internal** track (viewer, TV, Studio; Admin once `ADMIN_PLAY_READY`) + Fire TV APK artifact | the upload key secrets **and** `PLAY_SERVICE_ACCOUNT_JSON` |
 
 Until the owner provides the upload key, the GitHub release is a **pre-release** signed with the CI
 **pre-release key** (`AUN_PRERELEASE_*` secrets, alias `aun-prerelease`, certificate SHA-256
@@ -31,6 +31,7 @@ signed with that run's debug key, for quick testing.
 | Viewer TV (Android TV / Google TV) | `net.alummahnow.tv` | `net.alummahnow.tv.qa` |
 | Viewer TV (Fire TV, Amazon Appstore) | `net.alummahnow.tv` (amazon flavour) | `net.alummahnow.tv.qa` |
 | Studio | `net.alummahnow.studio` | `net.alummahnow.studio.qa` |
+| Admin (staff only, Play internal testing only) | `net.alummahnow.admin` | `net.alummahnow.admin.qa` |
 
 ## What the owner must provide
 
@@ -58,9 +59,24 @@ signed with that run's debug key, for quick testing.
    builds the signed Fire TV APK as an artifact on each release tag.
 6. **Firebase / Cast:** the Chromecast receiver uses the default media receiver
    (`CC1AD845`). A custom branded receiver needs a Cast Developer Console registration ($5) and an app id.
-   No `google-services.json` is needed for anything in this repo today.
+   The viewer and Studio need no `google-services.json`. The **Admin app** uses FCM for review alerts: add an
+   Android app `net.alummahnow.admin` (and `net.alummahnow.admin.qa` for QA builds) to the Firebase project,
+   download its `google-services.json` and store the whole file as the secret `ADMIN_GOOGLE_SERVICES_JSON`
+   (the server side needs the matching FCM service account, AlUmmahNow#1264). Without it the app builds and
+   runs with alerts off and says so in Settings.
 7. **Store listing assets** in Arabic and English (screenshots per locale, feature graphic, TV banner),
    privacy policy URL, the data safety form, and content rating (Epic 23.5).
+
+## Admin app (staff only)
+
+The native Admin app (wiki AUN-ADMIN-NATIVE, AD10) ships **only** to Play internal testing. It is never
+attached to a GitHub Release, and CI never uploads its APK as an artifact: this repo is public.
+
+1. Create `net.alummahnow.admin` in Play Console (Play App Signing on, internal testing track, testers = staff
+   Google accounts). Play needs the very first bundle uploaded in Console; after that CI publishes.
+2. Give the Play service account "Release manager" on it, too.
+3. Set the repository variable `ADMIN_PLAY_READY` to `true`. From then on every release tag publishes it in the
+   `play` job (same upload key and service account as the other apps).
 
 ## versionCode
 

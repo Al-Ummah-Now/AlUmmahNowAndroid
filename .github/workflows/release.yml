@@ -6,6 +6,10 @@ name: Release
 #                   ("debug-signed": installable for testers, never accepted by Play).
 #   play:           prod bundles to the Play internal track. Runs only when the upload key AND the
 #                   Play service account are configured; until then it is skipped with a warning.
+#   Admin app:      Play internal testing ONLY (wiki AUN-ADMIN-NATIVE, AD10). Never attached to a GitHub
+#                   Release and never uploaded as an artifact: the repo is public and the app is staff-only.
+#                   Published in the play job once the owner has created the app in Play Console (repo
+#                   variable ADMIN_PLAY_READY=true); its Firebase config comes from ADMIN_GOOGLE_SERVICES_JSON.
 on:
   push:
     tags: ['v[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*']
@@ -169,6 +173,29 @@ jobs:
           :viewer-tv:publishProdGoogleReleaseBundle
           :studio-mobile:publishProdReleaseBundle
           -PversionCode="${{ needs.verify.outputs.code }}" -PversionName="${{ needs.verify.outputs.name }}"
+      - name: Admin app to the Play internal track (staff only, never a public APK)
+        if: steps.ready.outputs.ok == 'true' && vars.ADMIN_PLAY_READY == 'true'
+        env:
+          AUN_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
+          AUN_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
+          AUN_UPLOAD_KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
+          AUN_UPLOAD_KEY_PASSWORD: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
+          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SERVICES: ${{ secrets.ADMIN_GOOGLE_SERVICES_JSON }}
+        run: |
+          set -euo pipefail
+          # Firebase (FCM review alerts). Without it the app ships with alerts off and says so in Settings.
+          if [ -n "$GOOGLE_SERVICES" ]; then
+            printf '%s' "$GOOGLE_SERVICES" > admin-mobile/google-services.json
+          else
+            echo "::warning::ADMIN_GOOGLE_SERVICES_JSON is not set: the Admin app is published with review alerts off."
+          fi
+          ./gradlew :admin-mobile:publishProdReleaseBundle \
+            -PversionCode="${{ needs.verify.outputs.code }}" -PversionName="${{ needs.verify.outputs.name }}"
+          rm -f admin-mobile/google-services.json
+      - name: Admin app not published yet
+        if: steps.ready.outputs.ok == 'true' && vars.ADMIN_PLAY_READY != 'true'
+        run: echo "::warning::Admin app skipped: create net.alummahnow.admin in Play Console, then set the repo variable ADMIN_PLAY_READY=true (docs/RELEASE.md)."
       - name: Fire TV APK (uploaded to Amazon by the owner until an Appstore API key exists)
         if: steps.ready.outputs.ok == 'true'
         env:

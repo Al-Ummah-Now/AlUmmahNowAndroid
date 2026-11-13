@@ -16,6 +16,7 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /** Native OAuth client settings for one environment (Epic 9.1: one public PKCE client per app). */
 data class OAuthClientSettings(
@@ -74,6 +75,11 @@ class CoreAccountSession(
             SignInMode.SILENT -> LoginPrompt.SILENT
         }
         manager.beginLoginWithPrompt(prompt).url
+    }
+
+    override fun beginStepUp(maxAgeSeconds: Int): String = coreCall {
+        val url = manager.beginLoginWithPrompt(LoginPrompt.LOGIN).url.toHttpUrl()
+        url.newBuilder().removeAllQueryParameters("max_age").addQueryParameter("max_age", maxAgeSeconds.toString()).build().toString()
     }
 
     override suspend fun completeSignIn(redirectUrl: String): StudioAccount = withContext(Dispatchers.IO) {
