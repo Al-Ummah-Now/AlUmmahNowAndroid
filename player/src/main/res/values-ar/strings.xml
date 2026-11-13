@@ -16,6 +16,6 @@
     <string name="aun_player_speed_x">%1$s×</string>
     <string name="aun_player_subtitles">الترجمة</string>
     <string name="aun_player_subtitles_off">إيقاف</string>
-    <string name="aun_player_error">لا يمكن تشغيل هذا الفيديو الآن.</string>
+    <string name="aun_player_error">لا يمكن تشغيل هذا المرئي الآن.</string>
     <string name="aun_player_seek">تقديم أو ترجيع</string>
 </resources>

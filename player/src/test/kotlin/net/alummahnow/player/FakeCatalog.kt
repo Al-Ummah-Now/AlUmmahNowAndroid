@@ -8,7 +8,7 @@ import net.alummahnow.core.bridge.model.SubtitleTrack
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
 
-internal fun summary(id: String, en: String = "Video $id", ar: String = "فيديو $id") = VideoSummary(
+internal fun summary(id: String, en: String = "Video $id", ar: String = "مرئي $id") = VideoSummary(
     id = id,
     title = LocalizedText(en, mapOf("ar" to ar)),
     thumbnailUrl = "https://cdn.example/$id.jpg",
