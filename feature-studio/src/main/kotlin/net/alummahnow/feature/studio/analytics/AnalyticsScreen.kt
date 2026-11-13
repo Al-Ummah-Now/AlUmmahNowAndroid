@@ -1,6 +1,8 @@
 package net.alummahnow.feature.studio.analytics
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,16 +25,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -40,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import kotlin.math.roundToLong
 import net.alummahnow.core.bridge.studio.AnalyticsRange
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.design.components.ErrorState
@@ -95,7 +106,7 @@ private fun Content(data: ChannelAnalytics, width: Modifier) {
         verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
     ) {
         StatTile(stringResource(R.string.studio_stat_views), data.totalViews)
-        StatTile(stringResource(R.string.studio_stat_watch_hours), data.watchTimeSeconds / SECONDS_PER_HOUR)
+        StatTile(stringResource(R.string.studio_stat_watch_hours), (data.watchTimeSeconds / SECONDS_PER_HOUR * 10).roundToLong() / 10.0)
         StatTile(stringResource(R.string.studio_stat_subscribers), data.totalSubscribers)
         StatTile(stringResource(R.string.studio_stat_likes), data.totalLikes)
         StatTile(stringResource(R.string.studio_stat_comments), data.totalComments)
@@ -133,40 +144,126 @@ private fun Content(data: ChannelAnalytics, width: Modifier) {
     }
 }
 
-/** Views per day as bars; time runs from the start edge, so it reads right-to-left in Arabic. */
+/**
+ * Views per day as bars on a 0-based value axis with gridlines, the first, middle and last dates
+ * below, and a readout of the tapped (or dragged-to) day. Time and the value axis start at the
+ * start edge, so in Arabic the axis is on the right and the days run right to left.
+ */
 @Composable
 private fun ViewsChart(data: ChannelAnalytics, modifier: Modifier) {
     val bar = MaterialTheme.colorScheme.primary
-    val track = MaterialTheme.colorScheme.surfaceContainerHigh
+    val selectedBar = MaterialTheme.colorScheme.tertiary
+    val grid = MaterialTheme.colorScheme.outlineVariant
+    val baseline = MaterialTheme.colorScheme.outline
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val max = data.daily.maxOf { it.views }.coerceAtLeast(1)
-    val peak = data.daily.maxBy { it.views }
+    val days = data.daily
+    val ticks = countTicks(days.maxOf { it.views })
+    val top = ticks.last().coerceAtLeast(1)
+    val empty = days.all { it.views == 0L }
     val locale = currentLocale()
+    val dayFormat = remember(locale) { DateTimeFormatter.ofPattern("d MMM", locale) }
+    val dayLabel: (Int) -> String = { i ->
+        runCatching { LocalDate.parse(days[i].date.take(DATE_CHARS)).format(dayFormat) }.getOrDefault(days[i].date)
+    }
+    var selected by remember(days) { mutableStateOf<Int?>(null) }
+    val peak = days.maxBy { it.views }
     val peakDate = runCatching {
         LocalDate.parse(peak.date.take(DATE_CHARS)).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
     }
         .getOrDefault(peak.date)
     val description = stringResource(
         R.string.studio_chart_cd,
-        localizedDigits(data.daily.sumOf { it.views }.toString()),
+        localizedDigits(days.sumOf { it.views }.toString()),
         localizedDigits(peak.views.toString()),
         localizedDigits(peakDate)
     )
-    Canvas(modifier.height(180.dp).semantics { contentDescription = description }.testTag("views-chart")) {
-        val n = data.daily.size
-        val slot = size.width / n
-        val gap = (slot * GAP_RATIO).coerceAtMost(GAP_MAX_PX)
-        data.daily.forEachIndexed { i, d ->
-            val index = if (rtl) n - 1 - i else i
-            val h = size.height * d.views / max
-            val left = index * slot + gap / 2
-            drawRoundRect(track, Offset(left, 0f), Size(slot - gap, size.height), CornerRadius(BAR_RADIUS, BAR_RADIUS))
-            drawRoundRect(bar, Offset(left, size.height - h), Size(slot - gap, h), CornerRadius(BAR_RADIUS, BAR_RADIUS))
+    val tickLabels = ticks.map { compactCount(it) }
+    val dateLabels = dateLabelIndices(days.size).map { it to localizedDigits(dayLabel(it)) }
+    val readout = selected?.let { i -> "${localizedDigits(dayLabel(i))}: ${localizedDigits(days[i].views.toString())}" }
+    val pick: (Float, Float) -> Unit = { x, width ->
+        val ratio = (x / width).coerceIn(0f, 0.999f)
+        val slot = (ratio * days.size).toInt()
+        selected = if (rtl) days.size - 1 - slot else slot
+    }
+
+    Column(modifier) {
+        Text(
+            readout ?: "",
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.fillMaxWidth().height(24.dp).semantics { liveRegion = LiveRegionMode.Polite }.testTag("chart-readout")
+        )
+        Row(verticalAlignment = Alignment.Top) {
+            // Value axis on the start side; labels are centred on the gridlines (the plot is inset by half a label)
+            Column(
+                Modifier.height(CHART_HEIGHT).padding(end = FanousTokens.Spacing.sm).testTag("chart-y-axis"),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End
+            ) {
+                tickLabels.asReversed().forEach { label ->
+                    Box(Modifier.height(TICK_LABEL_HEIGHT), contentAlignment = Alignment.Center) {
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Box(Modifier.fillMaxWidth().height(CHART_HEIGHT)) {
+                    Canvas(
+                        Modifier.fillMaxSize()
+                            .padding(vertical = TICK_LABEL_HEIGHT / 2)
+                            .semantics { contentDescription = description }
+                            .testTag("views-chart")
+                            .pointerInput(days) { detectTapGestures { pick(it.x, size.width.toFloat()) } }
+                            .pointerInput(days) {
+                                detectHorizontalDragGestures { change, _ -> pick(change.position.x, size.width.toFloat()) }
+                            }
+                    ) {
+                        ticks.forEach { tick ->
+                            val y = size.height * (1f - tick.toFloat() / top)
+                            drawLine(
+                                if (tick == 0L) baseline else grid,
+                                Offset(0f, y),
+                                Offset(size.width, y),
+                                strokeWidth = 1.dp.toPx(),
+                                pathEffect = if (tick == 0L) null else PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
+                            )
+                        }
+                        val n = days.size
+                        val slot = size.width / n
+                        val gap = (slot * GAP_RATIO).coerceAtMost(GAP_MAX_PX)
+                        days.forEachIndexed { i, d ->
+                            val index = if (rtl) n - 1 - i else i
+                            val h = size.height * d.views / top
+                            val left = index * slot + gap / 2
+                            drawRoundRect(
+                                if (selected == i) selectedBar else bar,
+                                Offset(left, size.height - h),
+                                Size(slot - gap, h),
+                                CornerRadius(BAR_RADIUS, BAR_RADIUS)
+                            )
+                        }
+                    }
+                    if (empty) {
+                        Text(
+                            stringResource(R.string.studio_chart_empty_views),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center).testTag("chart-empty")
+                        )
+                    }
+                }
+                Row(Modifier.fillMaxWidth().testTag("chart-x-axis"), horizontalArrangement = Arrangement.SpaceBetween) {
+                    dateLabels.forEach { (_, label) ->
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
     }
 }
 
-private const val SECONDS_PER_HOUR = 3600L
+private const val SECONDS_PER_HOUR = 3600.0
+private val CHART_HEIGHT = 180.dp
+private val TICK_LABEL_HEIGHT = 16.dp
 private const val DATE_CHARS = 10
 private const val GAP_RATIO = 0.25f
 private const val GAP_MAX_PX = 12f
