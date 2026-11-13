@@ -25,6 +25,13 @@ interface AccountSession {
     /** The authorization URL to open in a Custom Tab. */
     fun beginSignIn(mode: SignInMode): String
 
+    /**
+     * A fresh sign-in of the same person before a high-risk action (Admin app, AUN-ADMIN-NATIVE AD5): always the
+     * form (`prompt=login`), and the issuer must have authenticated them within [maxAgeSeconds] (`max_age`). The
+     * server checks `auth_time`. Returns the URL to open in a Custom Tab.
+     */
+    fun beginStepUp(maxAgeSeconds: Int): String = throw net.alummahnow.core.bridge.CoreError.Unavailable("step-up")
+
     /** Finishes sign-in with the redirect the app received (`alummahnow-studio://auth/callback?...`). */
     suspend fun completeSignIn(redirectUrl: String): StudioAccount
 

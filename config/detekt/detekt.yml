@@ -14,6 +14,10 @@ complexity:
     ignoreAnnotated: ['Composable']
   LongMethod:
     ignoreAnnotated: ['Composable']
+  CyclomaticComplexMethod:
+    # Compose screens branch on UI state by design (as LongMethod above); plain `when` mappings are not complexity.
+    ignoreAnnotated: ['Composable']
+    ignoreSimpleWhenEntries: true
   TooManyFunctions:
     active: false
 style:

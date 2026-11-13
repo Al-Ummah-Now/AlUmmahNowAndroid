@@ -20,7 +20,8 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@21   # macOS (brew install openjdk@21
 
 `build-logic/` convention plugins · `gradle/libs.versions.toml` versions · `core-bridge` (interfaces in front
 of aun-core) · `design` (Fanous theme) · `player` (Media3) · `feature-*` · apps `viewer-mobile`,
-`viewer-tv` (store flavours google/amazon), `studio-mobile`. Every app has `env` flavours `qa` / `prod`.
+`viewer-tv` (store flavours google/amazon), `studio-mobile`, `admin-mobile` (staff-only Admin app: Play internal
+testing only, never a public APK; owner media rule: nothing cached or downloaded, FLAG_SECURE everywhere). Every app has `env` flavours `qa` / `prod`.
 
 ## Rules
 

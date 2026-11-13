@@ -79,7 +79,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: debug-apks
-          path: '**/build/outputs/apk/**/debug/*.apk'
+          # The Admin app is staff-only (AUN-ADMIN-NATIVE, AD10): never a downloadable APK from this public repo.
+          path: |
+            **/build/outputs/apk/**/debug/*.apk
+            !admin-mobile/**
           retention-days: 7
       - name: Studio release variant (R8), debug-signed for testers
         # The release build type with R8 and resource shrinking, signed with this run's debug key so
@@ -111,7 +114,7 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - name: Build test APKs
-        run: ./gradlew :viewer-mobile:assembleQaDebug :viewer-mobile:assembleQaDebugAndroidTest :studio-mobile:assembleQaDebugAndroidTest :viewer-tv:assembleQaGoogleDebugAndroidTest
+        run: ./gradlew :viewer-mobile:assembleQaDebug :viewer-mobile:assembleQaDebugAndroidTest :studio-mobile:assembleQaDebugAndroidTest :admin-mobile:assembleQaDebugAndroidTest :viewer-tv:assembleQaGoogleDebugAndroidTest
       - name: Run on emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs inside android-emulator-runner: instrumented tests, then en + ar screenshots of the viewer.
 set -euo pipefail
-./gradlew :viewer-mobile:connectedQaDebugAndroidTest :studio-mobile:connectedQaDebugAndroidTest --continue
+./gradlew :viewer-mobile:connectedQaDebugAndroidTest :studio-mobile:connectedQaDebugAndroidTest :admin-mobile:connectedQaDebugAndroidTest --continue
 mkdir -p emulator-screenshots
 APK=viewer-mobile/build/outputs/apk/qa/debug/viewer-mobile-qa-debug.apk
 PKG=net.alummahnow.app.qa
