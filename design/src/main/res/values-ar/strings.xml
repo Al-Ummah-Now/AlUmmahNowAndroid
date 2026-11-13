@@ -15,7 +15,7 @@
     <string name="aun_loading">جارٍ التحميل</string>
     <string name="aun_error_network">تعذّر الوصول إلى الأمة الآن. تحقّق من اتصالك.</string>
     <string name="aun_error_generic">حدث خطأ ما.</string>
-    <string name="aun_error_not_found">هذا الفيديو غير متاح.</string>
+    <string name="aun_error_not_found">هذا المرئي غير متاح.</string>
     <string name="aun_duration_cd">المدة %1$s</string>
     <string name="aun_rail_continue">متابعة المشاهدة</string>
     <string name="aun_rail_trending">الأكثر رواجاً</string>

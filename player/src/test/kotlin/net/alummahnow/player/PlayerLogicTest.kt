@@ -92,7 +92,7 @@ class PlayerLogicTest {
         val subs = item.localConfiguration!!.subtitleConfigurations
         assertEquals(listOf("en", "ar"), subs.map { it.language })
         assertEquals(C.SELECTION_FLAG_DEFAULT, subs[0].selectionFlags)
-        assertEquals("فيديو v1", item.mediaMetadata.title.toString())
+        assertEquals("مرئي v1", item.mediaMetadata.title.toString())
         assertEquals(75_000L, item.mediaMetadata.durationMs)
     }
 
