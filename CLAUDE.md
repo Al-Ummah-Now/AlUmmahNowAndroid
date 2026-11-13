@@ -40,3 +40,8 @@ of aun-core) · `design` (Fanous theme) · `player` (Media3) · `feature-*` · a
 - Screenshot tests set the layout direction explicitly (`ar-ldrtl`, `en-ldltr`): Robolectric does not derive it
   from the locale the way a device does.
 - Golden screenshots are recorded on Linux. Re-record them with the "Record screenshots" workflow, not on macOS.
+- **UI copy tone (en + ar):** Al Ummah Now is a content-sharing site, not a lectures library. Use YouTube's neutral
+  words (videos, Shorts, live streams, posts, playlists, channels, creators, the community; watch, upload, share,
+  subscribe, save, explore). Never describe the platform as lessons, lectures, courses, a library or "beneficial
+  knowledge" («دروس، محاضرات، مكتبة، العلم النافع»), and no entertainment or hype words. Content categories keep
+  their names. Arabic "video" is «مرئي / مرئيات». Full guide: wiki page "Copy Tone Guide".
