@@ -53,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import net.alummahnow.admin.R
 import net.alummahnow.admin.push.PushState
 import net.alummahnow.design.theme.FanousTokens
+import net.alummahnow.feature.passkey.PasskeySignInOptions
+import net.alummahnow.feature.passkey.R as PasskeyR
 
 /** The smallest touch target on every control (AUN-ADMIN-NATIVE: 48 dp). */
 val MinTarget = 48.dp
@@ -84,9 +86,20 @@ private fun Logo() {
     Image(painterResource(net.alummahnow.design.R.drawable.aun_logo), contentDescription = null, modifier = Modifier.size(96.dp))
 }
 
-/** Sign-in for staff. A device without a secure lock screen cannot sign in. */
+/**
+ * Sign-in for staff: "Sign in with a passkey" (the OS passkey sheet, no browser) or "Sign in another way" ([onSignIn],
+ * the browser). A device without a secure lock screen cannot sign in.
+ */
 @Composable
-fun AdminSignInScreen(state: SignInState, deviceSecure: Boolean, onSignIn: () -> Unit, modifier: Modifier = Modifier) {
+fun AdminSignInScreen(
+    state: SignInState,
+    deviceSecure: Boolean,
+    onSignIn: () -> Unit,
+    modifier: Modifier = Modifier,
+    passkeySupported: Boolean = false,
+    passkeyWorking: Boolean = false,
+    onPasskey: () -> Unit = {}
+) {
     CenteredPage(modifier) {
         Logo()
         Heading(stringResource(R.string.signin_title))
@@ -109,11 +122,15 @@ fun AdminSignInScreen(state: SignInState, deviceSecure: Boolean, onSignIn: () ->
             )
             else -> Unit
         }
-        Button(
-            onClick = onSignIn,
+        PasskeySignInOptions(
+            supported = passkeySupported,
             enabled = deviceSecure && state != SignInState.Completing && state != SignInState.InBrowser,
-            modifier = Modifier.fillMaxWidth().heightIn(min = MinTarget).testTag("sign-in")
-        ) { Text(stringResource(R.string.signin_button)) }
+            working = passkeyWorking,
+            fallbackLabel = stringResource(R.string.signin_button),
+            onPasskey = onPasskey,
+            onOtherWay = onSignIn,
+            otherWayTag = "sign-in"
+        )
     }
 }
 
@@ -183,9 +200,12 @@ fun SettingsSheet(
     onDark: (Boolean) -> Unit,
     onLanguage: (String) -> Unit,
     onSignOut: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAddPasskey: (() -> Unit)? = null
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) { SettingsContent(name, dark, language, push, onDark, onLanguage, onSignOut) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        SettingsContent(name, dark, language, push, onDark, onLanguage, onSignOut, onAddPasskey)
+    }
 }
 
 @Composable
@@ -196,7 +216,8 @@ fun SettingsContent(
     push: PushState?,
     onDark: (Boolean) -> Unit,
     onLanguage: (String) -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onAddPasskey: (() -> Unit)? = null
 ) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(
@@ -248,6 +269,12 @@ fun SettingsContent(
             modifier = Modifier.testTag("alerts-status")
         )
         HorizontalDivider()
+        if (onAddPasskey != null) {
+            Text(stringResource(PasskeyR.string.passkey_explainer), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = onAddPasskey, modifier = Modifier.fillMaxWidth().heightIn(min = MinTarget).testTag("add-passkey")) {
+                Text(stringResource(PasskeyR.string.passkey_add))
+            }
+        }
         OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().heightIn(min = MinTarget).testTag("sign-out")) {
             Text(stringResource(R.string.sign_out))
         }

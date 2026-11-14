@@ -11,6 +11,7 @@ Fire TV and Android Auto.
 
 - Plan and architecture: [`docs/PLAN.md`](docs/PLAN.md)
 - Release and signing: [`docs/RELEASE.md`](docs/RELEASE.md)
+- Passkeys (Studio, Admin) and Digital Asset Links: [`docs/PASSKEYS.md`](docs/PASSKEYS.md)
 - Contributor and agent rules: [`CLAUDE.md`](CLAUDE.md)
 
 ```bash

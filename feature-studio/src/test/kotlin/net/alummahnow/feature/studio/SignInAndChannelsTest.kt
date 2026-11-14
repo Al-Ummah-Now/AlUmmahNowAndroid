@@ -127,7 +127,8 @@ class SignInAndChannelsTest {
 
     // --- Screenshots ---
 
-    private val signIn = @androidx.compose.runtime.Composable { SignInScreen(SignInUiState.Idle, {}, null, null) }
+    private val signIn = @androidx.compose.runtime.Composable { SignInScreen(SignInUiState.Idle, {}, null, null, passkeySupported = true) }
+    private val signInNoPasskeys = @androidx.compose.runtime.Composable { SignInScreen(SignInUiState.Idle, {}, null, null) }
     private val signInError = @androidx.compose.runtime.Composable {
         SignInScreen(SignInUiState.Error(R.string.studio_signin_failed), {}, null, null)
     }
@@ -150,6 +151,35 @@ class SignInAndChannelsTest {
     @Test fun signInArDark() = shoot("signin", Lang.AR, ThemeMode.DARK, content = signIn)
 
     @Test fun signInArLight() = shoot("signin", Lang.AR, ThemeMode.LIGHT, content = signIn)
+
+    @Test fun signInNoPasskeysEnLight() = shoot("signin_no_passkeys", Lang.EN, ThemeMode.LIGHT, content = signInNoPasskeys)
+
+    @Test fun signInTabletArLight() = shoot("signin", Lang.AR, ThemeMode.LIGHT, Device.TABLET, signIn)
+
+    @Test
+    fun `sign-in screen offers a passkey and the browser as another way`() {
+        var passkey = 0
+        var browser = 0
+        compose.setContent {
+            AunTheme { SignInScreen(SignInUiState.Idle, { browser++ }, null, null, passkeySupported = true, onPasskey = { passkey++ }) }
+        }
+        compose.onNodeWithTag("signin-passkey").performClick()
+        compose.onNodeWithTag("signin-button").performClick()
+        assertEquals(1, passkey)
+        assertEquals(1, browser)
+    }
+
+    @Test
+    fun `account sheet offers Add a passkey`() {
+        var added = 0
+        compose.setContent {
+            AunTheme {
+                AccountSheet(listOf(sampleAccount), sampleAccount.userId, null, {}, {}, {}, {}, {}, onAddPasskey = { added++ })
+            }
+        }
+        compose.onNodeWithTag("add-passkey").performClick()
+        assertEquals(1, added)
+    }
 
     @Test fun signInErrorArDark() = shoot("signin_error", Lang.AR, ThemeMode.DARK, content = signInError)
 

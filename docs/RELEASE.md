@@ -64,7 +64,11 @@ signed with that run's debug key, for quick testing.
    download its `google-services.json` and store the whole file as the secret `ADMIN_GOOGLE_SERVICES_JSON`
    (the server side needs the matching FCM service account, AlUmmahNow#1264). Without it the app builds and
    runs with alerts off and says so in Settings.
-7. **Store listing assets** in Arabic and English (screenshots per locale, feature graphic, TV banner),
+7. **Passkey fingerprints:** once Play App Signing is on, send the server config the **app signing key SHA-256** of
+   `net.alummahnow.studio` and `net.alummahnow.admin` (Play Console → App integrity → App signing) and the **upload
+   key SHA-256**. They go in `assetlinks.json` on `alummahnow.net` and in the auth server's accepted
+   `android:apk-key-hash:` origins. Details: [PASSKEYS.md](PASSKEYS.md).
+8. **Store listing assets** in Arabic and English (screenshots per locale, feature graphic, TV banner),
    privacy policy URL, the data safety form, and content rating (Epic 23.5).
 
 ## Admin app (staff only)

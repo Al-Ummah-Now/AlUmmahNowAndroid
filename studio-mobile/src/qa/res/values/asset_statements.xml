@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Digital Asset Links, app → site: this build trusts the passkey relying party qa.alummahnow.net (see docs/PASSKEYS.md). -->
+<resources>
+    <string name="asset_statements" translatable="false">[{\"include\": \"https://qa.alummahnow.net/.well-known/assetlinks.json\"}]</string>
+</resources>
