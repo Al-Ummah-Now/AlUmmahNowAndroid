@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,7 +58,8 @@ fun AccountSheet(
     onAddAccount: () -> Unit,
     onSignOut: (String) -> Unit,
     onSwitchChannel: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAddPasskey: (() -> Unit)? = null
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
     ModalBottomSheet(
@@ -111,6 +113,14 @@ fun AccountSheet(
                 subtitle = null,
                 modifier = Modifier.clickable(role = Role.Button, onClick = onAddAccount).testTag("add-account")
             )
+            if (onAddPasskey != null) {
+                SheetRow(
+                    icon = { Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(40.dp).padding(8.dp)) },
+                    title = stringResource(net.alummahnow.feature.passkey.R.string.passkey_add),
+                    subtitle = stringResource(net.alummahnow.feature.passkey.R.string.passkey_explainer),
+                    modifier = Modifier.clickable(role = Role.Button, onClick = onAddPasskey).testTag("add-passkey")
+                )
+            }
         }
     }
     confirmSignOut?.let { a ->

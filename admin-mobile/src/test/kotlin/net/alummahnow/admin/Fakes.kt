@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import net.alummahnow.admin.security.AppLock
 import net.alummahnow.admin.security.StepUp
 import net.alummahnow.core.bridge.admin.FixtureReviewService
+import net.alummahnow.core.bridge.auth.passkey.PasskeyAuthenticator
+import net.alummahnow.core.bridge.auth.passkey.RegisteredPasskey
 import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
@@ -37,6 +39,39 @@ class FakeSession(signedIn: Boolean = true, private val userId: String = "fx-rev
     }
 
     override suspend fun accessToken(): String? = active.value?.let { "token" }
+
+    /** Errors the "auth server" raises on the next add, in order. */
+    val addErrors = ArrayDeque<Exception>()
+    var passkeysAdded = 0
+
+    override suspend fun signInWithPasskey(authenticator: PasskeyAuthenticator): StudioAccount {
+        authenticator.signIn("""{"challenge":"x"}""")
+        return account.also { active.value = it }
+    }
+
+    override suspend fun addPasskey(authenticator: PasskeyAuthenticator, name: String?): RegisteredPasskey {
+        addErrors.removeFirstOrNull()?.let { throw it }
+        authenticator.create("""{"challenge":"x"}""")
+        passkeysAdded++
+        return RegisteredPasskey("pk$passkeysAdded", name, null)
+    }
+}
+
+/** The Credential Manager seam for tests. */
+class FakePasskeys(override val isSupported: Boolean = true) : PasskeyAuthenticator {
+    var signIns = 0
+    var creates = 0
+    var onSignIn: () -> String = { """{"id":"cred"}""" }
+
+    override suspend fun signIn(requestJson: String): String {
+        signIns++
+        return onSignIn()
+    }
+
+    override suspend fun create(requestJson: String): String {
+        creates++
+        return """{"id":"new"}"""
+    }
 }
 
 class FakeServices(

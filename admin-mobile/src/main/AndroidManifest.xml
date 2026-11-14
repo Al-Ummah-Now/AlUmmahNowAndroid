@@ -36,6 +36,9 @@
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.AunAdmin"
         tools:targetApi="31">
+        <!-- Passkeys: the site side (assetlinks.json on the RP domain, get_login_creds) is what Credential Manager checks;
+             this is the app side of the same link, per env flavour (src/qa, src/prod). -->
+        <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

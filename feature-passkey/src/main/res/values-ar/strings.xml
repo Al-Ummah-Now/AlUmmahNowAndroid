@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- الصياغة نفسها في صفحات الويب (AlUmmahNowAuth passkeys/pages.ts، وopenauth ui/i18n.ts). -->
+<resources>
+    <string name="passkey_sign_in">الدخول بمفتاح المرور</string>
+    <string name="passkey_sign_in_other">تسجيل الدخول بطريقة أخرى</string>
+    <string name="passkey_explainer">سجّل الدخول دون كلمة مرور، بمفتاح مرور محفوظ على هذا الجهاز أو في مدير كلمات المرور أو على هاتفك أو على مفتاح أمان.</string>
+    <string name="passkey_working">اتبع الخطوات التي يعرضها جهازك…</string>
+    <string name="passkey_add">إضافة مفتاح مرور</string>
+    <string name="passkey_added">أُضيف مفتاح المرور. في المرة القادمة اختر «الدخول بمفتاح المرور».</string>
+    <string name="passkey_signin_problem_title">تعذّر تسجيل الدخول</string>
+    <string name="passkey_none_title">لم نجد مفتاح مرور</string>
+    <string name="passkey_none">لا يوجد مفتاح مرور للأمة الآن على هذا الجهاز أو في مدير كلمات المرور. سجّل الدخول بطريقة أخرى، ثم أضف مفتاح مرور من حسابك.</string>
+    <string name="passkey_signin_failed">لم ينجح مفتاح المرور. حاول مرة أخرى أو سجّل الدخول بطريقة أخرى.</string>
+    <string name="passkey_signin_unsupported">لا يستطيع هذا الجهاز استخدام مفاتيح المرور. سجّل الدخول بطريقة أخرى.</string>
+    <string name="passkey_add_unsupported">لا يستطيع هذا الجهاز حفظ مفاتيح المرور. جرّب جهازًا آخر أو مدير كلمات مرور آخر.</string>
+    <string name="passkey_add_failed">لم يُضَف مفتاح المرور. حاول مرة أخرى.</string>
+    <string name="passkey_exists">لهذا الجهاز مفتاح مرور لحسابك بالفعل.</string>
+    <string name="passkey_limit">لديك 10 مفاتيح مرور بالفعل. أزل واحدًا من حسابك أولًا.</string>
+    <string name="passkey_stale">لحماية حسابك، سجّل الدخول مرة أخرى قبل إضافة مفتاح مرور.</string>
+    <string name="passkey_sign_in_again">تسجيل الدخول مرة أخرى</string>
+    <string name="passkey_other_account">سجّلت الدخول بحساب آخر. سجّل الدخول بالحساب الذي تريد إضافة مفتاح المرور إليه.</string>
+    <string name="passkey_rate_limited">محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.</string>
+    <string name="passkey_offline">أنت غير متصل. تحقق من اتصالك وحاول مرة أخرى.</string>
+    <string name="passkey_try_again">حاول مرة أخرى</string>
+    <string name="passkey_ok">حسنًا</string>
+</resources>

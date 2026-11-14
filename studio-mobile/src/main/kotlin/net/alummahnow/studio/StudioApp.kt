@@ -41,6 +41,10 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.feature.passkey.PasskeyHost
+import net.alummahnow.feature.passkey.PasskeyUiState
+import net.alummahnow.feature.passkey.PasskeyViewModel
+import net.alummahnow.feature.passkey.rememberPasskeyAuthenticator
 import net.alummahnow.feature.studio.analytics.AnalyticsScreen
 import net.alummahnow.feature.studio.analytics.AnalyticsViewModel
 import net.alummahnow.feature.studio.attempt
@@ -70,16 +74,40 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
     val signIn: SignInViewModel = viewModel { SignInViewModel(session) }
     val signInState by signIn.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) { redirects.collect { signIn.complete(it) } }
+    val passkeys: PasskeyViewModel = viewModel { PasskeyViewModel(session) }
+    val passkeyState by passkeys.state.collectAsStateWithLifecycle()
+    val authenticator = rememberPasskeyAuthenticator()
+
+    // A redirect may also be the re-sign-in "Add a passkey" asked for; the passkey model retries the add if so.
+    LaunchedEffect(Unit) { redirects.collect { signIn.complete(it) { passkeys.signedIn(session.active.value) } } }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { signIn.browserClosed() }
 
     fun startSignIn(mode: SignInMode) {
         signIn.start(mode)?.let { url -> if (!openInBrowser(url)) signIn.noBrowser() }
     }
 
+    PasskeyHost(
+        passkeys,
+        onOtherWay = { startSignIn(SignInMode.DEFAULT) },
+        onSignInAgain = {
+            // A fresh sign-in of the same person (prompt=login, max_age=900): the server checks auth_time.
+            runCatching { session.beginStepUp(STEP_UP_MAX_AGE_S) }
+                .onSuccess { url -> if (!openInBrowser(url)) signIn.noBrowser() }
+                .onFailure { e -> AunLog.e("auth", "step-up could not start", e) }
+        }
+    )
+
     val current = active
     if (current == null) {
-        SignInScreen(state = signInState, onSignIn = { startSignIn(SignInMode.DEFAULT) }, onAddAccount = null, onBack = null)
+        SignInScreen(
+            state = signInState,
+            onSignIn = { startSignIn(SignInMode.DEFAULT) },
+            onAddAccount = null,
+            onBack = null,
+            passkeySupported = authenticator.isSupported,
+            passkeyWorking = passkeyState == PasskeyUiState.Working(adding = false),
+            onPasskey = { passkeys.signIn(authenticator) }
+        )
         return
     }
 
@@ -172,10 +200,21 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
                 sheetOpen = false
                 channels.clearSelection()
             },
-            onDismiss = { sheetOpen = false }
+            onDismiss = { sheetOpen = false },
+            onAddPasskey = if (authenticator.isSupported) {
+                {
+                    sheetOpen = false
+                    passkeys.add(authenticator)
+                }
+            } else {
+                null
+            }
         )
     }
 }
+
+/** "Add a passkey" needs a sign-in within 15 minutes (the server's step_up_required window). */
+private const val STEP_UP_MAX_AGE_S = 900
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

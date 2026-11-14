@@ -38,6 +38,7 @@ include(":feature-upload")
 include(":feature-studio")
 include(":feature-editor")
 include(":feature-live")
+include(":feature-passkey")
 
 // Apps
 include(":viewer-mobile")

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -31,11 +30,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import net.alummahnow.design.theme.FanousTokens
+import net.alummahnow.feature.passkey.PasskeySignInOptions
 import net.alummahnow.feature.studio.R
 
 /**
- * Sign-in. [onSignIn] opens the browser; [hasAccounts] adds "Add another account" (prompt=login)
- * and a way back when other accounts are already signed in.
+ * Sign-in. "Sign in with a passkey" ([onPasskey]) uses the OS passkey sheet with no browser; [onSignIn] is
+ * "Sign in another way", the browser sign-in. [onAddAccount] adds "Add another account" (prompt=login) and [onBack]
+ * a way back when other accounts are already signed in. Where passkeys can't work, only the browser button shows.
  */
 @Composable
 fun SignInScreen(
@@ -43,7 +44,10 @@ fun SignInScreen(
     onSignIn: () -> Unit,
     onAddAccount: (() -> Unit)?,
     onBack: (() -> Unit)?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    passkeySupported: Boolean = false,
+    passkeyWorking: Boolean = false,
+    onPasskey: () -> Unit = {}
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
@@ -86,11 +90,23 @@ fun SignInScreen(
                         modifier = Modifier.testTag("signin-error").semantics { liveRegion = LiveRegionMode.Assertive }
                     )
                 }
-                Button(
-                    onClick = onSignIn,
+                PasskeySignInOptions(
+                    supported = passkeySupported,
                     enabled = state !is SignInUiState.Completing,
-                    modifier = Modifier.fillMaxWidth().testTag("signin-button")
-                ) { Text(stringResource(if (onAddAccount != null) R.string.studio_signin_continue else R.string.studio_signin_button)) }
+                    working = passkeyWorking,
+                    fallbackLabel = stringResource(
+                        if (onAddAccount !=
+                            null
+                        ) {
+                            R.string.studio_signin_continue
+                        } else {
+                            R.string.studio_signin_button
+                        }
+                    ),
+                    onPasskey = onPasskey,
+                    onOtherWay = onSignIn,
+                    otherWayTag = "signin-button"
+                )
                 if (onAddAccount != null) {
                     OutlinedButton(
                         onClick = onAddAccount,

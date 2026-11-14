@@ -112,9 +112,19 @@ class SessionViewModel(private val services: AdminServices) : ViewModel() {
         }
     }
 
+    /**
+     * Back from the browser. The pending step-up action is kept: on a device the redirect's intent arrives just before
+     * this resume, so clearing it here would drop the action the person just signed in for. It is replaced by the next
+     * step-up, checked against [stepUpUser], and cleared on sign-out.
+     */
     fun browserClosed() {
         if (mutableSignIn.value == SignInState.InBrowser) mutableSignIn.value = SignInState.Idle
-        pendingStepUp = null
+    }
+
+    /** A native passkey sign-in finished: it counts as a fresh sign-in for step-up. */
+    fun passkeySignedIn() {
+        services.stepUp.signedIn()
+        mutableSignIn.value = SignInState.Idle
     }
 
     fun noBrowser() {
@@ -144,6 +154,8 @@ class SessionViewModel(private val services: AdminServices) : ViewModel() {
             .onFailure { AunLog.e("auth", "sign-out failed", it) }
             .getOrNull()
             .also {
+                pendingStepUp = null
+                stepUpUser = null
                 services.stepUp.forget()
                 services.lock.lockNow()
                 mutableProfile.value = ProfileState.Loading

@@ -13,6 +13,10 @@ import net.alummahnow.core.AuthManager
 import net.alummahnow.core.LoginPrompt
 import net.alummahnow.core.SecureStorage
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.auth.passkey.PasskeyApi
+import net.alummahnow.core.bridge.auth.passkey.PasskeyAuthenticator
+import net.alummahnow.core.bridge.auth.passkey.PasskeyFlow
+import net.alummahnow.core.bridge.auth.passkey.RegisteredPasskey
 import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
@@ -107,6 +111,22 @@ class CoreAccountSession(
     }
 
     override suspend fun accessToken(): String? = withContext(Dispatchers.IO) { coreCall { manager.accessToken() } }
+
+    /** Native passkeys over the same PKCE attempt and token exchange as the browser sign-in. */
+    private val passkeys = PasskeyFlow(
+        api = PasskeyApi(settings.issuer),
+        clientId = settings.clientId,
+        redirectUri = settings.redirectUri,
+        // `prompt` is irrelevant here: the URL is never opened, only its code_challenge and state are used.
+        beginAuthorization = { coreCall { manager.beginLoginWithPrompt(LoginPrompt.LOGIN).url } },
+        completeRedirect = ::completeSignIn,
+        accessToken = ::accessToken
+    )
+
+    override suspend fun signInWithPasskey(authenticator: PasskeyAuthenticator): StudioAccount = passkeys.signIn(authenticator)
+
+    override suspend fun addPasskey(authenticator: PasskeyAuthenticator, name: String?): RegisteredPasskey =
+        passkeys.register(authenticator, name).also { AunLog.i("auth", "passkey added") }
 }
 
 private fun AccountInfo.toModel() = StudioAccount(

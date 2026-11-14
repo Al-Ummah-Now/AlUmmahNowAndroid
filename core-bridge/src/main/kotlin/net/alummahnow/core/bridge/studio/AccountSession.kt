@@ -1,6 +1,9 @@
 package net.alummahnow.core.bridge.studio
 
 import kotlinx.coroutines.flow.StateFlow
+import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.auth.passkey.PasskeyAuthenticator
+import net.alummahnow.core.bridge.auth.passkey.RegisteredPasskey
 
 /** How a browser sign-in starts. */
 enum class SignInMode {
@@ -30,7 +33,7 @@ interface AccountSession {
      * form (`prompt=login`), and the issuer must have authenticated them within [maxAgeSeconds] (`max_age`). The
      * server checks `auth_time`. Returns the URL to open in a Custom Tab.
      */
-    fun beginStepUp(maxAgeSeconds: Int): String = throw net.alummahnow.core.bridge.CoreError.Unavailable("step-up")
+    fun beginStepUp(maxAgeSeconds: Int): String = throw CoreError.Unavailable("step-up")
 
     /** Finishes sign-in with the redirect the app received (`alummahnow-studio://auth/callback?...`). */
     suspend fun completeSignIn(redirectUrl: String): StudioAccount
@@ -48,4 +51,17 @@ interface AccountSession {
 
     /** A fresh access token for the active account, or null when signed out. */
     suspend fun accessToken(): String?
+
+    /**
+     * Native passkey sign-in (no browser): the platform passkey sheet, then the same token exchange and account store
+     * as [completeSignIn]. Throws [net.alummahnow.core.bridge.auth.passkey.PasskeyError] or [CoreError].
+     */
+    suspend fun signInWithPasskey(authenticator: PasskeyAuthenticator): StudioAccount = throw CoreError.Unavailable("passkeys")
+
+    /**
+     * Adds a passkey to the active account. Throws [net.alummahnow.core.bridge.auth.passkey.PasskeyError.StepUpRequired]
+     * when the sign-in is over 15 minutes old: sign in again ([beginStepUp]), then call this again.
+     */
+    suspend fun addPasskey(authenticator: PasskeyAuthenticator, name: String? = null): RegisteredPasskey =
+        throw CoreError.Unavailable("passkeys")
 }

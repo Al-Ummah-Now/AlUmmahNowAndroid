@@ -69,6 +69,10 @@ import net.alummahnow.core.bridge.admin.ReviewItem
 import net.alummahnow.core.bridge.admin.StaffProfile
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
+import net.alummahnow.feature.passkey.PasskeyHost
+import net.alummahnow.feature.passkey.PasskeyUiState
+import net.alummahnow.feature.passkey.PasskeyViewModel
+import net.alummahnow.feature.passkey.rememberPasskeyAuthenticator
 
 /** An item to open from a notification; [claim] when the reviewer tapped Claim. */
 data class OpenTarget(val reviewId: String, val claim: Boolean)
@@ -171,10 +175,28 @@ private fun AdminContent(
         }
     }
 
+    val passkeys: PasskeyViewModel = viewModel { PasskeyViewModel(services.session) }
+    val passkeyState by passkeys.state.collectAsStateWithLifecycle()
+    val authenticator = rememberPasskeyAuthenticator()
+    PasskeyHost(
+        passkeys,
+        onOtherWay = { open(session.beginSignIn()) },
+        // A fresh browser sign-in of the same person; then the add runs again by itself.
+        onSignInAgain = { open(session.requireStepUp(force = true) { passkeys.signedIn(services.session.active.value) }) },
+        onSignedIn = session::passkeySignedIn
+    )
+
     val account = active
     when {
         account == null || !secure -> {
-            AdminSignInScreen(signIn, deviceSecure = secure, onSignIn = { open(session.beginSignIn()) })
+            AdminSignInScreen(
+                signIn,
+                deviceSecure = secure,
+                onSignIn = { open(session.beginSignIn()) },
+                passkeySupported = authenticator.isSupported,
+                passkeyWorking = passkeyState == PasskeyUiState.Working(adding = false),
+                onPasskey = { passkeys.signIn(authenticator) { session.passkeySignedIn() } }
+            )
             return
         }
         locked -> {
@@ -189,7 +211,8 @@ private fun AdminContent(
         ProfileState.Offline, ProfileState.Failed -> ProfileErrorScreen(p == ProfileState.Offline, session::loadProfile, signOut)
         is ProfileState.Ready -> StaffHome(
             services, session, p.profile, openTargets, captures, clock, dark, onDark, onLanguage, signOut,
-            requireStepUp = { force, action -> open(session.requireStepUp(force, action)) }
+            requireStepUp = { force, action -> open(session.requireStepUp(force, action)) },
+            onAddPasskey = if (authenticator.isSupported) ({ passkeys.add(authenticator) }) else null
         )
     }
 }
@@ -207,7 +230,8 @@ private fun StaffHome(
     onDark: (Boolean) -> Unit,
     onLanguage: (String) -> Unit,
     onSignOut: () -> Unit,
-    requireStepUp: (Boolean, () -> Unit) -> Unit
+    requireStepUp: (Boolean, () -> Unit) -> Unit,
+    onAddPasskey: (() -> Unit)?
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -350,7 +374,13 @@ private fun StaffHome(
                 settingsOpen = false
                 onSignOut()
             },
-            onDismiss = { settingsOpen = false }
+            onDismiss = { settingsOpen = false },
+            onAddPasskey = onAddPasskey?.let { add ->
+                {
+                    settingsOpen = false
+                    add()
+                }
+            }
         )
     }
 }

@@ -51,23 +51,72 @@ class AdminFlowTest {
         secure: Boolean = true,
         openTargets: MutableStateFlow<OpenTarget?> = MutableStateFlow(null),
         captures: MutableSharedFlow<Unit> = MutableSharedFlow(extraBufferCapacity = 1),
-        browser: MutableList<String> = mutableListOf()
+        browser: MutableList<String> = mutableListOf(),
+        redirects: kotlinx.coroutines.flow.Flow<String> = emptyFlow(),
+        passkeys: FakePasskeys = FakePasskeys()
     ) {
         compose.setContent {
-            AdminApp(
-                services = services,
-                redirects = emptyFlow(),
-                openTargets = openTargets,
-                captures = captures,
-                deviceSecure = { secure },
-                openInBrowser = {
-                    browser += it
-                    true
-                },
-                requestUnlock = { services.lock.unlocked() },
-                onLanguageChanged = {}
-            )
+            androidx.compose.runtime.CompositionLocalProvider(
+                net.alummahnow.feature.passkey.LocalPasskeyAuthenticator provides { passkeys }
+            ) {
+                AdminApp(
+                    services = services,
+                    redirects = redirects,
+                    openTargets = openTargets,
+                    captures = captures,
+                    deviceSecure = { secure },
+                    openInBrowser = {
+                        browser += it
+                        true
+                    },
+                    requestUnlock = { services.lock.unlocked() },
+                    onLanguageChanged = {}
+                )
+            }
         }
+    }
+
+    @Test fun `passkey sign-in needs no browser and counts as a fresh sign-in`() {
+        val browser = mutableListOf<String>()
+        val passkeys = FakePasskeys()
+        val services = FakeServices(context, session = FakeSession(signedIn = false))
+        launch(services, browser = browser, passkeys = passkeys)
+        compose.onNodeWithTag("signin-passkey").performClick()
+        waitForTag("queue-list")
+        assertEquals(1, passkeys.signIns)
+        assertTrue(browser.isEmpty())
+        assertTrue(services.stepUp.isFresh)
+    }
+
+    @Test fun `no passkey offers sign in another way, which opens the browser`() {
+        val browser = mutableListOf<String>()
+        val passkeys = FakePasskeys().apply { onSignIn = { throw net.alummahnow.core.bridge.auth.passkey.PasskeyError.NoCredential() } }
+        launch(FakeServices(context, session = FakeSession(signedIn = false)), browser = browser, passkeys = passkeys)
+        compose.onNodeWithTag("signin-passkey").performClick()
+        compose.onNodeWithTag("passkey-dialog").assertIsDisplayed()
+        compose.onNodeWithTag("passkey-dialog-confirm").performClick()
+        assertEquals(listOf("https://auth.example.test/authorize?client_id=admin"), browser)
+    }
+
+    @Test fun `add a passkey from Settings, signing in again first when the server asks`() {
+        val browser = mutableListOf<String>()
+        val redirects = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
+        val passkeys = FakePasskeys()
+        val session = FakeSession().apply { addErrors += net.alummahnow.core.bridge.auth.passkey.PasskeyError.StepUpRequired() }
+        val services = FakeServices(context, session = session)
+        launch(services, browser = browser, redirects = redirects, passkeys = passkeys)
+        waitForTag("settings")
+        compose.onNodeWithTag("settings").performClick()
+        compose.onNodeWithTag("add-passkey").performClick()
+        compose.onNodeWithText(res.getString(net.alummahnow.feature.passkey.R.string.passkey_stale)).assertIsDisplayed()
+        compose.onNodeWithTag("passkey-dialog-confirm").performClick()
+        assertEquals(listOf(900), session.stepUps)
+        assertEquals(1, browser.size)
+        // The step-up redirect comes back: the add runs again by itself.
+        redirects.tryEmit("alummahnow-admin://auth/callback?code=c&state=s")
+        compose.waitUntil(5_000) { session.passkeysAdded == 1 }
+        compose.onNodeWithText(res.getString(net.alummahnow.feature.passkey.R.string.passkey_added)).assertIsDisplayed()
+        assertEquals(1, passkeys.creates)
     }
 
     private fun waitForTag(tag: String) = compose.waitUntil(5_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }

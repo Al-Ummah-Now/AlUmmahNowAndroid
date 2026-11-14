@@ -46,6 +46,7 @@ dependencies {
     implementation(project(":core-bridge"))
     implementation(project(":design"))
     implementation(project(":player"))
+    implementation(project(":feature-passkey"))
     implementation(libs.androidx.browser)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
