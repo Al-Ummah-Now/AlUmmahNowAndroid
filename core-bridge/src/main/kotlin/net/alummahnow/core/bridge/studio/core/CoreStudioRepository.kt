@@ -18,6 +18,9 @@ import net.alummahnow.core.SuggestionKind
 import net.alummahnow.core.SuggestionQuery
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.attestation.NativeProofProvider
+import net.alummahnow.core.bridge.attestation.NoNativeProof
+import net.alummahnow.core.bridge.attestation.withNativeProof
 import net.alummahnow.core.bridge.studio.AnalyticsRange
 import net.alummahnow.core.bridge.studio.BulkChanges
 import net.alummahnow.core.bridge.studio.BulkResult
@@ -47,7 +50,10 @@ import net.alummahnow.core.bridge.studio.VisibilityFilter
  * [StudioError.NotSupported]. That is why swallowed exceptions are allowed here.
  */
 @Suppress("SwallowedException")
-class CoreStudioRepository(private val client: () -> ApiClient) : StudioRepository {
+class CoreStudioRepository(
+    private val client: () -> ApiClient,
+    private val proofs: NativeProofProvider = NoNativeProof
+) : StudioRepository {
 
     private suspend fun call(
         method: String,
@@ -58,19 +64,23 @@ class CoreStudioRepository(private val client: () -> ApiClient) : StudioReposito
         channelId: String? = null,
         idempotent: Boolean = false
     ): String = withContext(Dispatchers.IO) {
+        // One idempotency key per logical call, so a retry with a fresh attestation proof is the same write.
+        val idempotencyKey = if (idempotent) UUID.randomUUID().toString() else null
         coreCall {
-            client().requestPath(
-                PathCall(
-                    method = method,
-                    pathTemplate = path,
-                    pathParams = params,
-                    query = query.filterValues { it.isNotEmpty() },
-                    headers = channelId?.let { mapOf("channelId" to it) }.orEmpty(),
-                    bodyJson = body?.toString(),
-                    idempotencyKey = if (idempotent) UUID.randomUUID().toString() else null,
-                    authRequired = true
-                )
-            ).body
+            withNativeProof(proofs, method, ::isNativeProofRequired) { proofHeaders ->
+                client().requestPath(
+                    PathCall(
+                        method = method,
+                        pathTemplate = path,
+                        pathParams = params,
+                        query = query.filterValues { it.isNotEmpty() },
+                        headers = channelId?.let { mapOf("channelId" to it) }.orEmpty() + proofHeaders,
+                        bodyJson = body?.toString(),
+                        idempotencyKey = idempotencyKey,
+                        authRequired = true
+                    )
+                ).body
+            }
         }
     }
 

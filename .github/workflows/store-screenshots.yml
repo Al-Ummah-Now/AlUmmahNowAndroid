@@ -1,0 +1,31 @@
+name: Store screenshots
+
+# Generates the Play store screenshots (en + ar; phone, 7" and 10" tablets, TV 1920×1080; light and dark) from the
+# Roborazzi/Compose screens with fixture data, in Gradle Play Publisher's layout
+# (<app>/src/main/play/listings/<locale>/graphics/<device>-screenshots/), and uploads them as an artifact.
+# Nothing is committed, no account is used. The release job regenerates them before publishing a listing.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - run: >
+          ./gradlew -PaunStoreScreenshots=true --tests '*StoreScreenshots*'
+          :viewer-mobile:testProdDebugUnitTest :studio-mobile:testProdDebugUnitTest :viewer-tv:testProdGoogleDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-screenshots
+          path: '*/src/main/play/listings/*/graphics/'
+          if-no-files-found: error

@@ -16,3 +16,5 @@ play-service-account*.json
 google-services.json
 .env
 .env.*
+# Store screenshots are generated (Store screenshots workflow / release job), never committed.
+**/src/main/play/listings/*/graphics/*-screenshots/

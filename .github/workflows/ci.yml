@@ -28,7 +28,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew ktlintCheck detekt lint --continue
+      - run: ./gradlew ktlintCheck detekt lint checkStoreListings --continue
+      - name: Build-logic unit tests (store listing rules)
+        run: ./gradlew -p build-logic :convention:test
       - if: always()
         uses: actions/upload-artifact@v4
         with:

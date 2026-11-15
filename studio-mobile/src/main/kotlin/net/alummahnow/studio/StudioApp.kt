@@ -36,8 +36,11 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.links.AppLink
+import net.alummahnow.core.bridge.links.StudioSection
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.format.currentLocale
@@ -67,7 +70,12 @@ import net.alummahnow.feature.upload.UploadViewModel
 
 /** Studio's top level: sign-in, then the channel picker, then the channel's Studio. */
 @Composable
-fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (String) -> Boolean) {
+fun StudioApp(
+    container: AppContainer,
+    redirects: Flow<String>,
+    openInBrowser: (String) -> Boolean,
+    links: Flow<AppLink.Studio> = emptyFlow()
+) {
     val session = container.session
     val active by session.active.collectAsStateWithLifecycle()
     val accounts by session.accounts.collectAsStateWithLifecycle()
@@ -81,6 +89,9 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
     // A redirect may also be the re-sign-in "Add a passkey" asked for; the passkey model retries the add if so.
     LaunchedEffect(Unit) { redirects.collect { signIn.complete(it) { passkeys.signedIn(session.active.value) } } }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { signIn.browserClosed() }
+    // An App Link waits here until the person is signed in and the link's channel is loaded.
+    var pendingLink by remember { mutableStateOf<AppLink.Studio?>(null) }
+    LaunchedEffect(Unit) { links.collect { pendingLink = it } }
 
     fun startSignIn(mode: SignInMode) {
         signIn.start(mode)?.let { url -> if (!openInBrowser(url)) signIn.noBrowser() }
@@ -118,6 +129,15 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
     val resources = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
     val selected = (channelsState as? ChannelsUiState.Content)?.selected
+    LaunchedEffect(pendingLink, channelsState) {
+        val link = pendingLink ?: return@LaunchedEffect
+        val loaded = channelsState as? ChannelsUiState.Content ?: return@LaunchedEffect
+        val wanted = link.channelId ?: return@LaunchedEffect
+        when {
+            loaded.channels.none { it.id == wanted } -> pendingLink = null // not this account's channel
+            loaded.selectedId != wanted -> channels.select(wanted)
+        }
+    }
 
     Scaffold(
         topBar = { StudioTopBar(selected, onAccount = { sheetOpen = true }) },
@@ -129,6 +149,13 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
         } else {
             var tab by rememberSaveable(selected.id) { mutableStateOf(StudioTab.DASHBOARD) }
             var editing by rememberSaveable(selected.id) { mutableStateOf<String?>(null) }
+            LaunchedEffect(pendingLink, selected.id) {
+                val link = pendingLink ?: return@LaunchedEffect
+                if (link.channelId != null && link.channelId != selected.id) return@LaunchedEffect
+                link.section?.let { tab = it.toTab() }
+                link.videoId?.let { editing = it }
+                pendingLink = null
+            }
             val key = "${current.userId}-${selected.id}"
             val content: ContentViewModel = viewModel(key = "content-$key") { ContentViewModel(container.repository, selected.id) }
             val openVideo = editing
@@ -211,6 +238,12 @@ fun StudioApp(container: AppContainer, redirects: Flow<String>, openInBrowser: (
             }
         )
     }
+}
+
+private fun StudioSection.toTab(): StudioTab = when (this) {
+    StudioSection.DASHBOARD -> StudioTab.DASHBOARD
+    StudioSection.CONTENT -> StudioTab.CONTENT
+    StudioSection.ANALYTICS -> StudioTab.ANALYTICS
 }
 
 /** "Add a passkey" needs a sign-in within 15 minutes (the server's step_up_required window). */

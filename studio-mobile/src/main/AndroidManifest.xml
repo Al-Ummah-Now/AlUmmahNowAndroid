@@ -44,6 +44,20 @@
                     android:path="/callback"
                     android:scheme="alummahnow-studio" />
             </intent-filter>
+            <!-- Android App Links (NAT-REL): Studio's paths in the server's assetlinks table, verified per env host. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="${webHost}" />
+                <data android:path="/app/studio" />
+                <data android:pathPrefix="/app/studio/" />
+                <data android:path="/en/studio" />
+                <data android:pathPrefix="/en/studio/" />
+                <data android:path="/ar/studio" />
+                <data android:pathPrefix="/ar/studio/" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

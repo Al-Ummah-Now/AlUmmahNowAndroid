@@ -3,6 +3,7 @@ package net.alummahnow.core.bridge.studio.core
 import java.io.IOException
 import net.alummahnow.core.AunException
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.attestation.NATIVE_PROOF_REQUIRED
 import net.alummahnow.core.bridge.studio.StudioError
 
 /** Maps aun-core errors to the bridge's error types the UI understands. */
@@ -38,3 +39,13 @@ private const val HTTP_PAYMENT_REQUIRED = 402
 private const val HTTP_GONE = 410
 private const val HTTP_UNPROCESSABLE = 422
 private const val HTTP_TOO_MANY = 429
+
+/**
+ * True for the server's 403 `native_proof_required`. aun-core keeps only the message of a 403 (not its `code`), so
+ * the server sends the code as the message too (NAT-REL contract: `{code, error: "native_proof_required"}`).
+ */
+internal fun isNativeProofRequired(e: Throwable): Boolean = when (e) {
+    is AunException.Forbidden -> e.detail.contains(NATIVE_PROOF_REQUIRED)
+    is AunException.Http -> e.code == NATIVE_PROOF_REQUIRED
+    else -> false
+}

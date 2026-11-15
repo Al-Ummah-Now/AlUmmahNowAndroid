@@ -6,22 +6,52 @@ run `publish*` tasks locally.
 
 ## What a release tag does today
 
-A `vYYYY.MM.DD[.N]` tag on `main` runs `.github/workflows/release.yml`:
+A `vYYYY.MM.DD[.N]` tag on `main` runs `.github/workflows/release.yml`. versionName is the tag without `v`
+(`2026.11.14`, QA builds add `-qa`); versionCode is derived from it (below). Nothing fails because a secret or variable
+is missing: that step is skipped with a `::notice::` naming what is missing.
 
-| Job | Output | Needs |
+| Job | Does | Needs (else skipped with a notice) |
 |---|---|---|
 | `github-release` | GitHub Release with `AlUmmahNowStudio-<v>.apk` (prod), `-qa.apk`, `.aab`, `SHA256SUMS.txt` | the upload key secrets, **or** the pre-release key secrets (set) |
-| `play` | prod bundles to the Play **internal** track (viewer, TV, Studio; Admin once `ADMIN_PLAY_READY`) + Fire TV APK artifact | the upload key secrets **and** `PLAY_SERVICE_ACCOUNT_JSON` |
+| `play` → build | signed prod bundles for viewer, TV (Google), Studio as the `play-bundles` artifact (for each app's first manual upload), and the signed Fire TV APK as `fire-tv-apk` | the four `AUN_UPLOAD_*` secrets |
+| `play` → upload | per app: bundle + store listing (texts from `src/main/play/`, screenshots generated in the job) to the Play **internal** track | the above + `PLAY_SERVICE_ACCOUNT_JSON` + that app's repo variable `PLAY_VIEWER_READY` / `PLAY_TV_READY` / `PLAY_STUDIO_READY` = `true` |
+| `play` → Admin | Admin bundle to internal testing (never an artifact) | the above + `ADMIN_PLAY_READY=true`; Firebase from `ADMIN_GOOGLE_SERVICES_JSON` |
+| `amazon` | Fire TV APK into the app's open Amazon Appstore edit (not submitted for review) | the build step + `AMAZON_APPSTORE_CLIENT_ID`, `AMAZON_APPSTORE_CLIENT_SECRET`, `AMAZON_APPSTORE_APP_ID` |
 
 Until the owner provides the upload key, the GitHub release is a **pre-release** signed with the CI
 **pre-release key** (`AUN_PRERELEASE_*` secrets, alias `aun-prerelease`, certificate SHA-256
 `5A:1B:3D:2B:57:6E:9A:2D:F0:BF:1B:E3:F1:8C:40:20:13:F9:5C:09:EA:EE:7C:F7:31:10:C4:2F:B5:69:DD:C0`).
 Testers can install and update it from the release page. Play never accepts it, and a copy installed
-from Play can't be updated with it (or the other way round). The `play` job is skipped with a warning
-until its secrets exist; it does not fail the release.
+from Play can't be updated with it (or the other way round).
 
 Every CI run also uploads `studio-apks-debug-signed`: QA debug plus QA/prod **release** (R8) APKs
 signed with that run's debug key, for quick testing.
+
+## Store listing files
+
+Gradle Play Publisher's layout, checked in, en-US and ar with the same files (`./gradlew checkStoreListings` enforces
+Play's limits, en/ar parity and the copy-tone words; CI runs it):
+
+```
+<viewer-mobile|viewer-tv|studio-mobile>/src/main/play/
+  listings/{en-US,ar}/title.txt               ≤ 30
+  listings/{en-US,ar}/short-description.txt   ≤ 80
+  listings/{en-US,ar}/full-description.txt    ≤ 4000
+  listings/{en-US,ar}/video-url.txt           optional (https)
+  listings/{en-US,ar}/graphics/*-screenshots/ generated, gitignored
+  release-notes/{en-US,ar}/internal.txt       ≤ 500, per track
+```
+
+**Screenshots** come from the real Compose screens with fixture data (`*/src/test/.../StoreScreenshots.kt`,
+Roborazzi): phone 1080×1920, 7" tablet 1200×1920, 10" tablet 2560×1600, TV 1920×1080, en + ar, dark (+ light on
+phones). Actions → **Store screenshots** → Run gives them as an artifact; the release job regenerates them before it
+uploads a listing. Locally: `./gradlew -PaunStoreScreenshots=true --tests '*StoreScreenshots*'
+:viewer-mobile:testProdDebugUnitTest :studio-mobile:testProdDebugUnitTest :viewer-tv:testProdGoogleDebugUnitTest`.
+The TV app's UI is still a placeholder (feature-tv), so its screenshots show that until the TV screens land: keep
+`PLAY_TV_READY` off until then.
+
+**Data safety** answers, drawn from the code with a source file per answer: [`store/play/data-safety.md`](../store/play/data-safety.md)
+(and `.csv`).
 
 ## Application IDs
 
@@ -33,43 +63,88 @@ signed with that run's debug key, for quick testing.
 | Studio | `net.alummahnow.studio` | `net.alummahnow.studio.qa` |
 | Admin (staff only, Play internal testing only) | `net.alummahnow.admin` | `net.alummahnow.admin.qa` |
 
-## What the owner must provide
+## Owner checklist
 
-1. **Google Play Console developer account** (organisation), with the three apps created under the ids above.
-   Enrol them in **Play App Signing**: Google keeps the app signing key, and we hold only an upload key.
-2. **Upload keystore** (one key for all three apps is fine). Create it locally and never commit it:
-   ```bash
-   keytool -genkeypair -v -keystore upload.jks -alias aun-upload -keyalg RSA -keysize 4096 -validity 10000
-   base64 -i upload.jks | pbcopy   # paste into the secret below
-   ```
-3. **Play service account JSON** with the "Release manager" permission on the three apps
-   (Play Console → Users and permissions; the Google Cloud project must enable the Android Publisher API).
-4. **GitHub secrets**, stored in the `play-release` environment **and** in the `github-release`
-   environment (or as repository secrets, which both environments can read). Protect it: deployment tags limited to `v*`, a required reviewer, and a tag ruleset so only admins can create `v*` tags.
+Everything is built; these are the only things to paste or click. Each one unlocks its step on the next tag.
 
-   | Secret | Value |
-   |---|---|
-   | `AUN_UPLOAD_KEYSTORE_BASE64` | base64 of `upload.jks` |
-   | `AUN_UPLOAD_KEYSTORE_PASSWORD` | keystore password |
-   | `AUN_UPLOAD_KEY_ALIAS` | e.g. `aun-upload` |
-   | `AUN_UPLOAD_KEY_PASSWORD` | key password |
-   | `PLAY_SERVICE_ACCOUNT_JSON` | the full service-account JSON |
+### 1. Upload key (unlocks signed bundles + the GitHub release on the upload key)
 
-5. **Amazon Appstore developer account** for Fire TV. Until an Appstore submission API key is provided, CI
-   builds the signed Fire TV APK as an artifact on each release tag.
-6. **Firebase / Cast:** the Chromecast receiver uses the default media receiver
-   (`CC1AD845`). A custom branded receiver needs a Cast Developer Console registration ($5) and an app id.
-   The viewer and Studio need no `google-services.json`. The **Admin app** uses FCM for review alerts: add an
-   Android app `net.alummahnow.admin` (and `net.alummahnow.admin.qa` for QA builds) to the Firebase project,
-   download its `google-services.json` and store the whole file as the secret `ADMIN_GOOGLE_SERVICES_JSON`
-   (the server side needs the matching FCM service account, AlUmmahNow#1264). Without it the app builds and
-   runs with alerts off and says so in Settings.
-7. **Passkey fingerprints:** once Play App Signing is on, send the server config the **app signing key SHA-256** of
-   `net.alummahnow.studio` and `net.alummahnow.admin` (Play Console → App integrity → App signing) and the **upload
-   key SHA-256**. They go in `assetlinks.json` on `alummahnow.net` and in the auth server's accepted
-   `android:apk-key-hash:` origins. Details: [PASSKEYS.md](PASSKEYS.md).
-8. **Store listing assets** in Arabic and English (screenshots per locale, feature graphic, TV banner),
-   privacy policy URL, the data safety form, and content rating (Epic 23.5).
+```bash
+keytool -genkeypair -v -keystore upload.jks -alias aun-upload -keyalg RSA -keysize 4096 -validity 10000
+base64 -i upload.jks | pbcopy                                  # → AUN_UPLOAD_KEYSTORE_BASE64
+keytool -list -v -keystore upload.jks -alias aun-upload | grep SHA256   # → "upload key SHA-256" below
+```
+
+GitHub → repo Settings → Environments → **`play-release`** and **`github-release`** (or repository secrets):
+
+| Secret | Value |
+|---|---|
+| `AUN_UPLOAD_KEYSTORE_BASE64` | base64 of `upload.jks` |
+| `AUN_UPLOAD_KEYSTORE_PASSWORD` | keystore password |
+| `AUN_UPLOAD_KEY_ALIAS` | `aun-upload` |
+| `AUN_UPLOAD_KEY_PASSWORD` | key password |
+
+Protect both environments: deployment tags `v*` only, a required reviewer, and a tag ruleset so only admins create `v*`.
+
+### 2. Google Play (unlocks uploads to the internal track)
+
+1. Play Console (organisation account) → **Create app** for `net.alummahnow.app` (Al Ummah Now),
+   `net.alummahnow.tv` (Al Ummah Now TV) and `net.alummahnow.studio` (Al Ummah Now Studio). Accept **Play App Signing**.
+2. Google Cloud → enable the **Google Play Android Developer API** → create a service account → JSON key.
+   Play Console → Users and permissions → invite the service account email → **Release manager** on the three apps
+   (and Admin). Secret **`PLAY_SERVICE_ACCOUNT_JSON`** = the whole JSON (environment `play-release`).
+3. Push a tag. Download the `play-bundles` artifact from the run. For each app: Testing → Internal testing → Create
+   release → upload its `.aab` (Play requires the first upload by hand) → add testers.
+4. Repo Settings → Variables → set `PLAY_VIEWER_READY=true`, `PLAY_STUDIO_READY=true` (and `PLAY_TV_READY=true` once
+   the TV UI ships). From the next tag CI uploads bundles, listings and screenshots.
+5. Per app, Policy → App content: **Privacy policy** URL, **App access** (Studio and Admin need sign-in: give Google's reviewers a
+   dedicated reviewer account, never the owner's), **Ads: no**, **Content rating** questionnaire, **Target audience**, **Data safety** from `store/play/data-safety.md`, **Data deletion** URL
+   (the account deletion page). Store settings: app category, contact email and website (CI does not set them).
+6. Graphics not generated by CI, uploaded once in Console: feature graphic 1024×500 (each app), TV banner
+   1280×720 (TV app). The app icon comes from the bundle.
+
+### 3. Fingerprints to send (unlock App Links + passkeys)
+
+After the first upload: Play Console → each app → Test and release → **App integrity → App signing** → copy the
+**App signing key SHA-256** (and the upload key SHA-256 from step 1). Enter them in **videos admin → Mobile apps**
+(it serves `https://videos.alummahnow.net/.well-known/assetlinks.json`):
+
+| Package | Relations the server publishes | Fingerprints |
+|---|---|---|
+| `net.alummahnow.app` | `handle_all_urls` (App Links) | Play App Signing SHA-256 of the viewer, upload key SHA-256 |
+| `net.alummahnow.studio` | `handle_all_urls` + `get_login_creds` | Play App Signing SHA-256 of Studio, upload key SHA-256 |
+| `net.alummahnow.admin` | `get_login_creds` | Play App Signing SHA-256 of Admin, upload key SHA-256 |
+
+QA (`videos.qa.alummahnow.net`): `net.alummahnow.studio.qa` with the pre-release key SHA-256 above (and any
+developer debug key); `net.alummahnow.app.qa` with a developer debug key if wanted. Never a debug key on prod.
+The same Studio/Admin fingerprints also go to `alummahnow.net` for passkeys ([PASSKEYS.md](PASSKEYS.md)).
+The apps already claim the links: viewer `/app/auth/callback`, `/{en,ar}/{video,shorts,playlist,post}/…`, `/@…`
+(also without the locale); Studio `/app/studio/…`, `/{en,ar}/studio/…`. Verify on a device with
+`adb shell pm get-app-links net.alummahnow.app` (state `verified`).
+
+### 4. Play Integrity (optional; attestation stays off until this is done)
+
+Play Console → each of Studio and Admin → Test and release → **App integrity → Play Integrity API** → link the Google
+Cloud project (same project as step 2 is fine) and enable the API there. Then **videos admin → Mobile apps →
+Attestation**: Android **on**, **Cloud project number** = that project's number (Cloud console → project info).
+Studio and Admin then send `X-AUN-Native-Proof` on writes; with it off they send nothing. Amazon / TV builds never
+attest.
+
+### 5. Amazon Appstore (unlocks the Fire TV upload)
+
+1. Amazon Developer Console → Apps → **Add new app** (Android, Fire TV) → package `net.alummahnow.tv`. Note the
+   **App ID** (`amzn1.devportal.mobileapp.…`).
+2. Developer Console → Apps & Services → **API Access** → create a security profile for the **App Submission API** →
+   copy its **Client ID** and **Client secret**.
+3. Secrets in `play-release`: `AMAZON_APPSTORE_CLIENT_ID`, `AMAZON_APPSTORE_CLIENT_SECRET`, `AMAZON_APPSTORE_APP_ID`.
+4. The first APK can be uploaded by hand from the `fire-tv-apk` artifact, or let CI put it in the edit. CI never
+   submits: open the edit in the Developer Console and **Submit** when ready. Amazon re-signs with its own key.
+
+### 6. Admin app and Firebase
+
+See "Admin app (staff only)" below; `ADMIN_GOOGLE_SERVICES_JSON` = the whole `google-services.json` for
+`net.alummahnow.admin`. Chromecast uses the default media receiver (`CC1AD845`); a branded receiver needs a Cast
+Developer Console registration and an app id.
 
 ## Admin app (staff only)
 
@@ -77,7 +152,10 @@ The native Admin app (wiki AUN-ADMIN-NATIVE, AD10) ships **only** to Play intern
 attached to a GitHub Release, and CI never uploads its APK as an artifact: this repo is public.
 
 1. Create `net.alummahnow.admin` in Play Console (Play App Signing on, internal testing track, testers = staff
-   Google accounts). Play needs the very first bundle uploaded in Console; after that CI publishes.
+   Google accounts). Play needs the very first bundle uploaded in Console, and CI never exposes an Admin bundle, so
+   build that one on your own machine with the upload key:
+   `AUN_UPLOAD_KEYSTORE_PATH="$PWD/upload.jks" AUN_UPLOAD_KEYSTORE_PASSWORD=… AUN_UPLOAD_KEY_ALIAS=aun-upload AUN_UPLOAD_KEY_PASSWORD=… ./gradlew :admin-mobile:bundleProdRelease -PversionCode=1`
+   → `admin-mobile/build/outputs/bundle/prodRelease/admin-mobile-prod-release.aab`. After that CI publishes.
 2. Give the Play service account "Release manager" on it, too.
 3. Set the repository variable `ADMIN_PLAY_READY` to `true`. From then on every release tag publishes it in the
    `play` job (same upload key and service account as the other apps).

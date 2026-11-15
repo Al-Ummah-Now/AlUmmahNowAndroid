@@ -1,7 +1,10 @@
 package net.alummahnow.viewer
 
 import android.app.PictureInPictureParams
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
@@ -33,8 +36,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.navigation.navDeepLink
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.links.AppLink
+import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.home.HomeScreen
@@ -48,6 +56,9 @@ class MainActivity : ComponentActivity() {
     private var pipEligible = false
     private val inPip = mutableStateOf(false)
 
+    /** Videos and Shorts opened from a link (App Links or `alummahnow://watch/{id}`), delivered once each. */
+    private val links = Channel<String>(Channel.BUFFERED)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -55,11 +66,46 @@ class MainActivity : ComponentActivity() {
         val pipListener = Consumer<PictureInPictureModeChangedInfo> { inPip.value = it.isInPictureInPictureMode }
         addOnPictureInPictureModeChangedListener(pipListener)
         val container = (application as AunViewerApp).container
+        if (savedInstanceState == null) handle(intent)
         setContent {
             val theme by container.displayPrefs.theme.collectAsState(initial = ThemeMode.SYSTEM)
             AunTheme(mode = theme) {
-                ViewerNavHost(container, inPip.value, onPipEligible = ::setPipEligible)
+                ViewerNavHost(container, inPip.value, links.receiveAsFlow(), onPipEligible = ::setPipEligible)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
+    }
+
+    private fun handle(intent: Intent?) {
+        val url = intent?.data?.toString() ?: return
+        when (val link = AppLinkParser.parse(url, BuildConfig.WEB_HOST)) {
+            is AppLink.Video -> links.trySend(link.id)
+            is AppLink.Short -> links.trySend(link.id)
+            // No native screen for these yet: show the page on the site instead of a dead end.
+            is AppLink.Playlist, is AppLink.Post, is AppLink.Channel -> openInBrowser(url)
+            // The viewer has no sign-in; the app simply opens.
+            is AppLink.AuthCallback, is AppLink.Studio, null -> Unit
+        }
+    }
+
+    /**
+     * Opens [url] in the browser by package, so the verified App Link does not resolve straight back to this app.
+     * Does nothing when no browser is installed.
+     */
+    private fun openInBrowser(url: String) {
+        val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://${BuildConfig.WEB_HOST}/"))
+        val browser = packageManager.queryIntentActivities(probe, 0)
+            .map { it.activityInfo.packageName }
+            .firstOrNull { it != packageName }
+            ?: return AunLog.w("links", "no browser for link")
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(browser))
+        } catch (e: ActivityNotFoundException) {
+            AunLog.w("links", "browser refused link", "type" to e.javaClass.simpleName)
         }
     }
 
@@ -100,8 +146,15 @@ object Routes {
 }
 
 @Composable
-private fun ViewerNavHost(container: AppContainer, inPip: Boolean, onPipEligible: (Boolean) -> Unit) {
+private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<String>, onPipEligible: (Boolean) -> Unit) {
     val nav = rememberNavController()
+    LaunchedEffect(nav) {
+        links.collect { id ->
+            // Ids are validated by AppLinkParser; a route that still fails is logged, never a crash.
+            runCatching { nav.navigate(Routes.watch(id)) { launchSingleTop = true } }
+                .onFailure { AunLog.w("links", "link not routed", "type" to it.javaClass.simpleName) }
+        }
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var settingsOpen by remember { mutableStateOf(false) }
@@ -117,12 +170,7 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, onPipEligible
         }
         composable(
             Routes.WATCH,
-            arguments = listOf(navArgument("id") { type = NavType.StringType }),
-            deepLinks = listOf(
-                navDeepLink { uriPattern = "alummahnow://watch/{id}" },
-                navDeepLink { uriPattern = "https://videos.alummahnow.net/{lang}/watch/{id}" },
-                navDeepLink { uriPattern = "https://videos.qa.alummahnow.net/{lang}/watch/{id}" }
-            )
+            arguments = listOf(navArgument("id") { type = NavType.StringType })
         ) { entry ->
             val id = entry.arguments?.getString("id").orEmpty()
             val vm: WatchViewModel = viewModel(key = id, factory = WatchViewModel.Factory(container.catalog, id))

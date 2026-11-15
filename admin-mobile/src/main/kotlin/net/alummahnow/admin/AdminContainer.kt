@@ -4,12 +4,16 @@ import android.content.Context
 import net.alummahnow.admin.security.AppLock
 import net.alummahnow.admin.security.StepUp
 import net.alummahnow.core.bridge.admin.HttpReviewService
+import net.alummahnow.core.bridge.admin.PrivateHttp
 import net.alummahnow.core.bridge.admin.PushRegistrar
 import net.alummahnow.core.bridge.admin.ReviewService
+import net.alummahnow.core.bridge.attestation.HttpAttestationApi
+import net.alummahnow.core.bridge.attestation.PlayIntegrityProofProvider
 import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.core.CoreAccountSession
 import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
+import net.alummahnow.integrity.PlayIntegrityTokenSource
 
 /** What the Admin UI needs. Tests pass fixtures (no network, no pushes, no AI). */
 interface AdminServices {
@@ -31,7 +35,12 @@ class AdminContainer(context: Context) : AdminServices {
     private val http = HttpReviewService(
         adminApi = BuildConfig.ADMIN_API_BASE_URL,
         videosApi = BuildConfig.API_BASE_URL,
-        accessToken = { session.accessToken() }
+        accessToken = { session.accessToken() },
+        proofs = PlayIntegrityProofProvider(
+            HttpAttestationApi(BuildConfig.API_BASE_URL, "AlUmmahNow-Admin-Android/${BuildConfig.VERSION_NAME}", PrivateHttp.client),
+            PlayIntegrityTokenSource(context),
+            context.packageName
+        )
     )
     override val review: ReviewService = http
     override val push: PushRegistrar = http

@@ -29,6 +29,7 @@ rootProject.name = "AlUmmahNowAndroid"
 include(":core-bridge")
 include(":design")
 include(":player")
+include(":integrity-play")
 
 // Features
 include(":feature-home")

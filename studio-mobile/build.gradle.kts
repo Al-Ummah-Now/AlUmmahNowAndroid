@@ -36,6 +36,7 @@ play {
 
 dependencies {
     implementation(project(":core-bridge"))
+    implementation(project(":integrity-play"))
     implementation(project(":design"))
     implementation(project(":feature-upload"))
     implementation(project(":feature-studio"))

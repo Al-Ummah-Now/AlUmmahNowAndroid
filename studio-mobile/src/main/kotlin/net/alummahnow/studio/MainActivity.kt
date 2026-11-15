@@ -11,11 +11,16 @@ import androidx.browser.customtabs.CustomTabsIntent
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.links.AppLink
+import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.theme.AunTheme
 
 class MainActivity : ComponentActivity() {
     /** OAuth redirects (`alummahnow-studio://auth/callback?...`), delivered once each. */
     private val redirects = Channel<String>(Channel.BUFFERED)
+
+    /** Studio pages opened from an App Link (`/app/studio/…`, `/{en,ar}/studio/…`), delivered once each. */
+    private val links = Channel<AppLink.Studio>(Channel.BUFFERED)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,7 +30,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             // Fanous brand colours only: no Material You dynamic colour.
             AunTheme {
-                StudioApp(container = container, redirects = redirects.receiveAsFlow(), openInBrowser = ::openInCustomTab)
+                StudioApp(
+                    container = container,
+                    redirects = redirects.receiveAsFlow(),
+                    links = links.receiveAsFlow(),
+                    openInBrowser = ::openInCustomTab
+                )
             }
         }
     }
@@ -37,7 +47,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == "alummahnow-studio" && data.host == "auth") redirects.trySend(data.toString())
+        if (data.scheme == "alummahnow-studio" && data.host == "auth") {
+            redirects.trySend(data.toString())
+            return
+        }
+        (AppLinkParser.parse(data.toString(), BuildConfig.WEB_HOST) as? AppLink.Studio)?.let { links.trySend(it) }
     }
 
     /** Opens [url] in a Custom Tab (shares the browser's Al Ummah Now session). False when no browser. */
