@@ -14,6 +14,10 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.attestation.NATIVE_PROOF_REQUIRED
+import net.alummahnow.core.bridge.attestation.NativeProofProvider
+import net.alummahnow.core.bridge.attestation.NoNativeProof
+import net.alummahnow.core.bridge.attestation.withNativeProof
 import net.alummahnow.core.bridge.studio.core.J
 import net.alummahnow.core.bridge.studio.core.a
 import net.alummahnow.core.bridge.studio.core.d
@@ -35,7 +39,9 @@ class HttpReviewService(
     private val adminApi: String,
     private val videosApi: String,
     private val accessToken: suspend () -> String?,
-    private val http: OkHttpClient = PrivateHttp.client
+    private val http: OkHttpClient = PrivateHttp.client,
+    /** Attestation proof for writes to api-videos (the device registry); admin-api calls never carry it. */
+    private val proofs: NativeProofProvider = NoNativeProof
 ) : ReviewService,
     PushRegistrar {
 
@@ -52,23 +58,37 @@ class HttpReviewService(
         val url = base.trimEnd('/').toHttpUrl().newBuilder().addPathSegmentsFrom(path).apply {
             query.forEach { (k, v) -> addQueryParameter(k, v) }
         }.build()
-        val request = PrivateHttp.request(url.toString())
-            .header("Accept", "application/json")
-            .header("Authorization", "Bearer $token")
-            .method(method, body?.toString()?.toRequestBody(JSON) ?: if (method == "GET" || method == "DELETE") null else EMPTY)
-            .build()
-        return withContext(Dispatchers.IO) {
-            try {
-                http.newCall(request).execute().use { res ->
-                    val bytes = res.body.bytes()
-                    if (!res.isSuccessful) throw failure(res.code, bytes)
-                    bytes
-                }
-            } catch (e: IOException) {
-                throw transport(e)
-            }
+        val provider = if (base == videosApi) proofs else NoNativeProof
+        return try {
+            sendOnce(provider, method, url, token, body)
+        } catch (_: NativeProofRequired) {
+            throw CoreError.Http(HTTP_FORBIDDEN) // still refused after one retry with a fresh proof
         }
     }
+
+    private suspend fun sendOnce(provider: NativeProofProvider, method: String, url: HttpUrl, token: String, body: JsonObject?): ByteArray =
+        withNativeProof(provider, method, { it is NativeProofRequired }) { proofHeaders ->
+            val request = PrivateHttp.request(url.toString())
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer $token")
+                .apply { proofHeaders.forEach { (k, v) -> header(k, v) } }
+                .method(method, body?.toString()?.toRequestBody(JSON) ?: if (method == "GET" || method == "DELETE") null else EMPTY)
+                .build()
+            withContext(Dispatchers.IO) {
+                try {
+                    http.newCall(request).execute().use { res ->
+                        val bytes = res.body.bytes()
+                        if (!res.isSuccessful) throw failure(res.code, bytes)
+                        bytes
+                    }
+                } catch (e: IOException) {
+                    throw transport(e)
+                }
+            }
+        }
+
+    /** api-videos' 403 `native_proof_required`: [withNativeProof] fetches a new proof and retries once. */
+    internal class NativeProofRequired : Exception(NATIVE_PROOF_REQUIRED)
 
     private suspend fun token(): String = accessToken() ?: throw CoreError.NotSignedIn()
 
@@ -204,6 +224,7 @@ class HttpReviewService(
             val body = runCatching { J.parse(bytes.decodeToString()).obj() }.getOrNull()
             return when {
                 status == HTTP_UNAUTHORIZED -> CoreError.NotSignedIn()
+                status == HTTP_FORBIDDEN && body?.s("code") == NATIVE_PROOF_REQUIRED -> NativeProofRequired()
                 body?.s("code") == "step_up_required" -> ReviewError.StepUpRequired()
                 body?.s("code") in setOf("reviewer_only", "staff_only") -> ReviewError.NotStaff()
                 body?.s("code") == "undo_expired" -> ReviewError.UndoExpired()

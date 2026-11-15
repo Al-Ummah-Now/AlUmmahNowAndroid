@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.google.services) apply false
     alias(libs.plugins.ktlint)
     alias(libs.plugins.detekt)
+    id("aun.store-listings")
 }
 
 subprojects {

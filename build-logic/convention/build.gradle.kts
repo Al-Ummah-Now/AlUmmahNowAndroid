@@ -9,6 +9,7 @@ java {
 dependencies {
     compileOnly(libs.android.gradle.plugin)
     compileOnly(libs.compose.compiler.gradle.plugin)
+    testImplementation(libs.junit)
 }
 
 gradlePlugin {
@@ -20,6 +21,10 @@ gradlePlugin {
         register("androidApplication") {
             id = "aun.android.application"
             implementationClass = "AndroidApplicationConventionPlugin"
+        }
+        register("storeListings") {
+            id = "aun.store-listings"
+            implementationClass = "StoreListingsPlugin"
         }
         register("compose") {
             id = "aun.compose"

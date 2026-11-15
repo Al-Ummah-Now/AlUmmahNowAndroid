@@ -4,8 +4,13 @@ name: Release
 #   github-release: Studio APK + AAB attached to a GitHub Release. Signed with the upload key when
 #                   its secrets exist; otherwise with the pre-release key and marked as a pre-release
 #                   ("debug-signed": installable for testers, never accepted by Play).
-#   play:           prod bundles to the Play internal track. Runs only when the upload key AND the
-#                   Play service account are configured; until then it is skipped with a warning.
+#   play:           signed prod bundles (viewer, TV, Studio) + Fire TV APK as artifacts once the upload key
+#                   exists; then, per app, bundle + store listing (with generated screenshots) to the Play
+#                   internal track once PLAY_SERVICE_ACCOUNT_JSON is set and the owner has set that app's
+#                   repo variable (PLAY_VIEWER_READY / PLAY_TV_READY / PLAY_STUDIO_READY = true, after the
+#                   first manual upload Play requires). Anything missing is skipped with a ::notice::.
+#   amazon:         Fire TV APK into the open Amazon Appstore edit (not submitted) once the
+#                   AMAZON_APPSTORE_* secrets exist; skipped with a ::notice:: until then.
 #   Admin app:      Play internal testing ONLY (wiki AUN-ADMIN-NATIVE, AD10). Never attached to a GitHub
 #                   Release and never uploaded as an artifact: the repo is public and the app is staff-only.
 #                   Published in the play job once the owner has created the app in Play Console (repo
@@ -127,59 +132,96 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: play-release
+    outputs:
+      built: ${{ steps.ready.outputs.build }}
+    env:
+      AUN_UPLOAD_KEYSTORE_PATH: ${{ github.workspace }}/../upload.jks
+      AUN_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
+      AUN_UPLOAD_KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
+      AUN_UPLOAD_KEY_PASSWORD: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
+      VERSION_CODE: ${{ needs.verify.outputs.code }}
+      VERSION_NAME: ${{ needs.verify.outputs.name }}
     steps:
-      - name: Upload key and Play service account configured?
+      - name: What is configured?
         id: ready
         env:
-          KEYSTORE: ${{ secrets.AUN_UPLOAD_KEYSTORE_BASE64 }}
-          KS_PASS: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
-          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          AUN_UPLOAD_KEYSTORE_BASE64: ${{ secrets.AUN_UPLOAD_KEYSTORE_BASE64 }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           missing=()
-          for v in KEYSTORE KS_PASS KEY_ALIAS KEY_PASS PLAY_JSON; do [ -n "${!v}" ] || missing+=("$v"); done
+          for v in AUN_UPLOAD_KEYSTORE_BASE64 AUN_UPLOAD_KEYSTORE_PASSWORD AUN_UPLOAD_KEY_ALIAS AUN_UPLOAD_KEY_PASSWORD; do
+            [ -n "${!v}" ] || missing+=("$v")
+          done
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::warning::Play internal track skipped: missing ${missing[*]} (docs/RELEASE.md)."
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Play skipped::No signed store builds: missing secrets ${missing[*]} (docs/RELEASE.md)."
+            echo "build=false" >> "$GITHUB_OUTPUT"; echo "publish=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-      - if: steps.ready.outputs.ok == 'true'
+          echo "build=true" >> "$GITHUB_OUTPUT"
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::notice title=Play upload skipped::Signed bundles are attached as the play-bundles artifact, but nothing is uploaded: missing secret PLAY_SERVICE_ACCOUNT_JSON (docs/RELEASE.md)."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.ready.outputs.build == 'true'
         uses: actions/checkout@v4
-      - if: steps.ready.outputs.ok == 'true'
+      - if: steps.ready.outputs.build == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-      - if: steps.ready.outputs.ok == 'true'
+      - if: steps.ready.outputs.build == 'true'
         uses: gradle/actions/setup-gradle@v4
       - name: Decode upload keystore
-        if: steps.ready.outputs.ok == 'true'
+        if: steps.ready.outputs.build == 'true'
         env:
           KEYSTORE: ${{ secrets.AUN_UPLOAD_KEYSTORE_BASE64 }}
-        run: echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
-      - name: Publish prod bundles to the Play internal track
-        if: steps.ready.outputs.ok == 'true'
-        env:
-          AUN_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
-          AUN_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
-          AUN_UPLOAD_KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
-          AUN_UPLOAD_KEY_PASSWORD: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
-          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: echo "$KEYSTORE" | base64 -d > "$AUN_UPLOAD_KEYSTORE_PATH"
+      - name: Signed prod bundles (viewer, TV, Studio) and the Fire TV APK
+        if: steps.ready.outputs.build == 'true'
         run: >
-          ./gradlew
-          :viewer-mobile:publishProdReleaseBundle
-          :viewer-tv:publishProdGoogleReleaseBundle
-          :studio-mobile:publishProdReleaseBundle
-          -PversionCode="${{ needs.verify.outputs.code }}" -PversionName="${{ needs.verify.outputs.name }}"
-      - name: Admin app to the Play internal track (staff only, never a public APK)
-        if: steps.ready.outputs.ok == 'true' && vars.ADMIN_PLAY_READY == 'true'
+          ./gradlew -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME"
+          :viewer-mobile:bundleProdRelease :viewer-tv:bundleProdGoogleRelease :studio-mobile:bundleProdRelease
+          :viewer-tv:assembleProdAmazonRelease
+      - name: Bundles for the first manual Play Console upload (Play requires it once per app)
+        if: steps.ready.outputs.build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-bundles
+          path: |
+            viewer-mobile/build/outputs/bundle/prodRelease/*.aab
+            viewer-tv/build/outputs/bundle/prodGoogleRelease/*.aab
+            studio-mobile/build/outputs/bundle/prodRelease/*.aab
+      - if: steps.ready.outputs.build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fire-tv-apk
+          path: viewer-tv/build/outputs/apk/prodAmazon/release/*.apk
+      - name: Store screenshots (en/ar, phone, tablets, TV) into the listing folders
+        if: steps.ready.outputs.publish == 'true'
+        run: >
+          ./gradlew -PaunStoreScreenshots=true --tests '*StoreScreenshots*'
+          :viewer-mobile:testProdDebugUnitTest :studio-mobile:testProdDebugUnitTest :viewer-tv:testProdGoogleDebugUnitTest
+      - name: Upload to the Play internal track (bundle + store listing), per app
+        if: steps.ready.outputs.publish == 'true'
         env:
-          AUN_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
-          AUN_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
-          AUN_UPLOAD_KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
-          AUN_UPLOAD_KEY_PASSWORD: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
+          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          VIEWER_READY: ${{ vars.PLAY_VIEWER_READY }}
+          TV_READY: ${{ vars.PLAY_TV_READY }}
+          STUDIO_READY: ${{ vars.PLAY_STUDIO_READY }}
+        run: |
+          set -euo pipefail
+          tasks=()
+          if [ "$VIEWER_READY" = true ]; then tasks+=(:viewer-mobile:publishProdReleaseBundle :viewer-mobile:publishProdReleaseListing)
+          else echo "::notice title=Viewer not uploaded::Create net.alummahnow.app in Play Console, upload the first bundle from the play-bundles artifact, then set the repo variable PLAY_VIEWER_READY=true."; fi
+          if [ "$TV_READY" = true ]; then tasks+=(:viewer-tv:publishProdGoogleReleaseBundle :viewer-tv:publishProdGoogleReleaseListing)
+          else echo "::notice title=TV not uploaded::Create net.alummahnow.tv in Play Console, upload the first bundle from the play-bundles artifact, then set the repo variable PLAY_TV_READY=true."; fi
+          if [ "$STUDIO_READY" = true ]; then tasks+=(:studio-mobile:publishProdReleaseBundle :studio-mobile:publishProdReleaseListing)
+          else echo "::notice title=Studio not uploaded::Create net.alummahnow.studio in Play Console, upload the first bundle from the play-bundles artifact, then set the repo variable PLAY_STUDIO_READY=true."; fi
+          if [ ${#tasks[@]} -gt 0 ]; then ./gradlew -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" "${tasks[@]}"; fi
+      - name: Admin app to the Play internal track (staff only, never a public APK)
+        if: steps.ready.outputs.publish == 'true' && vars.ADMIN_PLAY_READY == 'true'
+        env:
           ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SERVICES: ${{ secrets.ADMIN_GOOGLE_SERVICES_JSON }}
         run: |
@@ -188,25 +230,52 @@ jobs:
           if [ -n "$GOOGLE_SERVICES" ]; then
             printf '%s' "$GOOGLE_SERVICES" > admin-mobile/google-services.json
           else
-            echo "::warning::ADMIN_GOOGLE_SERVICES_JSON is not set: the Admin app is published with review alerts off."
+            echo "::notice title=Admin alerts off::ADMIN_GOOGLE_SERVICES_JSON is not set: the Admin app is published with review alerts off."
           fi
-          ./gradlew :admin-mobile:publishProdReleaseBundle \
-            -PversionCode="${{ needs.verify.outputs.code }}" -PversionName="${{ needs.verify.outputs.name }}"
+          ./gradlew -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" :admin-mobile:publishProdReleaseBundle
           rm -f admin-mobile/google-services.json
       - name: Admin app not published yet
-        if: steps.ready.outputs.ok == 'true' && vars.ADMIN_PLAY_READY != 'true'
+        if: steps.ready.outputs.publish == 'true' && vars.ADMIN_PLAY_READY != 'true'
         run: |
-          echo "::warning::Admin app skipped: create net.alummahnow.admin in Play Console, then set the repo variable ADMIN_PLAY_READY=true (docs/RELEASE.md)."
-      - name: Fire TV APK (uploaded to Amazon by the owner until an Appstore API key exists)
-        if: steps.ready.outputs.ok == 'true'
+          echo "::notice title=Admin not uploaded::Create net.alummahnow.admin in Play Console and upload its first bundle there, then set the repo variable ADMIN_PLAY_READY=true (docs/RELEASE.md)."
+      - name: Remove the keystore
+        if: always()
+        run: rm -f "$AUN_UPLOAD_KEYSTORE_PATH"
+
+  amazon:
+    needs: play
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: play-release
+    steps:
+      - name: Amazon Appstore configured?
+        id: ready
         env:
-          AUN_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
-          AUN_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.AUN_UPLOAD_KEYSTORE_PASSWORD }}
-          AUN_UPLOAD_KEY_ALIAS: ${{ secrets.AUN_UPLOAD_KEY_ALIAS }}
-          AUN_UPLOAD_KEY_PASSWORD: ${{ secrets.AUN_UPLOAD_KEY_PASSWORD }}
-        run: ./gradlew :viewer-tv:assembleProdAmazonRelease -PversionCode="${{ needs.verify.outputs.code }}" -PversionName="${{ needs.verify.outputs.name }}"
+          BUILT: ${{ needs.play.outputs.built }}
+          AMAZON_APPSTORE_CLIENT_ID: ${{ secrets.AMAZON_APPSTORE_CLIENT_ID }}
+          AMAZON_APPSTORE_CLIENT_SECRET: ${{ secrets.AMAZON_APPSTORE_CLIENT_SECRET }}
+          AMAZON_APPSTORE_APP_ID: ${{ secrets.AMAZON_APPSTORE_APP_ID }}
+        run: |
+          missing=()
+          [ "$BUILT" = true ] || missing+=("AUN_UPLOAD_KEYSTORE_* (no signed Fire TV APK)")
+          for v in AMAZON_APPSTORE_CLIENT_ID AMAZON_APPSTORE_CLIENT_SECRET AMAZON_APPSTORE_APP_ID; do [ -n "${!v}" ] || missing+=("$v"); done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::notice title=Amazon Appstore skipped::Fire TV upload skipped: missing ${missing[*]} (docs/RELEASE.md)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
       - if: steps.ready.outputs.ok == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/checkout@v4
+      - if: steps.ready.outputs.ok == 'true'
+        uses: actions/download-artifact@v4
         with:
           name: fire-tv-apk
-          path: viewer-tv/build/outputs/apk/prodAmazon/release/*.apk
+          path: fire-tv
+      - name: Fire TV APK into the open Appstore edit (the owner submits it in the Developer Console)
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          AMAZON_APPSTORE_CLIENT_ID: ${{ secrets.AMAZON_APPSTORE_CLIENT_ID }}
+          AMAZON_APPSTORE_CLIENT_SECRET: ${{ secrets.AMAZON_APPSTORE_CLIENT_SECRET }}
+          AMAZON_APPSTORE_APP_ID: ${{ secrets.AMAZON_APPSTORE_APP_ID }}
+        run: ./scripts/amazon-appstore-upload.sh fire-tv/*.apk

@@ -16,7 +16,12 @@ internal fun Project.configureAndroidCommon(ext: CommonExtension) {
     ext.compileOptions.sourceCompatibility = JavaVersion.VERSION_17
     ext.compileOptions.targetCompatibility = JavaVersion.VERSION_17
     ext.testOptions.unitTests.isIncludeAndroidResources = true
-    ext.testOptions.unitTests.all { it.systemProperty("robolectric.pixelCopyRenderMode", "hardware") }
+    // `-PaunStoreScreenshots=true` turns on the store screenshot generators (StoreScreenshots tests; off otherwise).
+    val storeScreenshots = providers.gradleProperty("aunStoreScreenshots").orElse("false")
+    ext.testOptions.unitTests.all {
+        it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+        it.systemProperty("aun.storeScreenshots", storeScreenshots.get())
+    }
     ext.lint.warningsAsErrors = false
     ext.lint.abortOnError = true
     ext.lint.checkDependencies = false

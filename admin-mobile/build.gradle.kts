@@ -44,6 +44,7 @@ play {
 
 dependencies {
     implementation(project(":core-bridge"))
+    implementation(project(":integrity-play"))
     implementation(project(":design"))
     implementation(project(":player"))
     implementation(project(":feature-passkey"))

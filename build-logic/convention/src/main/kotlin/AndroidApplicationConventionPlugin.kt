@@ -23,12 +23,17 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     buildConfigField("String", "API_BASE_URL", "\"https://videos.api.qa.alummahnow.net\"")
                     buildConfigField("String", "WEB_BASE_URL", "\"https://videos.qa.alummahnow.net\"")
                     buildConfigField("String", "ENV_NAME", "\"qa\"")
+                    buildConfigField("String", "WEB_HOST", "\"videos.qa.alummahnow.net\"")
+                    // Android App Links host (manifest placeholder webHost), verified against its assetlinks.json.
+                    manifestPlaceholders["webHost"] = "videos.qa.alummahnow.net"
                 }
                 create("prod") {
                     dimension = "env"
                     buildConfigField("String", "API_BASE_URL", "\"https://videos.api.alummahnow.net\"")
                     buildConfigField("String", "WEB_BASE_URL", "\"https://videos.alummahnow.net\"")
                     buildConfigField("String", "ENV_NAME", "\"prod\"")
+                    buildConfigField("String", "WEB_HOST", "\"videos.alummahnow.net\"")
+                    manifestPlaceholders["webHost"] = "videos.alummahnow.net"
                 }
             }
             // Release signing, in order: the owner's upload key (docs/RELEASE.md), else the pre-release

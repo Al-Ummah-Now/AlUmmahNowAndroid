@@ -4,6 +4,8 @@ import android.content.Context
 import net.alummahnow.core.ApiClient
 import net.alummahnow.core.ApiClientConfig
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.attestation.HttpAttestationApi
+import net.alummahnow.core.bridge.attestation.PlayIntegrityProofProvider
 import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.core.CoreAccountSession
@@ -12,6 +14,7 @@ import net.alummahnow.core.bridge.studio.core.CoreUploadQueue
 import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
 import net.alummahnow.feature.upload.UploadWorker
+import net.alummahnow.integrity.PlayIntegrityTokenSource
 
 /** Manual DI for Studio. Everything network- or token-related goes through aun-core. */
 class AppContainer(context: Context) {
@@ -43,7 +46,14 @@ class AppContainer(context: Context) {
 
     private fun activeClient(): ApiClient = clientFor(session.active.value?.userId ?: throw CoreError.NotSignedIn())
 
-    val repository: StudioRepository = CoreStudioRepository(::activeClient)
+    /** Play Integrity proofs for videos API writes; off until the videos admin turns Android attestation on. */
+    private val proofs = PlayIntegrityProofProvider(
+        HttpAttestationApi(BuildConfig.API_BASE_URL, "AlUmmahNow-Studio-Android/${BuildConfig.VERSION_NAME}"),
+        PlayIntegrityTokenSource(context),
+        context.packageName
+    )
+
+    val repository: StudioRepository = CoreStudioRepository(::activeClient, proofs)
 
     val uploads: CoreUploadQueue = CoreUploadQueue(
         context = context,
