@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Card
@@ -71,14 +72,21 @@ fun ChannelPickerScreen(
                     ) {
                         item {
                             Text(
-                                stringResource(R.string.studio_channels_title),
+                                stringResource(R.string.studio_acting_as),
                                 style = MaterialTheme.typography.titleLarge,
                                 modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().semantics { heading() }
                             )
                         }
-                        items(state.channels, key = { it.id }) { ch ->
-                            ChannelRow(ch, selected = ch.id == state.selectedId, onClick = { onSelect(ch.id) })
-                        }
+                        // The web's Acting as order: channels you own, then channels you hold a role on.
+                        val (owned, managed) = state.channels.partition { it.role == ChannelRole.OWNER }
+                        listOf(R.string.studio_channels_yours to owned, R.string.studio_channels_managed to managed)
+                            .filter { it.second.isNotEmpty() }
+                            .forEach { (section, channels) ->
+                                item(key = "section-$section") { SectionLabel(stringResource(section)) }
+                                items(channels, key = { it.id }) { ch ->
+                                    ChannelRow(ch, selected = ch.id == state.selectedId, onClick = { onSelect(ch.id) })
+                                }
+                            }
                     }
                 }
             }
@@ -107,12 +115,16 @@ private fun ChannelRow(channel: StudioChannel, selected: Boolean, onClick: () ->
         ) {
             ChannelAvatar(channel, 48)
             Column(Modifier.weight(1f)) {
-                Text(
-                    channel.localizedName(language),
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
+                    Text(
+                        channel.localizedName(language),
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    IdentityTag(stringResource(R.string.studio_identity_channel))
+                }
                 val details = buildList {
                     channel.handle?.let { add(isolate("@$it")) }
                     add(stringResource(roleLabel(channel.role)))
@@ -128,6 +140,32 @@ private fun ChannelRow(channel: StudioChannel, selected: Boolean, onClick: () ->
             if (selected) Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(top = FanousTokens.Spacing.sm).semantics { heading() }
+    )
+}
+
+/** The small tag under an identity's name in an Acting as picker: "Channel" (the web's nav-identity-tag). */
+@Composable
+fun IdentityTag(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        maxLines = 1,
+        modifier = modifier
+            .clip(RoundedCornerShape(FanousTokens.Radius.sm))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .testTag("identity-tag")
+    )
 }
 
 @Composable

@@ -1,6 +1,10 @@
 package net.alummahnow.feature.studio
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -16,6 +20,7 @@ import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.channels.AccountSheet
+import net.alummahnow.feature.studio.channels.AccountSheetContent
 import net.alummahnow.feature.studio.channels.ChannelPickerScreen
 import net.alummahnow.feature.studio.channels.ChannelsUiState
 import net.alummahnow.feature.studio.channels.ChannelsViewModel
@@ -125,6 +130,56 @@ class SignInAndChannelsTest {
         assertEquals("c2", picked)
     }
 
+    @Test
+    fun `picker is headed Acting as and tags every channel Channel, in English`() {
+        RuntimeEnvironment.setQualifiers("en-ldltr")
+        compose.setContent { AunTheme { ChannelPickerScreen(ChannelsUiState.Content(sampleChannels, "c1"), {}, {}) } }
+        compose.onNodeWithText("Acting as").assertExists()
+        compose.onNodeWithText("Your Channels").assertExists()
+        compose.onNodeWithText("Channels you manage").assertExists()
+        compose.onAllNodesWithText("Channel").assertCountEquals(sampleChannels.size)
+        assertNoPersonalWording()
+    }
+
+    @Test
+    fun `picker is headed Acting as and tags every channel Channel, in Arabic`() {
+        RuntimeEnvironment.setQualifiers("ar-ldrtl")
+        compose.setContent { AunTheme { ChannelPickerScreen(ChannelsUiState.Content(sampleChannels, "c1"), {}, {}) } }
+        compose.onNodeWithText("تتصرّف باسم").assertExists()
+        compose.onNodeWithText("قنواتك").assertExists()
+        compose.onNodeWithText("القنوات التي تديرها").assertExists()
+        compose.onAllNodesWithText("قناة").assertCountEquals(sampleChannels.size)
+    }
+
+    @Test
+    fun `account sheet shows the channel Studio is acting as, tagged Channel`() {
+        RuntimeEnvironment.setQualifiers("en-ldltr")
+        var switched = 0
+        compose.setContent {
+            AunTheme { AccountSheetContent(sheetAccounts, "u1", sampleChannels[0], {}, {}, {}, { switched++ }) }
+        }
+        compose.onNodeWithText("Acting as").assertExists()
+        compose.onNodeWithTag("switch-channel").assertTextContains("Channel").assertTextContains("Lectures")
+        compose.onNodeWithTag("switch-channel").performClick()
+        assertEquals(1, switched)
+        assertNoPersonalWording()
+    }
+
+    @Test
+    fun `account sheet in Arabic says تتصرّف باسم and قناة`() {
+        RuntimeEnvironment.setQualifiers("ar-ldrtl")
+        compose.setContent { AunTheme { AccountSheetContent(sheetAccounts, "u1", sampleChannels[0], {}, {}, {}, {}) } }
+        compose.onNodeWithText("تتصرّف باسم").assertExists()
+        compose.onNodeWithTag("switch-channel").assertTextContains("قناة").assertTextContains("محاضرات")
+    }
+
+    /** The owner's rule: the personal identity is never called "none" / "no channel" / "without a channel". */
+    private fun assertNoPersonalWording() {
+        listOf("none", "no channel", "without a channel").forEach {
+            compose.onAllNodesWithText(it, substring = true, ignoreCase = true).assertCountEquals(0)
+        }
+    }
+
     // --- Screenshots ---
 
     private val signIn = @androidx.compose.runtime.Composable { SignInScreen(SignInUiState.Idle, {}, null, null, passkeySupported = true) }
@@ -133,6 +188,16 @@ class SignInAndChannelsTest {
         SignInScreen(SignInUiState.Error(R.string.studio_signin_failed), {}, null, null)
     }
     private val picker = @androidx.compose.runtime.Composable { ChannelPickerScreen(ChannelsUiState.Content(sampleChannels, "c1"), {}, {}) }
+    private val sheetAccounts =
+        listOf(sampleAccount, sampleAccount.copy(userId = "u2", displayName = "Second", email = "second@example.com"))
+    private val sheet = @androidx.compose.runtime.Composable {
+        androidx.compose.material3.Surface(
+            androidx.compose.ui.Modifier.fillMaxSize(),
+            color = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainer
+        ) {
+            AccountSheetContent(sheetAccounts, "u1", sampleChannels[0], {}, {}, {}, {}, onAddPasskey = {})
+        }
+    }
     private val dashboard = @androidx.compose.runtime.Composable {
         DashboardScreen(
             sampleChannels[0],
@@ -191,7 +256,29 @@ class SignInAndChannelsTest {
 
     @Test fun pickerArLight() = shoot("channels", Lang.AR, ThemeMode.LIGHT, content = picker)
 
+    @Test fun pickerTabletEnLight() = shoot("channels", Lang.EN, ThemeMode.LIGHT, Device.TABLET, picker)
+
+    @Test fun pickerTabletEnDark() = shoot("channels", Lang.EN, ThemeMode.DARK, Device.TABLET, picker)
+
+    @Test fun pickerTabletArLight() = shoot("channels", Lang.AR, ThemeMode.LIGHT, Device.TABLET, picker)
+
     @Test fun pickerTabletArDark() = shoot("channels", Lang.AR, ThemeMode.DARK, Device.TABLET, picker)
+
+    @Test fun sheetEnLight() = shoot("account_sheet", Lang.EN, ThemeMode.LIGHT, content = sheet)
+
+    @Test fun sheetEnDark() = shoot("account_sheet", Lang.EN, ThemeMode.DARK, content = sheet)
+
+    @Test fun sheetArLight() = shoot("account_sheet", Lang.AR, ThemeMode.LIGHT, content = sheet)
+
+    @Test fun sheetArDark() = shoot("account_sheet", Lang.AR, ThemeMode.DARK, content = sheet)
+
+    @Test fun sheetTabletEnLight() = shoot("account_sheet", Lang.EN, ThemeMode.LIGHT, Device.TABLET, sheet)
+
+    @Test fun sheetTabletEnDark() = shoot("account_sheet", Lang.EN, ThemeMode.DARK, Device.TABLET, sheet)
+
+    @Test fun sheetTabletArLight() = shoot("account_sheet", Lang.AR, ThemeMode.LIGHT, Device.TABLET, sheet)
+
+    @Test fun sheetTabletArDark() = shoot("account_sheet", Lang.AR, ThemeMode.DARK, Device.TABLET, sheet)
 
     @Test fun dashboardEnDark() = shoot("dashboard", Lang.EN, ThemeMode.DARK, content = dashboard)
 

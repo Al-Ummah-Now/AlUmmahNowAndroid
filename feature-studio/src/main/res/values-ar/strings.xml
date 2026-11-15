@@ -17,7 +17,10 @@
     <string name="studio_sign_out_cd">تسجيل الخروج من %1$s</string>
     <string name="studio_sign_out_title">تسجيل الخروج من %1$s؟</string>
     <string name="studio_sign_out_body">تتوقف رفوعات هذا الحساب على هذا الجهاز، ويُسجَّل خروجك من الأمة الآن في المتصفح أيضًا. يمكنك تسجيل الدخول مجددًا في أي وقت.</string>
-    <string name="studio_channels_title">اختر قناة</string>
+    <string name="studio_acting_as">تتصرّف باسم</string>
+    <string name="studio_identity_channel">قناة</string>
+    <string name="studio_channels_yours">قنواتك</string>
+    <string name="studio_channels_managed">القنوات التي تديرها</string>
     <string name="studio_channels_empty">لا توجد قنوات لهذا الحساب بعد. أنشئ قناة من موقع الأمة الآن.</string>
     <string name="studio_role_owner">المالك</string>
     <string name="studio_role_admin">مشرف</string>
