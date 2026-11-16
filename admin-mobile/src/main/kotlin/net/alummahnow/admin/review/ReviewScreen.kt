@@ -319,7 +319,7 @@ private fun FindingRow(finding: ReviewFinding, blurred: Boolean) {
             style = MaterialTheme.typography.bodyMedium
         )
         // Flagged transcript or metadata text can be explicit: hidden with the media until "Show".
-        finding.text?.let { if (!blurred) Text("“${isolate(it)}”", style = MaterialTheme.typography.bodySmall) }
+        finding.text?.let { if (!blurred) Text(aunString(R.string.quoted, isolate(it)), style = MaterialTheme.typography.bodySmall) }
         finding.quranRef?.let { Text(aunString(R.string.quran_ref, it), style = MaterialTheme.typography.bodySmall) }
         // The model's note is free English text (no code to translate by): isolated so its punctuation stays with it.
         finding.rationale?.let {
