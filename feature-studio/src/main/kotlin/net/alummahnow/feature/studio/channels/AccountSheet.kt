@@ -7,12 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -31,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -67,7 +69,10 @@ fun AccountSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("account-sheet"),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        dragHandle = null,
+        shape = RectangleShape
     ) {
         AccountSheetContent(
             accounts = accounts,
@@ -108,9 +113,10 @@ internal fun AccountSheetContent(
     onAddAccount: () -> Unit,
     onSignOut: (StudioAccount) -> Unit,
     onSwitchChannel: () -> Unit,
-    onAddPasskey: (() -> Unit)? = null
+    onAddPasskey: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
 ) {
-    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = FanousTokens.Spacing.lg)) {
+    SheetPanel(modifier) {
         if (channel != null) {
             SheetHeading(stringResource(R.string.studio_acting_as))
             SheetRow(
@@ -129,16 +135,21 @@ internal fun AccountSheetContent(
             SheetRow(
                 icon = { AccountAvatar(a) },
                 title = a.label,
-                subtitle = when {
-                    a.needsReauth -> stringResource(R.string.studio_account_reauth)
-                    active -> stringResource(R.string.studio_account_active)
-                    else -> a.email.orEmpty()
-                },
+                // Every row: name, then email (or "Sign in again" when the session ended); a check marks the active one.
+                subtitle = if (a.needsReauth) stringResource(R.string.studio_account_reauth) else a.email.orEmpty(),
                 modifier = Modifier
                     .semantics { selected = active }
                     .clickable(enabled = !active, role = Role.Button) { onSwitchAccount(a.userId) }
                     .testTag("account-${a.userId}"),
                 trailing = {
+                    if (active) {
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = stringResource(R.string.studio_account_active),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("account-active-${a.userId}")
+                        )
+                    }
                     IconButton(onClick = { onSignOut(a) }, modifier = Modifier.testTag("sign-out-${a.userId}")) {
                         Icon(
                             Icons.AutoMirrored.Filled.Logout,

@@ -21,6 +21,7 @@
     <string name="studio_identity_channel">قناة</string>
     <string name="studio_channels_yours">قنواتك</string>
     <string name="studio_channels_managed">القنوات التي تديرها</string>
+    <string name="studio_close">إغلاق</string>
     <string name="studio_channels_empty">لا توجد قنوات لهذا الحساب بعد. أنشئ قناة من موقع الأمة الآن.</string>
     <string name="studio_role_owner">المالك</string>
     <string name="studio_role_admin">مشرف</string>

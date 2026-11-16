@@ -19,8 +19,9 @@
     <string name="studio_sign_out_body">Uploads for this account stop on this device, and you\'re signed out of Al Ummah Now in your browser too. You can sign in again any time.</string>
     <string name="studio_acting_as">Acting as</string>
     <string name="studio_identity_channel">Channel</string>
-    <string name="studio_channels_yours">Your Channels</string>
+    <string name="studio_channels_yours">Your channels</string>
     <string name="studio_channels_managed">Channels you manage</string>
+    <string name="studio_close">Close</string>
     <string name="studio_channels_empty">This account has no channels yet. Create one on the Al Ummah Now website.</string>
     <string name="studio_role_owner">Owner</string>
     <string name="studio_role_admin">Admin</string>

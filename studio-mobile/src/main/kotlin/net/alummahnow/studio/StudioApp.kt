@@ -54,6 +54,7 @@ import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.channels.AccountSheet
 import net.alummahnow.feature.studio.channels.ChannelAvatar
 import net.alummahnow.feature.studio.channels.ChannelPickerScreen
+import net.alummahnow.feature.studio.channels.ChannelPickerSheet
 import net.alummahnow.feature.studio.channels.ChannelsUiState
 import net.alummahnow.feature.studio.channels.ChannelsViewModel
 import net.alummahnow.feature.studio.content.ContentRoute
@@ -128,6 +129,7 @@ fun StudioApp(
     val snackbar = remember { SnackbarHostState() }
     val resources = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
+    var pickerOpen by remember { mutableStateOf(false) }
     val selected = (channelsState as? ChannelsUiState.Content)?.selected
     LaunchedEffect(pendingLink, channelsState) {
         val link = pendingLink ?: return@LaunchedEffect
@@ -197,6 +199,19 @@ fun StudioApp(
         }
     }
 
+    val loaded = channelsState as? ChannelsUiState.Content
+    if (pickerOpen && loaded != null) {
+        ChannelPickerSheet(
+            channels = loaded.channels,
+            selectedId = loaded.selectedId,
+            onSelect = {
+                pickerOpen = false
+                channels.select(it)
+            },
+            onDismiss = { pickerOpen = false }
+        )
+    }
+
     if (sheetOpen) {
         AccountSheet(
             accounts = accounts,
@@ -225,7 +240,7 @@ fun StudioApp(
             },
             onSwitchChannel = {
                 sheetOpen = false
-                channels.clearSelection()
+                pickerOpen = true
             },
             onDismiss = { sheetOpen = false },
             onAddPasskey = if (authenticator.isSupported) {

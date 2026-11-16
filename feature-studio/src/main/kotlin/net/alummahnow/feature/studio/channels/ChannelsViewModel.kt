@@ -62,12 +62,6 @@ class ChannelsViewModel(
         mutableState.value = s.copy(selectedId = channelId)
     }
 
-    /** Back to the picker (keeps the list). */
-    fun clearSelection() {
-        val s = mutableState.value as? ChannelsUiState.Content ?: return
-        mutableState.value = s.copy(selectedId = null)
-    }
-
     class Factory(private val session: AccountSession, private val repository: StudioRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T = ChannelsViewModel(session, repository) as T
