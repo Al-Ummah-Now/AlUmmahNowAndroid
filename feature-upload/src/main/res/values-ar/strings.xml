@@ -87,6 +87,6 @@
         <item quantity="many">رُفع %1$d مرئيًا</item>
         <item quantity="other">رُفع %1$d مرئي</item>
     </plurals>
-    <string name="upload_pad_numbers">إكمال {n} بالأصفار (01، 02 …)</string>
+    <string name="upload_pad_numbers">إكمال {n} بالأصفار (%1$s، %2$s …)</string>
     <string name="upload_error_title_long">يجب ألا يزيد العنوان على %1$d حرف.</string>
 </resources>

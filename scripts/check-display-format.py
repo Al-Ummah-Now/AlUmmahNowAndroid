@@ -26,6 +26,7 @@ LINE_RULES = [
     (re.compile(r"\bFormatter\.format(Short)?FileSize\b"), "file size: use fileSizeLabel"),
     (re.compile(r"\b(pluralStringResource|getQuantityString)\("), "plurals: use aunPlural"),
     (re.compile(r"localized(Digits|Decimal)\([^)]*(toString\(\)|\"\$)"), "a number as text: use numberLabel / AunFormat.number"),
+    (re.compile(r"\"[^\"]*\s\u00b7\s[^\"]*\"|joinToString\(\"\s*[\u00b7\u2022]\s*\"\)"), "meta separator: use joinMeta (Arabic « • »)"),
 ]
 
 # stringResource / getString with arguments: Android formats integers with the platform locale data.

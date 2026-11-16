@@ -52,7 +52,15 @@ val sampleVideos = listOf(
         durationSeconds = 600.0,
         status = ContentStatus.PUBLISHED
     ),
-    StudioVideo("v3", "Ramadan reminders", views = 12000, durationSeconds = 45.0, category = "ramadan", status = ContentStatus.PUBLISHED)
+    StudioVideo(
+        "v3",
+        "Ramadan reminders",
+        titleLocalized = mapOf("ar" to "تذكيرات رمضان"),
+        views = 12000,
+        durationSeconds = 45.0,
+        category = "ramadan",
+        status = ContentStatus.PUBLISHED
+    )
 )
 
 class FakeSession(signedIn: Boolean = true) : AccountSession {
@@ -198,8 +206,8 @@ val sampleAnalytics = ChannelAnalytics(
     avgViewsPerVideo = 4535.7,
     engagementRate = 8.2,
     topVideos = listOf(
-        VideoStat("v3", "Ramadan reminders", null, 12000, 800, 90, 360000, 30.0),
-        VideoStat("v1", "Introduction to Tafsir", null, 1520, 150, 40, 540000, 355.0)
+        VideoStat("v3", "Ramadan reminders", null, 12000, 800, 90, 360000, 30.0, mapOf("ar" to "تذكيرات رمضان")),
+        VideoStat("v1", "Introduction to Tafsir", null, 1520, 150, 40, 540000, 355.0, mapOf("ar" to "مقدمة في التفسير"))
     ),
     daily = (1..28).map { d -> DailyMetric("2026-10-%02d".format(d), (d * 37L) % 500 + 40, 5, 1, d % 3L, 3600L * (d % 5)) }
 )

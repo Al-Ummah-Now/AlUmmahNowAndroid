@@ -112,7 +112,8 @@ object StudioMappers {
                         likes = v.l("likes"),
                         comments = v.l("comments"),
                         watchTimeSeconds = v.l("watchTime"),
-                        avgViewDurationSeconds = v.d("avgViewDuration") ?: 0.0
+                        avgViewDurationSeconds = v.d("avgViewDuration") ?: 0.0,
+                        titleLocalized = v.strMap("titleLocalized")
                     )
                 }
             }

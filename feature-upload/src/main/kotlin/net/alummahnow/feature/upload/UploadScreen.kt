@@ -88,6 +88,8 @@ import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.fileSizeLabel
 import net.alummahnow.design.format.isolate
+import net.alummahnow.design.format.joinMeta
+import net.alummahnow.design.format.localizedDigits
 import net.alummahnow.design.format.percentLabel
 import net.alummahnow.design.theme.FanousTokens
 
@@ -193,7 +195,7 @@ private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActi
                 Column(Modifier.padding(FanousTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "${isolate(f.name)} · ${fileSizeLabel(f.sizeBytes)}",
+                            joinMeta(isolate(f.name), fileSizeLabel(f.sizeBytes)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -443,7 +445,7 @@ private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> U
                 Column(Modifier.weight(1f)) {
                     Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        if (item.isActive && item.totalBytes > 0) "$phase · $percentText" else phase,
+                        if (item.isActive && item.totalBytes > 0) joinMeta(phase, percentText) else phase,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (item.phase ==
                             UploadPhase.FAILED
@@ -500,7 +502,15 @@ private fun TitlePatternField(state: UploadUiState, actions: UploadActions) {
         modifier = Modifier.fillMaxWidth().testTag("upload-pattern")
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.upload_pad_numbers), modifier = Modifier.weight(1f))
+        Text(
+            // The example shows what {n} becomes when padded: title text keeps 0–9, the hint shows ٠–٩ in Arabic.
+            aunString(
+                R.string.upload_pad_numbers,
+                localizedDigits(TitlePattern.number(0, pad = 2)),
+                localizedDigits(TitlePattern.number(1, pad = 2))
+            ),
+            modifier = Modifier.weight(1f)
+        )
         Switch(
             checked = state.form.padNumbers,
             onCheckedChange = { on -> actions.onForm { it.copy(padNumbers = on) } },

@@ -86,6 +86,18 @@ class AunFormatTest {
         assertEquals(AunFormat.Compact("١٫٢", Scale.THOUSAND), AunFormat.compact(1_250, ar))
     }
 
+    @Test fun `Arabic meta lines use a bullet, because the middle dot reads as zero`() {
+        assertEquals("عام \u2022 ١٫٥ ألف مشاهدة", AunFormat.joinMeta(listOf("عام", null, "", "١٫٥ ألف مشاهدة"), ar))
+        assertEquals("Public \u00B7 1.5K views", AunFormat.joinMeta(listOf("Public", "1.5K views"), en))
+        assertFalse(AunFormat.separator(ar).contains('\u00B7'))
+    }
+
+    @Test fun `only a decimal point between digits becomes the Arabic decimal separator`() {
+        assertEquals("٧٣٤ م.ب", AunFormat.decimal("734 م.ب", ar))
+        assertEquals("١٫٥ م.ب", AunFormat.decimal("1.5 م.ب", ar))
+        assertEquals("1.5 MB", AunFormat.decimal("1.5 MB", en))
+    }
+
     @Test fun `text arguments are never rewritten`() {
         assertEquals("Lesson 3 · ١", AunFormat.format("%1\$s · %2\$d", ar, "Lesson 3", 1))
     }

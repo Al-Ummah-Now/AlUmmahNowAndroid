@@ -83,13 +83,15 @@ class StudioMappersTest {
             obj(
                 """{"channelId":"c","totalViews":100,"totalVideos":4,"totalSubscribers":7,"totalLikes":9,"totalComments":2,
                 "avgViewsPerVideo":25,"avgEngagementRate":11.5,
-                "topPerformingVideos":[{"videoId":"v","title":"Top","views":60,"likes":5,"comments":1,"watchTime":3600,"avgViewDuration":60}],
+                "topPerformingVideos":[{"videoId":"v","title":"Top","titleLocalized":{"ar":"الأعلى"},"views":60,"likes":5,"comments":1,
+                "watchTime":3600,"avgViewDuration":60}],
                 "recentMetrics":[{"date":"2026-11-02","views":5,"watchTime":60},{"date":"2026-11-01","views":3,"watchTime":30}]}"""
             )
         )
         assertEquals(100L, a.totalViews)
         assertEquals(11.5, a.engagementRate, 0.0)
         assertEquals("v", a.topVideos.single().videoId)
+        assertEquals("الأعلى", a.topVideos.single().titleLocalized["ar"])
         assertEquals(listOf("2026-11-01", "2026-11-02"), a.daily.map { it.date })
         assertEquals(90L, a.watchTimeSeconds)
     }

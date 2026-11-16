@@ -122,11 +122,13 @@ private fun Content(data: ChannelAnalytics, width: Modifier) {
                 heading()
             }
         )
+        val language = currentLocale().language
         Card(width, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
             data.topVideos.forEachIndexed { i, v ->
+                val title = v.titleLocalized[language]?.takeIf { it.isNotBlank() } ?: v.title
                 Row(Modifier.fillMaxWidth().padding(FanousTokens.Spacing.md), verticalAlignment = Alignment.CenterVertically) {
                     Text(numberLabel(i + 1L), style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(32.dp))
-                    Text(v.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(compactCount(v.views), style = MaterialTheme.typography.labelLarge)
                 }
             }

@@ -180,7 +180,9 @@ data class VideoStat(
     val likes: Long,
     val comments: Long,
     val watchTimeSeconds: Long,
-    val avgViewDurationSeconds: Double
+    val avgViewDurationSeconds: Double,
+    /** Per-language titles, shown like the Content list (`titleLocalized[language]`, else [title]). */
+    val titleLocalized: Map<String, String> = emptyMap()
 )
 
 data class ChannelAnalytics(

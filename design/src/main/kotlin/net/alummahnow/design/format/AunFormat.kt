@@ -46,9 +46,24 @@ object AunFormat {
         }
     }
 
-    /** Like [digits], and the decimal point becomes the Arabic decimal separator (٫): "1.5" → "١٫٥". */
+    /**
+     * Like [digits], and a decimal point between two digits becomes the Arabic decimal separator (٫): "1.5" → "١٫٥".
+     * Dots elsewhere (the one in the «م.ب» abbreviation) stay.
+     */
     fun decimal(text: String, locale: Locale): String =
-        if (isArabic(locale)) digits(text.replace('.', ARABIC_DECIMAL), locale) else text
+        if (isArabic(locale)) digits(DECIMAL_POINT.replace(text, ARABIC_DECIMAL.toString()), locale) else text
+
+    private val DECIMAL_POINT = Regex("(?<=[0-9\u0660-\u0669])\\.(?=[0-9\u0660-\u0669])")
+
+    /**
+     * The separator between values in a meta line ("Public · 1.2K views · Nov 6"). In Arabic the middle dot «·» reads as
+     * the digit zero «٠», so Arabic uses a bullet: « • ».
+     */
+    fun separator(locale: Locale): String = if (isArabic(locale)) " \u2022 " else " \u00B7 "
+
+    /** Joins the non-blank [parts] of a meta line with [separator]. */
+    fun joinMeta(parts: List<String?>, locale: Locale): String =
+        parts.filterNot { it.isNullOrBlank() }.joinToString(separator(locale))
 
     /** ٠–٩ and ۰–۹ typed by people become 0–9, so numeric inputs and codes parse the same in every language. */
     fun normalizeDigits(text: String): String = buildString(text.length) {

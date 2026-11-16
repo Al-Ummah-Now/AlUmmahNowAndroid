@@ -4,6 +4,9 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -37,6 +40,7 @@ import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.StudioSuggestion
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.VideoEdit
+import net.alummahnow.core.bridge.studio.VideoStat
 import net.alummahnow.core.bridge.studio.VisibilityFilter
 
 /**
@@ -303,11 +307,37 @@ class CoreStudioRepository(
                 put("dateTo", now.toString())
             }
         )
-        return StudioMappers.analytics(J.parse(body).unwrap().obj() ?: JsonObject(emptyMap()))
+        val analytics = StudioMappers.analytics(J.parse(body).unwrap().obj() ?: JsonObject(emptyMap()))
+        return analytics.copy(topVideos = withLocalizedTitles(analytics.topVideos))
+    }
+
+    /**
+     * The analytics API returns only the stored title for top videos; their per-language titles come from the video
+     * itself (at most [MAX_TOP_TITLE_LOOKUPS] parallel reads). A failed read keeps the stored title.
+     */
+    private suspend fun withLocalizedTitles(top: List<VideoStat>): List<VideoStat> = coroutineScope {
+        top.mapIndexed { i, stat ->
+            if (stat.titleLocalized.isNotEmpty() || i >= MAX_TOP_TITLE_LOOKUPS) {
+                async { stat }
+            } else {
+                async { stat.copy(titleLocalized = localizedTitle(stat.videoId)) }
+            }
+        }.awaitAll()
+    }
+
+    private suspend fun localizedTitle(videoId: String): Map<String, String> = try {
+        video(videoId).titleLocalized
+    } catch (e: CoreError) {
+        AunLog.w("studio", "top video title", "error" to e.javaClass.simpleName)
+        emptyMap()
+    } catch (e: StudioError) {
+        AunLog.w("studio", "top video title", "error" to e.javaClass.simpleName)
+        emptyMap()
     }
 
     private companion object {
         const val SUGGESTION_LIMIT = 6
         const val MAX_UPLOAD_PLAYLISTS = 20
+        const val MAX_TOP_TITLE_LOOKUPS = 10
     }
 }

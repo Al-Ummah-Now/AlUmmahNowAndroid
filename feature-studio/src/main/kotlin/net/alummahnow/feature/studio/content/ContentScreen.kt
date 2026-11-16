@@ -72,6 +72,7 @@ import net.alummahnow.design.format.aunPlural
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.isolate
+import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.localizedDigits
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
@@ -439,7 +440,7 @@ private fun meta(v: StudioVideo, deleted: Boolean): String {
         parts += viewsLabel(v.views)
         v.createdAt?.let { parts += formatDate(it) }
     }
-    return parts.joinToString(" · ")
+    return joinMeta(parts)
 }
 
 @Composable
