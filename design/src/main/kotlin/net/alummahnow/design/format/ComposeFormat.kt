@@ -10,8 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import java.time.format.FormatStyle
@@ -92,4 +90,4 @@ fun localizedDecimal(text: String): String = AunFormat.decimal(text, currentLoca
  * Isolates user-supplied text (names, e-mails, titles) inside a localised sentence (FSI … PDI), so
  * Latin text in an Arabic sentence (and the reverse) does not reorder the punctuation around it.
  */
-fun isolate(text: String): String = "⁨$text⁩"
+fun isolate(text: String): String = "\u2068$text\u2069"
