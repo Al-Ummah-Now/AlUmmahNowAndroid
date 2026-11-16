@@ -41,6 +41,7 @@ import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.isolate
+import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
 import net.alummahnow.feature.studio.studioText
@@ -121,7 +122,7 @@ private fun ChannelRow(channel: StudioChannel, selected: Boolean, onClick: () ->
                     if (channel.isSuspended) add(stringResource(R.string.studio_channel_suspended))
                 }
                 Text(
-                    details.joinToString(" · "),
+                    joinMeta(details),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -29,6 +29,7 @@ import coil3.compose.AsyncImage
 import net.alummahnow.design.R
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.durationLabel
+import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
 
@@ -69,7 +70,7 @@ fun VideoCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = FanousTokens.Spacing.sm, start = FanousTokens.Spacing.xs, end = FanousTokens.Spacing.xs)
         )
-        val meta = listOfNotNull(data.channelName?.takeIf { it.isNotBlank() }, viewsLabel(data.views)).joinToString(" • ")
+        val meta = joinMeta(data.channelName, viewsLabel(data.views))
         Text(
             text = meta,
             style = MaterialTheme.typography.bodySmall,

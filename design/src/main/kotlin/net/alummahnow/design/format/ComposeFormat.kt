@@ -41,6 +41,13 @@ fun Resources.aunString(@StringRes id: Int, vararg args: Any?): String = AunForm
 fun Resources.aunPlural(@PluralsRes id: Int, count: Int, vararg args: Any?): String =
     AunFormat.format(getQuantityString(id, count), displayLocale(), *args)
 
+/** A meta line ("Public · 1.2K views"); Arabic uses « • » because «·» reads as «٠». */
+@Composable
+fun joinMeta(vararg parts: String?): String = AunFormat.joinMeta(parts.toList(), currentLocale())
+
+@Composable
+fun joinMeta(parts: List<String?>): String = AunFormat.joinMeta(parts, currentLocale())
+
 @Composable
 fun numberLabel(value: Long): String = AunFormat.number(value, currentLocale())
 

@@ -45,6 +45,7 @@ import net.alummahnow.core.bridge.admin.HoldCause
 import net.alummahnow.core.bridge.admin.ReviewItem
 import net.alummahnow.core.bridge.admin.ReviewTab
 import net.alummahnow.design.format.aunString
+import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.theme.FanousTokens
 
 /**
@@ -195,7 +196,7 @@ private fun QueueRow(item: ReviewItem, myUserId: String, now: Instant, onOpen: (
                 )
             }
         }
-        val channel = listOfNotNull(item.channelName, Labels.trust(item.channelTrust)).joinToString(" · ")
+        val channel = joinMeta(item.channelName, Labels.trust(item.channelTrust))
         if (channel.isNotEmpty()) {
             Text(
                 channel,

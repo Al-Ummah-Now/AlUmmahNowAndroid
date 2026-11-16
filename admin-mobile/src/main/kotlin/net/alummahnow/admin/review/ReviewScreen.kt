@@ -25,10 +25,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -56,6 +58,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import java.time.Instant
 import net.alummahnow.admin.R
@@ -69,6 +72,8 @@ import net.alummahnow.core.bridge.admin.ReviewFinding
 import net.alummahnow.core.bridge.admin.ReviewFrame
 import net.alummahnow.core.bridge.admin.ReviewReason
 import net.alummahnow.design.format.aunString
+import net.alummahnow.design.format.isolate
+import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.percentLabel
 import net.alummahnow.design.theme.FanousTokens
 
@@ -137,7 +142,7 @@ fun ReviewScreen(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.semantics { heading() }
                 )
-                val channel = listOfNotNull(item.channelName, Labels.trust(item.channelTrust)).joinToString(" · ")
+                val channel = joinMeta(item.channelName, Labels.trust(item.channelTrust))
                 if (channel.isNotEmpty()) Text(channel, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val due = item.slaDueAt
                 if (item.isOpen && due != null) Text(Labels.timeLeft(due, now), style = MaterialTheme.typography.labelLarge)
@@ -158,7 +163,10 @@ fun ReviewScreen(
             }
             detail.subject?.let { subject ->
                 Section(stringResource(R.string.section_metadata)) {
-                    if (subject.description.isNotBlank()) Text(subject.description)
+                    if (subject.description.isNotBlank()) {
+                        // Creator text in its own direction (like dir="auto"), so its punctuation sits on the right side.
+                        Text(subject.description, style = LocalTextStyle.current.copy(textDirection = TextDirection.Content))
+                    }
                     if (subject.tags.isNotEmpty()) Text(aunString(R.string.tags, subject.tags.joinToString(", ")))
                     subject.durationSeconds?.let { Text(aunString(R.string.duration, Labels.position((it * 1000).toLong()))) }
                 }
@@ -167,12 +175,12 @@ fun ReviewScreen(
                 if (detail.history.isEmpty()) Text(stringResource(R.string.history_none))
                 detail.history.forEach { h ->
                     Text(
-                        listOfNotNull(
+                        joinMeta(
                             Labels.decision(h.decision ?: h.status),
                             h.reasonCode?.let { code -> ReviewReason.of(code)?.let { stringResource(Labels.reason(it)) } ?: code },
                             h.decidedByName,
                             h.decidedAt?.let { aunString(R.string.ago, Labels.ago(it, now)) }
-                        ).joinToString(" · ")
+                        )
                     )
                 }
             }
@@ -302,18 +310,21 @@ private fun FrameThumb(frame: ReviewFrame, bytes: ByteArray?, blurred: Boolean) 
 private fun FindingRow(finding: ReviewFinding, blurred: Boolean) {
     Column(Modifier.fillMaxWidth().padding(vertical = FanousTokens.Spacing.xs)) {
         Text(
-            listOfNotNull(
+            joinMeta(
                 Labels.category(finding.category),
                 percentLabel(finding.score),
                 Labels.source(finding.source),
                 finding.atMs?.let { aunString(R.string.at_position, Labels.position(it)) }
-            ).joinToString(" · "),
+            ),
             style = MaterialTheme.typography.bodyMedium
         )
         // Flagged transcript or metadata text can be explicit: hidden with the media until "Show".
-        finding.text?.let { if (!blurred) Text("“$it”", style = MaterialTheme.typography.bodySmall) }
+        finding.text?.let { if (!blurred) Text("“${isolate(it)}”", style = MaterialTheme.typography.bodySmall) }
         finding.quranRef?.let { Text(aunString(R.string.quran_ref, it), style = MaterialTheme.typography.bodySmall) }
-        finding.rationale?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        // The model's note is free English text (no code to translate by): isolated so its punctuation stays with it.
+        finding.rationale?.let {
+            Text(isolate(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -346,7 +357,11 @@ private fun MessageBanner(message: ReviewMessage, now: Instant, onDismiss: () ->
     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
         Row(Modifier.padding(FanousTokens.Spacing.md), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { MessageText(message, now) }
-            androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = MinTarget)) {
+            androidx.compose.material3.TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = MinTarget),
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
+            ) {
                 Text(stringResource(R.string.dismiss))
             }
         }

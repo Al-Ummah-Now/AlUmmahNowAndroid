@@ -53,6 +53,7 @@ import net.alummahnow.design.components.VideoCard
 import net.alummahnow.design.components.VideoCardData
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.durationLabel
+import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.player.MediaItems
@@ -171,7 +172,7 @@ private fun LazyListScope.details(video: VideoDetail, locale: Locale, onChapter:
                 modifier = Modifier.semantics { heading() }
             )
             Text(
-                listOfNotNull(video.summary.channelName, viewsLabel(video.summary.views)).joinToString(" • "),
+                joinMeta(video.summary.channelName, viewsLabel(video.summary.views)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = FanousTokens.Spacing.xs)
