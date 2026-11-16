@@ -20,9 +20,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
-import java.util.Locale
-import net.alummahnow.design.format.localizedDecimal
-import net.alummahnow.design.format.localizedDigits
+import net.alummahnow.design.format.AunFormat
+import net.alummahnow.design.format.aunString
+import net.alummahnow.design.format.currentLocale
 import net.alummahnow.player.PlaybackSpeeds
 import net.alummahnow.player.R
 import net.alummahnow.player.TrackOptions
@@ -47,7 +47,7 @@ fun PlayerSettingsContent(player: Player, ui: PlayerUiState) {
                     R.string.aun_player_quality_auto
                 )
             } else {
-                localizedDigits(stringResource(R.string.aun_player_quality_p, q.height!!))
+                aunString(R.string.aun_player_quality_p, q.height!!)
             }
             Choice(label, selected = q.height == selectedQuality.height) {
                 player.trackSelectionParameters = TrackOptions.applyQuality(player.trackSelectionParameters, ui.tracks, q)
@@ -59,7 +59,7 @@ fun PlayerSettingsContent(player: Player, ui: PlayerUiState) {
             val label = if (s == 1f) {
                 stringResource(R.string.aun_player_speed_normal)
             } else {
-                localizedDecimal(stringResource(R.string.aun_player_speed_x, "%.2f".format(Locale.ROOT, s).trimEnd('0').trimEnd('.')))
+                aunString(R.string.aun_player_speed_x, AunFormat.number(s.toDouble(), currentLocale(), maxFraction = 2))
             }
             Choice(label, selected = ui.speed == s) { player.setPlaybackSpeed(s) }
         }

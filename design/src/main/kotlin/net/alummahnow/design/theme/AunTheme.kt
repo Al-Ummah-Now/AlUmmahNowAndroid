@@ -9,8 +9,6 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -102,15 +100,9 @@ internal val AunShapes = Shapes(
     large = RoundedCornerShape(FanousTokens.Radius.lg)
 )
 
-/** Display preferences that components read (Eastern Arabic digits is a user option, spec §3). */
-data class AunDisplayPrefs(val easternArabicDigits: Boolean = true)
-
-val LocalAunDisplayPrefs = staticCompositionLocalOf { AunDisplayPrefs() }
-
 @Composable
 fun AunTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
-    displayPrefs: AunDisplayPrefs = AunDisplayPrefs(),
     content: @Composable () -> Unit
 ) {
     val dark = when (mode) {
@@ -118,12 +110,10 @@ fun AunTheme(
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
-    CompositionLocalProvider(LocalAunDisplayPrefs provides displayPrefs) {
-        MaterialTheme(
-            colorScheme = if (dark) NightColors else ParchmentColors,
-            typography = AunTypography,
-            shapes = AunShapes,
-            content = content
-        )
-    }
+    MaterialTheme(
+        colorScheme = if (dark) NightColors else ParchmentColors,
+        typography = AunTypography,
+        shapes = AunShapes,
+        content = content
+    )
 }

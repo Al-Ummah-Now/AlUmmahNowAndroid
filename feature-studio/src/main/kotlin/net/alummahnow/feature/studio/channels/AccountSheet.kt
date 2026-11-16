@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.ConfirmDialog
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.isolate
 import net.alummahnow.design.theme.FanousTokens
@@ -101,7 +102,7 @@ fun AccountSheet(
                         IconButton(onClick = { confirmSignOut = a }, modifier = Modifier.testTag("sign-out-${a.userId}")) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = stringResource(R.string.studio_sign_out_cd, isolate(a.label))
+                                contentDescription = aunString(R.string.studio_sign_out_cd, isolate(a.label))
                             )
                         }
                     }
@@ -125,7 +126,7 @@ fun AccountSheet(
     }
     confirmSignOut?.let { a ->
         ConfirmDialog(
-            title = stringResource(R.string.studio_sign_out_title, isolate(a.label)),
+            title = aunString(R.string.studio_sign_out_title, isolate(a.label)),
             message = stringResource(R.string.studio_sign_out_body),
             confirmLabel = stringResource(R.string.studio_sign_out),
             onConfirm = {

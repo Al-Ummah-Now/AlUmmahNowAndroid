@@ -48,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -62,20 +61,22 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import net.alummahnow.core.bridge.studio.BulkChanges
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.Thumbnail
+import net.alummahnow.design.format.AunFormat
+import net.alummahnow.design.format.aunPlural
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.isolate
 import net.alummahnow.design.format.localizedDigits
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
+import net.alummahnow.feature.studio.studioText
 
 /** Wires [ContentViewModel]; [onEdit] opens the single-video editor. */
 @Composable
@@ -89,7 +90,7 @@ fun ContentRoute(viewModel: ContentViewModel, onEdit: (String) -> Unit, modifier
             is ContentNotice.Deleted -> partial(resources, R.plurals.studio_deleted, n.count, n.failed)
             is ContentNotice.Restored -> partial(resources, R.plurals.studio_restored, n.count, n.failed)
             is ContentNotice.Updated -> partial(resources, R.plurals.studio_updated, n.count, n.failed)
-            is ContentNotice.Failed -> resources.getString(n.message)
+            is ContentNotice.Failed -> resources.studioText(n.message)
         }
         viewModel.consumeNotice()
         snackbar.showSnackbar(text)
@@ -101,7 +102,7 @@ fun ContentRoute(viewModel: ContentViewModel, onEdit: (String) -> Unit, modifier
 }
 
 private fun partial(resources: android.content.res.Resources, plural: Int, ok: Int, failed: Int): String =
-    if (failed == 0) resources.getQuantityString(plural, ok, ok) else resources.getString(R.string.studio_bulk_partial, ok, failed)
+    if (failed == 0) resources.aunPlural(plural, ok, ok) else resources.aunString(R.string.studio_bulk_partial, ok, failed)
 
 class ContentActions(
     val onStatus: (ContentStatus) -> Unit,
@@ -182,7 +183,7 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
                 SearchBox(state, actions)
             }
             when {
-                state.error != null && state.videos.isEmpty() -> ErrorState(stringResource(state.error), actions.onRetry)
+                state.error != null && state.videos.isEmpty() -> ErrorState(studioText(state.error), actions.onRetry)
                 state.loading && state.videos.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -196,7 +197,7 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
                                 R.string.studio_content_empty
                             )
                         } else {
-                            stringResource(R.string.studio_content_empty_search, isolate(state.query))
+                            aunString(R.string.studio_content_empty_search, isolate(state.query))
                         },
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.testTag("content-empty")
@@ -216,8 +217,8 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
     if (confirmDelete) {
         val n = state.selected.size
         ConfirmDialog(
-            title = pluralStringResource(R.plurals.studio_delete_title, n, n),
-            message = stringResource(if (state.softDelete) R.string.studio_delete_body_soft else R.string.studio_delete_body_hard),
+            title = aunPlural(R.plurals.studio_delete_title, n, n),
+            message = studioText(if (state.softDelete) R.string.studio_delete_body_soft else R.string.studio_delete_body_hard),
             confirmLabel = stringResource(R.string.studio_delete),
             onConfirm = {
                 confirmDelete = false
@@ -228,7 +229,7 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
     }
     confirmForever?.let { v ->
         ConfirmDialog(
-            title = stringResource(R.string.studio_delete_forever_title, isolate(v.title)),
+            title = aunString(R.string.studio_delete_forever_title, isolate(v.title)),
             message = stringResource(R.string.studio_delete_body_hard),
             confirmLabel = stringResource(R.string.studio_delete_forever),
             onConfirm = {
@@ -264,7 +265,7 @@ private fun SearchBox(state: ContentUiState, actions: ContentActions) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                 modifier = Modifier.fillMaxWidth().testTag("content-suggestions").semantics {
                     liveRegion = LiveRegionMode.Polite
-                    contentDescription = resources.getString(R.string.studio_suggestions_count, state.suggestions.size)
+                    contentDescription = resources.aunString(R.string.studio_suggestions_count, state.suggestions.size)
                 }
             ) {
                 state.suggestions.forEachIndexed { i, s ->
@@ -299,7 +300,7 @@ private fun SelectionBar(state: ContentUiState, deleted: Boolean, onBulkEdit: ()
                 Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.studio_clear_selection))
             }
             Text(
-                pluralStringResource(R.plurals.studio_selected_count, state.selected.size, state.selected.size),
+                aunPlural(R.plurals.studio_selected_count, state.selected.size, state.selected.size),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
             )
@@ -363,8 +364,8 @@ private fun VideoRow(
 ) {
     val language = currentLocale().language
     val title = v.titleLocalized[language]?.takeIf { it.isNotBlank() } ?: v.title
-    val selectLabel = stringResource(R.string.studio_selection_cd, isolate(title))
-    val selectedState = pluralStringResource(R.plurals.studio_selected_count, 1, 1)
+    val selectLabel = aunString(R.string.studio_selection_cd, isolate(title))
+    val selectedState = aunPlural(R.plurals.studio_selected_count, 1, 1)
     Card(
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer
@@ -415,7 +416,7 @@ private fun VideoRow(
                 }
             } else if (!selecting) {
                 IconButton(onClick = { actions.onEdit(v.id) }) {
-                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.studio_video_edit_cd, isolate(title)))
+                    Icon(Icons.Filled.Edit, contentDescription = aunString(R.string.studio_video_edit_cd, isolate(title)))
                 }
             }
         }
@@ -426,7 +427,7 @@ private fun VideoRow(
 private fun meta(v: StudioVideo, deleted: Boolean): String {
     val parts = mutableListOf<String>()
     if (deleted) {
-        v.restorableUntil?.let { parts += stringResource(R.string.studio_restorable_until, formatDate(it)) }
+        v.restorableUntil?.let { parts += aunString(R.string.studio_restorable_until, formatDate(it)) }
     } else {
         parts += stringResource(
             when {
@@ -444,12 +445,8 @@ private fun meta(v: StudioVideo, deleted: Boolean): String {
 @Composable
 internal fun formatDate(iso: String): String {
     val locale = currentLocale()
-    val text = runCatching {
-        Instant.parse(
-            iso
-        ).atZone(ZoneId.systemDefault()).toLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
-    }.getOrDefault(iso.take(DATE_CHARS))
-    return localizedDigits(text)
+    return runCatching { AunFormat.date(Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate(), locale) }
+        .getOrDefault(localizedDigits(iso.take(DATE_CHARS)))
 }
 
 private const val DATE_CHARS = 10

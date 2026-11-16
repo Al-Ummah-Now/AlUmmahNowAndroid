@@ -197,7 +197,7 @@ class UploadViewModel(
         /** The web batch uploader's limit (`/upload/batch/initiate`). */
         const val MAX_FILES = 15
         private const val DEFAULT_HOUR = 9
-        private val MIN_SCHEDULE_AHEAD: Duration = Duration.ofMinutes(5)
+        val MIN_SCHEDULE_AHEAD: Duration = Duration.ofMinutes(5)
         private val MAX_SCHEDULE_AHEAD: Duration = Duration.ofDays(365)
     }
 }

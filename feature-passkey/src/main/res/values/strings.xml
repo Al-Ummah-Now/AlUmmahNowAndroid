@@ -15,7 +15,7 @@
     <string name="passkey_add_unsupported">This device can\'t save passkeys. Try another device or password manager.</string>
     <string name="passkey_add_failed">The passkey wasn\'t added. Try again.</string>
     <string name="passkey_exists">This device already has a passkey for your account.</string>
-    <string name="passkey_limit">You already have 10 passkeys. Remove one in your account first.</string>
+    <string name="passkey_limit">You already have %1$d passkeys. Remove one in your account first.</string>
     <string name="passkey_stale">For your security, sign in again before adding a passkey.</string>
     <string name="passkey_sign_in_again">Sign in again</string>
     <string name="passkey_other_account">You signed in as a different account. Sign in as the account you want to add the passkey to.</string>

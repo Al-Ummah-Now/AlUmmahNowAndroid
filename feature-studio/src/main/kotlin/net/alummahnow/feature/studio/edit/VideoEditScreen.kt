@@ -50,6 +50,7 @@ import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.format.StudioLabels
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
+import net.alummahnow.feature.studio.studioText
 
 /** Single-video edit. Leaving with unsaved changes asks first (Cancel focused). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,7 +82,7 @@ fun VideoEditScreen(
             when {
                 state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 state.original == null -> ErrorState(
-                    stringResource(state.error ?: net.alummahnow.design.R.string.aun_error_generic),
+                    studioText(state.error ?: net.alummahnow.design.R.string.aun_error_generic),
                     onRetry
                 )
                 else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -154,7 +155,7 @@ private fun Fields(state: VideoEditUiState, onChange: ((EditForm) -> EditForm) -
     )
     state.error?.let {
         Text(
-            stringResource(it),
+            studioText(it),
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.semantics {
                 liveRegion =

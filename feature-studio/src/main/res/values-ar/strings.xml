@@ -30,7 +30,7 @@
     <string name="studio_error_signed_out">انتهت جلستك. سجّل الدخول مرة أخرى.</string>
     <string name="studio_error_upgrade">خطتك لا تشمل هذه الميزة.</string>
     <string name="studio_error_not_supported">هذه الميزة غير متاحة بعد.</string>
-    <string name="studio_error_restore_expired">مضى أكثر من 30 يومًا، لذا لا يمكن استعادته.</string>
+    <string name="studio_error_restore_expired">مضى أكثر من %1$d يومًا، لذا لا يمكن استعادته.</string>
     <string name="studio_error_invalid">راجع البيانات وحاول مرة أخرى.</string>
     <string name="studio_tab_content">المحتوى</string>
     <string name="studio_tab_upload">رفع</string>
@@ -52,7 +52,7 @@
     <string name="studio_delete">حذف</string>
     <string name="studio_restore">استعادة</string>
     <string name="studio_delete_forever">حذف نهائي</string>
-    <string name="studio_delete_body_soft">يمكنك استعادة المرئيات المحذوفة من «المحذوفة مؤخرًا» خلال 30 يومًا.</string>
+    <string name="studio_delete_body_soft">يمكنك استعادة المرئيات المحذوفة من «المحذوفة مؤخرًا» خلال %1$d يومًا.</string>
     <string name="studio_delete_body_hard">لا يمكن التراجع عن ذلك. ستُحذف المرئيات ومشاهداتها وإعجاباتها وتعليقاتها.</string>
     <string name="studio_delete_forever_title">حذف «%1$s» نهائيًا؟</string>
     <string name="studio_bulk_partial">نجح %1$d، وفشل %2$d</string>
@@ -84,9 +84,9 @@
     <string name="studio_discard_title">تجاهل التغييرات؟</string>
     <string name="studio_discard_body">لن تُحفظ تعديلاتك على هذا المرئي.</string>
     <string name="studio_discard">تجاهل</string>
-    <string name="studio_range_7">7 أيام</string>
-    <string name="studio_range_28">28 يومًا</string>
-    <string name="studio_range_90">90 يومًا</string>
+    <string name="studio_range_7">%1$d أيام</string>
+    <string name="studio_range_28">%1$d يومًا</string>
+    <string name="studio_range_90">%1$d يومًا</string>
     <string name="studio_range_365">سنة</string>
     <string name="studio_stat_views">المشاهدات</string>
     <string name="studio_stat_watch_hours">وقت المشاهدة (ساعات)</string>

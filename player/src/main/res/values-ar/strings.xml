@@ -3,8 +3,8 @@
     <string name="aun_browse_root">الأمة الآن</string>
     <string name="aun_player_play">تشغيل</string>
     <string name="aun_player_pause">إيقاف مؤقت</string>
-    <string name="aun_player_back10">رجوع ١٠ ثوانٍ</string>
-    <string name="aun_player_forward10">تقديم ١٠ ثوانٍ</string>
+    <string name="aun_player_back10">رجوع %1$d ثوانٍ</string>
+    <string name="aun_player_forward10">تقديم %1$d ثوانٍ</string>
     <string name="aun_player_settings">إعدادات التشغيل</string>
     <string name="aun_player_fullscreen">ملء الشاشة</string>
     <string name="aun_player_exit_fullscreen">الخروج من ملء الشاشة</string>

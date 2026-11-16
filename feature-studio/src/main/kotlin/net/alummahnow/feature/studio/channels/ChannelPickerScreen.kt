@@ -43,6 +43,7 @@ import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.isolate
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
+import net.alummahnow.feature.studio.studioText
 
 @Composable
 fun ChannelPickerScreen(
@@ -57,7 +58,7 @@ fun ChannelPickerScreen(
             header()
             when (state) {
                 ChannelsUiState.Loading -> FullScreenLoading()
-                is ChannelsUiState.Error -> ErrorState(stringResource(state.message), onRetry)
+                is ChannelsUiState.Error -> ErrorState(studioText(state.message), onRetry)
                 is ChannelsUiState.Content -> if (state.channels.isEmpty()) {
                     Box(Modifier.fillMaxSize().padding(FanousTokens.Spacing.xl), contentAlignment = Alignment.Center) {
                         Text(stringResource(R.string.studio_channels_empty), style = MaterialTheme.typography.bodyLarge)

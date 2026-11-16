@@ -44,6 +44,7 @@ import net.alummahnow.admin.ui.MinTarget
 import net.alummahnow.core.bridge.admin.HoldCause
 import net.alummahnow.core.bridge.admin.ReviewItem
 import net.alummahnow.core.bridge.admin.ReviewTab
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.theme.FanousTokens
 
 /**
@@ -153,7 +154,7 @@ fun OfflineBanner(lastUpdated: Instant?, now: Instant) {
             if (lastUpdated !=
                 null
             ) {
-                stringResource(R.string.offline_last_updated, Labels.ago(lastUpdated, now))
+                aunString(R.string.offline_last_updated, Labels.ago(lastUpdated, now))
             } else {
                 stringResource(R.string.error_offline)
             },
@@ -212,7 +213,7 @@ private fun QueueRow(item: ReviewItem, myUserId: String, now: Instant, onOpen: (
         val holder = item.assignedTo
         if (item.isOpen && holder != null && holder != myUserId) {
             Text(
-                item.assignedToName?.let { stringResource(R.string.being_reviewed_by, it) } ?: stringResource(R.string.being_reviewed),
+                item.assignedToName?.let { aunString(R.string.being_reviewed_by, it) } ?: stringResource(R.string.being_reviewed),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.tertiary
             )
@@ -221,9 +222,9 @@ private fun QueueRow(item: ReviewItem, myUserId: String, now: Instant, onOpen: (
             val by = item.decidedByName
             Text(
                 if (by != null) {
-                    stringResource(R.string.history_decided_by, Labels.decision(item.decision), by, Labels.ago(item.decidedAt, now))
+                    aunString(R.string.history_decided_by, Labels.decision(item.decision), by, Labels.ago(item.decidedAt, now))
                 } else {
-                    stringResource(R.string.history_decided, Labels.decision(item.decision), Labels.ago(item.decidedAt, now))
+                    aunString(R.string.history_decided, Labels.decision(item.decision), Labels.ago(item.decidedAt, now))
                 },
                 style = MaterialTheme.typography.bodySmall
             )

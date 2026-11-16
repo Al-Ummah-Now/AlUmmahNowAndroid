@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.passkey.PasskeySignInOptions
 import net.alummahnow.feature.studio.R
+import net.alummahnow.feature.studio.studioText
 
 /**
  * Sign-in. "Sign in with a passkey" ([onPasskey]) uses the OS passkey sheet with no browser; [onSignIn] is
@@ -84,7 +85,7 @@ fun SignInScreen(
                 }
                 if (state is SignInUiState.Error) {
                     Text(
-                        stringResource(state.message),
+                        studioText(state.message),
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.testTag("signin-error").semantics { liveRegion = LiveRegionMode.Assertive }

@@ -68,6 +68,8 @@ import net.alummahnow.core.bridge.admin.ReviewDetail
 import net.alummahnow.core.bridge.admin.ReviewFinding
 import net.alummahnow.core.bridge.admin.ReviewFrame
 import net.alummahnow.core.bridge.admin.ReviewReason
+import net.alummahnow.design.format.aunString
+import net.alummahnow.design.format.percentLabel
 import net.alummahnow.design.theme.FanousTokens
 
 /** What the reviewer asked for from the action bar. */
@@ -141,7 +143,7 @@ fun ReviewScreen(
                 if (item.isOpen && due != null) Text(Labels.timeLeft(due, now), style = MaterialTheme.typography.labelLarge)
                 state.claimedBy?.let {
                     Text(
-                        if (it.isNotEmpty()) stringResource(R.string.being_reviewed_by, it) else stringResource(R.string.being_reviewed),
+                        if (it.isNotEmpty()) aunString(R.string.being_reviewed_by, it) else stringResource(R.string.being_reviewed),
                         color = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("claimed-by")
                     )
@@ -150,15 +152,15 @@ fun ReviewScreen(
             }
             if (detail.frames.isNotEmpty()) FrameStrip(detail.frames, state.frames, blurred)
             Section(stringResource(R.string.section_reasons)) {
-                item.holdCause?.let { Text(stringResource(R.string.held_because, stringResource(Labels.holdCause(it)))) }
-                item.risk?.let { Text(stringResource(R.string.overall_risk, percent(it))) }
+                item.holdCause?.let { Text(aunString(R.string.held_because, stringResource(Labels.holdCause(it)))) }
+                item.risk?.let { Text(aunString(R.string.overall_risk, percentLabel(it))) }
                 detail.findings.forEach { FindingRow(it, blurred) }
             }
             detail.subject?.let { subject ->
                 Section(stringResource(R.string.section_metadata)) {
                     if (subject.description.isNotBlank()) Text(subject.description)
-                    if (subject.tags.isNotEmpty()) Text(stringResource(R.string.tags, subject.tags.joinToString(", ")))
-                    subject.durationSeconds?.let { Text(stringResource(R.string.duration, Labels.position((it * 1000).toLong()))) }
+                    if (subject.tags.isNotEmpty()) Text(aunString(R.string.tags, subject.tags.joinToString(", ")))
+                    subject.durationSeconds?.let { Text(aunString(R.string.duration, Labels.position((it * 1000).toLong()))) }
                 }
             }
             Section(stringResource(R.string.section_history)) {
@@ -169,7 +171,7 @@ fun ReviewScreen(
                             Labels.decision(h.decision ?: h.status),
                             h.reasonCode?.let { code -> ReviewReason.of(code)?.let { stringResource(Labels.reason(it)) } ?: code },
                             h.decidedByName,
-                            h.decidedAt?.let { stringResource(R.string.ago, Labels.ago(it, now)) }
+                            h.decidedAt?.let { aunString(R.string.ago, Labels.ago(it, now)) }
                         ).joinToString(" · ")
                     )
                 }
@@ -196,8 +198,6 @@ fun ReviewScreen(
 
 private const val SHEET_REJECT = "reject"
 private const val SHEET_CHANGES = "changes"
-
-private fun percent(score: Double) = "${(score * 100).toInt()}%"
 
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
@@ -272,8 +272,8 @@ private fun FrameStrip(frames: List<ReviewFrame>, bytes: Map<String, ByteArray>,
 @Composable
 private fun FrameThumb(frame: ReviewFrame, bytes: ByteArray?, blurred: Boolean) {
     val label = buildString {
-        append(stringResource(R.string.frame_at, Labels.position(frame.atMs)))
-        if (frame.flagged) append(", ").append(stringResource(R.string.frame_flagged, frame.category?.let { Labels.category(it) } ?: ""))
+        append(aunString(R.string.frame_at, Labels.position(frame.atMs)))
+        if (frame.flagged) append(", ").append(aunString(R.string.frame_flagged, frame.category?.let { Labels.category(it) } ?: ""))
         if (blurred) append(", ").append(stringResource(R.string.frame_blurred))
     }
     val bitmap = remember(bytes, blurred) { bytes?.let { PrivateMedia.decode(it, blurred)?.asImageBitmap() } }
@@ -304,15 +304,15 @@ private fun FindingRow(finding: ReviewFinding, blurred: Boolean) {
         Text(
             listOfNotNull(
                 Labels.category(finding.category),
-                percent(finding.score),
+                percentLabel(finding.score),
                 Labels.source(finding.source),
-                finding.atMs?.let { stringResource(R.string.at_position, Labels.position(it)) }
+                finding.atMs?.let { aunString(R.string.at_position, Labels.position(it)) }
             ).joinToString(" · "),
             style = MaterialTheme.typography.bodyMedium
         )
         // Flagged transcript or metadata text can be explicit: hidden with the media until "Show".
         finding.text?.let { if (!blurred) Text("“$it”", style = MaterialTheme.typography.bodySmall) }
-        finding.quranRef?.let { Text(stringResource(R.string.quran_ref, it), style = MaterialTheme.typography.bodySmall) }
+        finding.quranRef?.let { Text(aunString(R.string.quran_ref, it), style = MaterialTheme.typography.bodySmall) }
         finding.rationale?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
@@ -335,9 +335,9 @@ private fun conflictText(c: ReviewMessage.Conflict, now: Instant): String {
     val by = c.byName ?: return stringResource(R.string.conflict_someone)
     val ago = Labels.ago(c.at, now)
     return when (c.decision) {
-        "approve" -> stringResource(R.string.conflict_approved, by, ago)
-        "reject" -> stringResource(R.string.conflict_rejected, by, ago)
-        else -> stringResource(R.string.conflict_decided, by, ago)
+        "approve" -> aunString(R.string.conflict_approved, by, ago)
+        "reject" -> aunString(R.string.conflict_rejected, by, ago)
+        else -> aunString(R.string.conflict_decided, by, ago)
     }
 }
 

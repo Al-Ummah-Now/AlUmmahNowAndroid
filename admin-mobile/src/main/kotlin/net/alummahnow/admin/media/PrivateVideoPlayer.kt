@@ -37,6 +37,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
 import net.alummahnow.admin.R
+import net.alummahnow.design.format.AunFormat
+import net.alummahnow.design.format.aunString
+import net.alummahnow.design.format.currentLocale
 import net.alummahnow.player.SeekGestures
 
 private val SPEEDS = listOf(1f, 1.5f, 2f, 3f)
@@ -78,7 +81,7 @@ fun PrivateVideoPlayer(url: String, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { player.seekTo((player.currentPosition - SeekGestures.SKIP_MS).coerceAtLeast(0)) }) {
-                Icon(Icons.Filled.Replay10, contentDescription = stringResource(R.string.player_back_10))
+                Icon(Icons.Filled.Replay10, contentDescription = aunString(R.string.player_back_10, SeekGestures.SKIP_MS / 1000))
             }
             IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
                 Icon(
@@ -87,11 +90,11 @@ fun PrivateVideoPlayer(url: String, modifier: Modifier = Modifier) {
                 )
             }
             IconButton(onClick = { player.seekTo(player.currentPosition + SeekGestures.SKIP_MS) }) {
-                Icon(Icons.Filled.Forward10, contentDescription = stringResource(R.string.player_forward_10))
+                Icon(Icons.Filled.Forward10, contentDescription = aunString(R.string.player_forward_10, SeekGestures.SKIP_MS / 1000))
             }
             TextButton(onClick = { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.size] }) {
                 Text(
-                    stringResource(R.string.player_speed, speed.toString().removeSuffix(".0")),
+                    aunString(R.string.player_speed, AunFormat.number(speed.toDouble(), currentLocale(), maxFraction = 2)),
                     style = MaterialTheme.typography.labelLarge
                 )
             }

@@ -52,6 +52,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import net.alummahnow.admin.R
 import net.alummahnow.admin.push.PushState
+import net.alummahnow.admin.security.AppLock
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.passkey.PasskeySignInOptions
 import net.alummahnow.feature.passkey.R as PasskeyR
@@ -140,7 +142,7 @@ fun LockScreen(onUnlock: () -> Unit, modifier: Modifier = Modifier) {
     CenteredPage(modifier) {
         Logo()
         Heading(stringResource(R.string.lock_title))
-        Text(stringResource(R.string.lock_body), textAlign = TextAlign.Center)
+        Text(aunString(R.string.lock_body, AppLock.BACKGROUND_TIMEOUT_MS / MS_PER_MINUTE), textAlign = TextAlign.Center)
         Button(onClick = onUnlock, modifier = Modifier.fillMaxWidth().heightIn(min = MinTarget).testTag("unlock")) {
             Text(stringResource(R.string.lock_button))
         }
@@ -225,7 +227,7 @@ fun SettingsContent(
         ).padding(horizontal = FanousTokens.Spacing.xl, vertical = FanousTokens.Spacing.md),
         verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
     ) {
-        if (name != null) Text(stringResource(R.string.settings_signed_in_as, name), style = MaterialTheme.typography.titleMedium)
+        if (name != null) Text(aunString(R.string.settings_signed_in_as, name), style = MaterialTheme.typography.titleMedium)
         HorizontalDivider()
         Text(
             stringResource(R.string.settings_theme),
@@ -337,3 +339,5 @@ private fun isOnline(context: Context): Boolean {
     val caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) } ?: return false
     return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }
+
+private const val MS_PER_MINUTE = 60_000L

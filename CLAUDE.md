@@ -31,6 +31,10 @@ testing only, never a public APK; owner media rule: nothing cached or downloaded
 - **Every string goes in resources, in both English and Arabic** (`values/` and `values-ar/`). No hardcoded
   UI text. Use `start`/`end`, never `left`/`right`. Every UI change needs screenshot tests in both `en` and
   `ar` (RTL), plus light and dark.
+- **Numbers, dates, times, durations, percentages, sizes and money go through `:design` `format/`** (`AunFormat`,
+  `aunString`, `aunPlural`, `numberLabel` …). Arabic shows Eastern Arabic (Hindi) numerals ٠–٩ everywhere, whatever the
+  device region; English keeps Arabic numerals 0–9. No digits typed into localized strings: use placeholders.
+  `scripts/check-display-format.py` (CI) rejects platform formatters and `stringResource(id, args)` elsewhere.
 - **No TODO comments.** Implement it now, or open a GitHub issue labelled `queue` and reference it.
 - **Never call the backend directly from features.** Go through `:core-bridge` interfaces; they will be
   backed by the Rust core (UniFFI AAR).

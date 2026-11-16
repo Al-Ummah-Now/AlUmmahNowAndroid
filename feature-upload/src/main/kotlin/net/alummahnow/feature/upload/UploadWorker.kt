@@ -23,6 +23,8 @@ import androidx.work.WorkerParameters
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.UploadPhase
+import net.alummahnow.design.format.aunPlural
+import net.alummahnow.design.format.aunString
 
 /**
  * Keeps uploads running with the app in the background: a WorkManager foreground worker
@@ -75,9 +77,9 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (done + failed == 0 || !canNotify(applicationContext)) return
         val res = applicationContext.resources
         val text = if (failed == 0) {
-            res.getQuantityString(R.plurals.upload_notify_done, done, done)
+            res.aunPlural(R.plurals.upload_notify_done, done, done)
         } else {
-            res.getString(R.string.upload_notify_partial, done, failed)
+            res.aunString(R.string.upload_notify_partial, done, failed)
         }
         val n = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
@@ -133,8 +135,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             val percent = (sent * PERCENT / total).toInt()
             return NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
-                .setContentTitle(res.getQuantityString(R.plurals.upload_notify_running, running.coerceAtLeast(1), running.coerceAtLeast(1)))
-                .setContentText(res.getString(R.string.upload_notify_percent, percent))
+                .setContentTitle(res.aunPlural(R.plurals.upload_notify_running, running.coerceAtLeast(1), running.coerceAtLeast(1)))
+                .setContentText(res.aunString(R.string.upload_notify_percent, percent))
                 .setProgress(PERCENT, percent, items.isEmpty())
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)

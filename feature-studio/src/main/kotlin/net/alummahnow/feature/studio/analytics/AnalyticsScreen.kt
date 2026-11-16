@@ -38,17 +38,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import net.alummahnow.core.bridge.studio.AnalyticsRange
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.design.components.ErrorState
+import net.alummahnow.design.format.AunFormat
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.compactCount
 import net.alummahnow.design.format.currentLocale
-import net.alummahnow.design.format.localizedDigits
+import net.alummahnow.design.format.numberLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
 import net.alummahnow.feature.studio.dashboard.StatTile
+import net.alummahnow.feature.studio.studioText
 
 private val ranges = listOf(
     AnalyticsRange.LAST_7 to R.string.studio_range_7,
@@ -71,7 +72,7 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
                 ranges.forEach { (r, label) ->
                     FilterChip(selected = state.range == r, onClick = {
                         onRange(r)
-                    }, label = { Text(stringResource(label)) }, modifier = Modifier.testTag("range-${r.days}"))
+                    }, label = { Text(aunString(label, r.days)) }, modifier = Modifier.testTag("range-${r.days}"))
                 }
             }
             val data = state.data
@@ -79,7 +80,7 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
                 data == null && state.loading -> Box(width.height(240.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
-                data == null -> ErrorState(stringResource(state.error ?: net.alummahnow.design.R.string.aun_error_generic), onRetry)
+                data == null -> ErrorState(studioText(state.error ?: net.alummahnow.design.R.string.aun_error_generic), onRetry)
                 else -> Content(data, width)
             }
         }
@@ -124,7 +125,7 @@ private fun Content(data: ChannelAnalytics, width: Modifier) {
         Card(width, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
             data.topVideos.forEachIndexed { i, v ->
                 Row(Modifier.fillMaxWidth().padding(FanousTokens.Spacing.md), verticalAlignment = Alignment.CenterVertically) {
-                    Text(localizedDigits("${i + 1}"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(32.dp))
+                    Text(numberLabel(i + 1L), style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(32.dp))
                     Text(v.title, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(compactCount(v.views), style = MaterialTheme.typography.labelLarge)
                 }
@@ -142,15 +143,13 @@ private fun ViewsChart(data: ChannelAnalytics, modifier: Modifier) {
     val max = data.daily.maxOf { it.views }.coerceAtLeast(1)
     val peak = data.daily.maxBy { it.views }
     val locale = currentLocale()
-    val peakDate = runCatching {
-        LocalDate.parse(peak.date.take(DATE_CHARS)).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
-    }
+    val peakDate = runCatching { AunFormat.date(LocalDate.parse(peak.date.take(DATE_CHARS)), locale) }
         .getOrDefault(peak.date)
-    val description = stringResource(
+    val description = aunString(
         R.string.studio_chart_cd,
-        localizedDigits(data.daily.sumOf { it.views }.toString()),
-        localizedDigits(peak.views.toString()),
-        localizedDigits(peakDate)
+        numberLabel(data.daily.sumOf { it.views }),
+        numberLabel(peak.views),
+        peakDate
     )
     Canvas(modifier.height(180.dp).semantics { contentDescription = description }.testTag("views-chart")) {
         val n = data.daily.size
