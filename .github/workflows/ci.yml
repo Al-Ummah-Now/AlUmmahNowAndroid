@@ -77,7 +77,9 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - name: Debug APKs + unsigned release bundles (R8 on)
-        run: ./gradlew assembleDebug bundleRelease
+        # Every app × flavour in one build ran D8/R8 out of the 4 GB heap (OutOfMemoryError on main, 2026-11-15)
+        # and then stalled. The runner has 16 GB: a bigger heap and three workers keep it inside that.
+        run: ./gradlew assembleDebug bundleRelease --max-workers=3 "-Dorg.gradle.jvmargs=-Xmx7g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
       - uses: actions/upload-artifact@v4
         with:
           name: debug-apks
