@@ -46,8 +46,8 @@
     <string name="upload_phase_cancelled">أُلغي</string>
     <string name="upload_error_no_files">اختر مرئيًا واحدًا على الأقل.</string>
     <string name="upload_error_title">يحتاج كل مرئي إلى عنوان.</string>
-    <string name="upload_error_too_many">يمكنك رفع 15 مرئيًا كحد أقصى في كل مرة.</string>
-    <string name="upload_error_schedule_soon">اختر وقتًا بعد 5 دقائق على الأقل من الآن.</string>
+    <string name="upload_error_too_many">يمكنك رفع %1$d مرئيًا كحد أقصى في كل مرة.</string>
+    <string name="upload_error_schedule_soon">اختر وقتًا بعد %1$d دقائق على الأقل من الآن.</string>
     <string name="upload_error_schedule_far">اختر وقتًا خلال سنة.</string>
     <string name="upload_error_queue">تعذّرت إضافة المرئيات إلى قائمة الرفع. حاول مرة أخرى.</string>
     <string name="upload_channel_name">الرفوعات</string>
@@ -88,5 +88,5 @@
         <item quantity="other">رُفع %1$d مرئي</item>
     </plurals>
     <string name="upload_pad_numbers">إكمال {n} بالأصفار (01، 02 …)</string>
-    <string name="upload_error_title_long">يجب ألا يزيد العنوان على 100 حرف.</string>
+    <string name="upload_error_title_long">يجب ألا يزيد العنوان على %1$d حرف.</string>
 </resources>

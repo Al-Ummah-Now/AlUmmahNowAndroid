@@ -53,6 +53,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
 import kotlinx.coroutines.delay
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.durationLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.player.R
@@ -147,7 +148,12 @@ private fun Chrome(
         ) {
             // Row order flips in RTL, so "back" stays on the start side; the icons keep their digits unmirrored.
             IconButton(onClick = { player.seekBack() }) {
-                Icon(Icons.Filled.Replay10, stringResource(R.string.aun_player_back10), tint = Color.White, modifier = Modifier.size(36.dp))
+                Icon(
+                    Icons.Filled.Replay10,
+                    aunString(R.string.aun_player_back10, SeekGestures.SKIP_MS / 1000),
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp)
+                )
             }
             IconButton(onClick = { if (ui.isPlaying) player.pause() else player.play() }, modifier = Modifier.size(64.dp)) {
                 Icon(
@@ -160,7 +166,7 @@ private fun Chrome(
             IconButton(onClick = { player.seekForward() }) {
                 Icon(
                     Icons.Filled.Forward10,
-                    stringResource(R.string.aun_player_forward10),
+                    aunString(R.string.aun_player_forward10, SeekGestures.SKIP_MS / 1000),
                     tint = Color.White,
                     modifier = Modifier.size(36.dp)
                 )

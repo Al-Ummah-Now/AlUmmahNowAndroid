@@ -3,8 +3,8 @@
     <string name="aun_browse_root">Al Ummah Now</string>
     <string name="aun_player_play">Play</string>
     <string name="aun_player_pause">Pause</string>
-    <string name="aun_player_back10">Back 10 seconds</string>
-    <string name="aun_player_forward10">Forward 10 seconds</string>
+    <string name="aun_player_back10">Back %1$d seconds</string>
+    <string name="aun_player_forward10">Forward %1$d seconds</string>
     <string name="aun_player_settings">Playback settings</string>
     <string name="aun_player_fullscreen">Full screen</string>
     <string name="aun_player_exit_fullscreen">Exit full screen</string>

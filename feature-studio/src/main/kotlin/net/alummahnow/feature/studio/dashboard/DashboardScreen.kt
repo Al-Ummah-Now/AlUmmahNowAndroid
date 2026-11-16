@@ -27,18 +27,19 @@ import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.format.currentLocale
-import net.alummahnow.design.format.localizedDigits
+import net.alummahnow.design.format.numberLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
 import net.alummahnow.feature.studio.channels.ChannelAvatar
 import net.alummahnow.feature.studio.channels.roleLabel
+import net.alummahnow.feature.studio.studioText
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DashboardScreen(channel: StudioChannel, state: DashboardUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     when (state) {
         DashboardUiState.Loading -> FullScreenLoading(modifier)
-        is DashboardUiState.Error -> ErrorState(stringResource(state.message), onRetry, modifier)
+        is DashboardUiState.Error -> ErrorState(studioText(state.message), onRetry, modifier)
         is DashboardUiState.Content -> Column(
             modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(FanousTokens.Spacing.lg).testTag("dashboard"),
             verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg),
@@ -100,7 +101,7 @@ fun StatTile(label: String, value: Number, modifier: Modifier = Modifier) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {
         Column(Modifier.padding(FanousTokens.Spacing.lg)) {
-            Text(localizedDigits(value.toString()), style = MaterialTheme.typography.headlineSmall)
+            Text(numberLabel(value.toLong()), style = MaterialTheme.typography.headlineSmall)
             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

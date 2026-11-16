@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import net.alummahnow.design.R
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.durationLabel
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
@@ -95,7 +95,7 @@ fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifie
         }
         if (durationSeconds != null) {
             val label = durationLabel(durationSeconds)
-            val cd = stringResource(R.string.aun_duration_cd, label)
+            val cd = aunString(R.string.aun_duration_cd, label)
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,

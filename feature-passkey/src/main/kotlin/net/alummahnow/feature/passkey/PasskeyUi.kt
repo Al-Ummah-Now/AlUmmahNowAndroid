@@ -148,7 +148,7 @@ fun PasskeyDialog(
             if (p.offerOtherWay) {
                 Dialog(
                     title = stringResource(p.title),
-                    body = stringResource(p.body),
+                    body = passkeyText(p.body),
                     confirm = stringResource(R.string.passkey_sign_in_other) to onOtherWay,
                     dismiss = if (p == PasskeyProblem.NO_PASSKEY || p == PasskeyProblem.SIGN_IN_UNSUPPORTED) {
                         stringResource(net.alummahnow.design.R.string.aun_cancel) to onDismiss
@@ -161,7 +161,7 @@ fun PasskeyDialog(
                     onDismissRequest = onDismiss
                 )
             } else {
-                Dialog(stringResource(p.title), stringResource(p.body), stringResource(R.string.passkey_ok) to onDismiss, null, onDismiss)
+                Dialog(stringResource(p.title), passkeyText(p.body), stringResource(R.string.passkey_ok) to onDismiss, null, onDismiss)
             }
         }
         PasskeyUiState.NeedsSignInAgain -> Dialog(

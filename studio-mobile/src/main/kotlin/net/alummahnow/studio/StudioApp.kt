@@ -65,6 +65,7 @@ import net.alummahnow.feature.studio.edit.VideoEditViewModel
 import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
+import net.alummahnow.feature.studio.studioText
 import net.alummahnow.feature.upload.UploadRoute
 import net.alummahnow.feature.upload.UploadViewModel
 
@@ -219,7 +220,7 @@ fun StudioApp(
                             // End the browser session too, so the next sign-in asks for credentials.
                             openInBrowser(logoutUrl)
                         },
-                        onFailure = { snackbar.showSnackbar(resources.getString(it.studioMessage())) }
+                        onFailure = { snackbar.showSnackbar(resources.studioText(it.studioMessage())) }
                     )
                 }
             },

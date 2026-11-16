@@ -27,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -35,6 +34,7 @@ import net.alummahnow.core.bridge.studio.BulkChanges
 import net.alummahnow.core.bridge.studio.VideoCategories
 import net.alummahnow.core.bridge.studio.VideoEdit
 import net.alummahnow.design.format.StudioLabels
+import net.alummahnow.design.format.aunPlural
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
 
@@ -57,7 +57,7 @@ fun BulkEditSheet(count: Int, onApply: (BulkChanges) -> Unit, onDismiss: () -> U
             verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
         ) {
             Text(
-                pluralStringResource(R.plurals.studio_bulk_title, count, count),
+                aunPlural(R.plurals.studio_bulk_title, count, count),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.semantics {
                     heading()

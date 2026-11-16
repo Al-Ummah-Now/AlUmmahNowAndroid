@@ -12,7 +12,7 @@
     <string name="stepup_other_account">That was a different account. Sign in as yourself to continue.</string>
     <string name="sign_out">Sign out</string>
     <string name="lock_title">Unlock to continue</string>
-    <string name="lock_body">The Admin app asks for your device unlock when it opens and after 5 minutes in the background.</string>
+    <string name="lock_body">The Admin app asks for your device unlock when it opens and after %1$d minutes in the background.</string>
     <string name="lock_button">Unlock</string>
     <string name="lock_prompt_title">Unlock Al Ummah Now Admin</string>
     <string name="lock_prompt_subtitle">Use your fingerprint, face or screen lock</string>
@@ -150,8 +150,8 @@
     <string name="undo_expired">Too late to undo.</string>
     <string name="player_play">Play</string>
     <string name="player_pause">Pause</string>
-    <string name="player_back_10">Back 10 seconds</string>
-    <string name="player_forward_10">Forward 10 seconds</string>
+    <string name="player_back_10">Back %1$d seconds</string>
+    <string name="player_forward_10">Forward %1$d seconds</string>
     <string name="player_speed">Speed %1$s×</string>
     <plurals name="time_left_minutes">
         <item quantity="one">%d min left</item>

@@ -3,13 +3,15 @@ package net.alummahnow.admin.ui
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import java.time.Duration
 import java.time.Instant
 import net.alummahnow.admin.R
 import net.alummahnow.core.bridge.admin.HoldCause
 import net.alummahnow.core.bridge.admin.ReviewReason
+import net.alummahnow.design.format.AunFormat
+import net.alummahnow.design.format.aunPlural
+import net.alummahnow.design.format.currentLocale
 
 /** Text for the server's codes. Unknown codes fall back to the code itself (never blank). */
 object Labels {
@@ -95,10 +97,10 @@ object Labels {
     fun timeLeft(due: Instant, now: Instant): String {
         val minutes = Duration.between(now, due).toMinutes()
         return if (minutes >= 0) {
-            pluralStringResource(R.plurals.time_left_minutes, minutes.toInt(), minutes.toInt())
+            aunPlural(R.plurals.time_left_minutes, minutes.toInt(), minutes.toInt())
         } else {
             val over = (-minutes).toInt()
-            pluralStringResource(R.plurals.time_overdue_minutes, over, over)
+            aunPlural(R.plurals.time_overdue_minutes, over, over)
         }
     }
 
@@ -108,21 +110,16 @@ object Labels {
         val res = LocalResources.current
         val seconds = at?.let { Duration.between(it, now).seconds.coerceAtLeast(0) } ?: 0
         return when {
-            seconds < MINUTE -> res.getQuantityString(R.plurals.ago_seconds, seconds.toInt(), seconds.toInt())
-            seconds < HOUR -> (seconds / MINUTE).toInt().let { res.getQuantityString(R.plurals.ago_minutes, it, it) }
-            seconds < DAY -> (seconds / HOUR).toInt().let { res.getQuantityString(R.plurals.ago_hours, it, it) }
-            else -> (seconds / DAY).toInt().let { res.getQuantityString(R.plurals.ago_days, it, it) }
+            seconds < MINUTE -> res.aunPlural(R.plurals.ago_seconds, seconds.toInt(), seconds.toInt())
+            seconds < HOUR -> (seconds / MINUTE).toInt().let { res.aunPlural(R.plurals.ago_minutes, it, it) }
+            seconds < DAY -> (seconds / HOUR).toInt().let { res.aunPlural(R.plurals.ago_hours, it, it) }
+            else -> (seconds / DAY).toInt().let { res.aunPlural(R.plurals.ago_days, it, it) }
         }
     }
 
-    /** "0:42" for a position in the video. */
-    fun position(ms: Long): String {
-        val total = ms / 1000
-        val h = total / HOUR
-        val m = (total % HOUR) / MINUTE
-        val s = total % MINUTE
-        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
-    }
+    /** "0:42" / "٠:٤٢" for a position in the video. */
+    @Composable
+    fun position(ms: Long): String = AunFormat.timecode(ms, currentLocale())
 
     private const val MINUTE = 60L
     private const val HOUR = 3600L

@@ -10,7 +10,8 @@ import java.util.Locale
  * (`packages/shared-types/src/bulk-rename.ts`, AlUmmahNow#765):
  * - `{n}`: position among the files, from [start], zero-padded to [pad] digits
  * - `{filename}`: the file name without its last extension
- * - `{date}`: today as a long date in the title's language ("10 November 2026" / "١٠ نوفمبر ٢٠٢٦")
+ * - `{date}`: today as a long date in the title's language ("10 November 2026" / "10 نوفمبر 2026"). Titles are
+ *   text people edit and the server stores, so they keep Arabic numerals 0–9, like the web engine's default
  * - `{channel}`: the channel's name
  * Nothing else is touched: no trimming, no normalisation. Unknown `{…}` text stays as typed.
  * A title over [MAX_TITLE] characters is refused, not cut.
@@ -50,7 +51,9 @@ object TitlePattern {
     /** "Lesson 03.final.mp4" → "Lesson 03.final" (only the last extension). */
     fun stripExtension(name: String): String = name.lastIndexOf('.').let { if (it > 0) name.substring(0, it) else name }
 
+    /** Title text people can edit and the server stores, so its digits stay Arabic numerals 0–9 (not display formatting). */
     fun date(day: LocalDate, locale: Locale): String =
+        // display-format: not shown (title content)
         day.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(if (locale.language == "ar") locale else Locale.UK))
 
     /** Characters (code points), the way the server counts the limit. */

@@ -57,4 +57,5 @@ private fun headersFor(proof: String?): Map<String, String> = proof?.let { mapOf
 
 /** Play Integrity's `requestHash`: lowercase hex SHA-256 of the UTF-8 challenge (contract §2). */
 fun requestHash(challenge: String): String =
+    // display-format: not shown (hash)
     MessageDigest.getInstance("SHA-256").digest(challenge.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }

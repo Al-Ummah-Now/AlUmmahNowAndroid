@@ -12,7 +12,7 @@
     <string name="stepup_other_account">كان ذلك حسابًا آخر. سجّل الدخول بحسابك للمتابعة.</string>
     <string name="sign_out">تسجيل الخروج</string>
     <string name="lock_title">افتح القفل للمتابعة</string>
-    <string name="lock_body">يطلب تطبيق الإدارة فتح قفل جهازك عند فتحه وبعد 5 دقائق في الخلفية.</string>
+    <string name="lock_body">يطلب تطبيق الإدارة فتح قفل جهازك عند فتحه وبعد %1$d دقائق في الخلفية.</string>
     <string name="lock_button">فتح القفل</string>
     <string name="lock_prompt_title">افتح قفل إدارة الأمة الآن</string>
     <string name="lock_prompt_subtitle">استخدم بصمتك أو وجهك أو قفل الشاشة</string>
@@ -148,8 +148,8 @@
     <string name="undo_expired">فات وقت التراجع.</string>
     <string name="player_play">تشغيل</string>
     <string name="player_pause">إيقاف مؤقت</string>
-    <string name="player_back_10">رجوع 10 ثوانٍ</string>
-    <string name="player_forward_10">تقديم 10 ثوانٍ</string>
+    <string name="player_back_10">رجوع %1$d ثوانٍ</string>
+    <string name="player_forward_10">تقديم %1$d ثوانٍ</string>
     <string name="player_speed">السرعة %1$s×</string>
     <plurals name="time_left_minutes">
         <item quantity="zero">بقي أقل من دقيقة</item>

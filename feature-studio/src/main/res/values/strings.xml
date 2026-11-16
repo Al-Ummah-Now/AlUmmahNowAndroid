@@ -30,7 +30,7 @@
     <string name="studio_error_signed_out">Your session ended. Sign in again.</string>
     <string name="studio_error_upgrade">Your plan doesn\'t include this.</string>
     <string name="studio_error_not_supported">This isn\'t available yet.</string>
-    <string name="studio_error_restore_expired">It\'s been more than 30 days, so it can\'t be restored.</string>
+    <string name="studio_error_restore_expired">It\'s been more than %1$d days, so it can\'t be restored.</string>
     <string name="studio_error_invalid">Check the details and try again.</string>
     <string name="studio_tab_content">Content</string>
     <string name="studio_tab_upload">Upload</string>
@@ -52,7 +52,7 @@
     <string name="studio_delete">Delete</string>
     <string name="studio_restore">Restore</string>
     <string name="studio_delete_forever">Delete forever</string>
-    <string name="studio_delete_body_soft">You can restore deleted videos from Recently deleted for 30 days.</string>
+    <string name="studio_delete_body_soft">You can restore deleted videos from Recently deleted for %1$d days.</string>
     <string name="studio_delete_body_hard">This can\'t be undone. The videos and their views, likes and comments are removed.</string>
     <string name="studio_delete_forever_title">Delete “%1$s” forever?</string>
     <string name="studio_bulk_partial">%1$d done, %2$d failed</string>
@@ -84,9 +84,9 @@
     <string name="studio_discard_title">Discard changes?</string>
     <string name="studio_discard_body">Your edits to this video won\'t be saved.</string>
     <string name="studio_discard">Discard</string>
-    <string name="studio_range_7">7 days</string>
-    <string name="studio_range_28">28 days</string>
-    <string name="studio_range_90">90 days</string>
+    <string name="studio_range_7">%1$d days</string>
+    <string name="studio_range_28">%1$d days</string>
+    <string name="studio_range_90">%1$d days</string>
     <string name="studio_range_365">1 year</string>
     <string name="studio_stat_views">Views</string>
     <string name="studio_stat_watch_hours">Watch time (hours)</string>

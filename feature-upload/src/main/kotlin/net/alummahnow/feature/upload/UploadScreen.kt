@@ -3,7 +3,6 @@ package net.alummahnow.feature.upload
 import android.Manifest
 import android.net.Uri
 import android.os.Build
-import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +61,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -76,8 +74,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.UploadPhase
 import net.alummahnow.core.bridge.studio.VideoCategories
@@ -85,10 +81,14 @@ import net.alummahnow.core.bridge.studio.VideoLanguages
 import net.alummahnow.core.bridge.studio.Visibility
 import net.alummahnow.core.bridge.studio.core.describeDocument
 import net.alummahnow.design.components.ConfirmDialog
+import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.StudioLabels
+import net.alummahnow.design.format.aunPlural
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.design.format.fileSizeLabel
 import net.alummahnow.design.format.isolate
-import net.alummahnow.design.format.localizedDigits
+import net.alummahnow.design.format.percentLabel
 import net.alummahnow.design.theme.FanousTokens
 
 /** Callbacks of [UploadScreen]; [onPick] opens the system picker. */
@@ -175,7 +175,6 @@ fun UploadScreen(state: UploadUiState, titles: List<String>, actions: UploadActi
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActions) {
-    val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
         Heading(stringResource(R.string.upload_files))
         OutlinedButton(onClick = actions.onPick, modifier = Modifier.fillMaxWidth().testTag("upload-pick")) {
@@ -184,7 +183,7 @@ private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActi
             Text(stringResource(R.string.upload_pick))
         }
         if (state.files.isEmpty()) {
-            Text(stringResource(R.string.upload_no_files, UploadViewModel.MAX_FILES), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(aunString(R.string.upload_no_files, UploadViewModel.MAX_FILES), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         state.files.forEachIndexed { i, f ->
             Card(
@@ -194,7 +193,7 @@ private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActi
                 Column(Modifier.padding(FanousTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "${isolate(f.name)} · ${localizedDigits(Formatter.formatShortFileSize(context, f.sizeBytes))}",
+                            "${isolate(f.name)} · ${fileSizeLabel(f.sizeBytes)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -202,13 +201,13 @@ private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActi
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = { actions.onRemoveFile(i) }) {
-                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.upload_remove_file_cd, f.name))
+                            Icon(Icons.Filled.Close, contentDescription = aunString(R.string.upload_remove_file_cd, f.name))
                         }
                     }
                     OutlinedTextField(
                         value = f.titleOverride ?: titles.getOrElse(i) { "" },
                         onValueChange = { actions.onTitle(i, it) },
-                        label = { Text(stringResource(R.string.upload_title_n, i + 1)) },
+                        label = { Text(aunString(R.string.upload_title_n, i + 1)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("upload-title-$i")
                     )
@@ -286,14 +285,14 @@ private fun SetForAllSection(state: UploadUiState, actions: UploadActions) {
 
         state.error?.let {
             Text(
-                stringResource(it),
+                uploadText(it),
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.testTag("upload-error").semantics { liveRegion = LiveRegionMode.Assertive }
             )
         }
         if (state.queuedCount > 0) {
             Text(
-                pluralStringResource(R.plurals.upload_queued, state.queuedCount, state.queuedCount),
+                aunPlural(R.plurals.upload_queued, state.queuedCount, state.queuedCount),
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
             )
@@ -307,7 +306,7 @@ private fun SetForAllSection(state: UploadUiState, actions: UploadActions) {
                 if (state.files.isEmpty()) {
                     stringResource(R.string.upload_start_none)
                 } else {
-                    pluralStringResource(R.plurals.upload_start, state.files.size, state.files.size)
+                    aunPlural(R.plurals.upload_start, state.files.size, state.files.size)
                 }
             )
         }
@@ -326,9 +325,7 @@ private fun ScheduleRow(scheduleAt: ZonedDateTime?, actions: UploadActions) {
             Text(stringResource(R.string.upload_schedule), style = MaterialTheme.typography.labelLarge)
             Text(
                 scheduleAt?.let {
-                    localizedDigits(
-                        it.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale))
-                    )
+                    AunFormat.dateTime(it, locale)
                 }
                     ?: stringResource(R.string.upload_schedule_off),
                 style = MaterialTheme.typography.bodySmall,
@@ -421,7 +418,7 @@ private fun QueueList(items: List<UploadItem>, actions: UploadActions) {
     }
     confirmCancel?.let { item ->
         ConfirmDialog(
-            title = stringResource(R.string.upload_cancel_title, isolate(item.title)),
+            title = aunString(R.string.upload_cancel_title, isolate(item.title)),
             message = stringResource(R.string.upload_cancel_body),
             confirmLabel = stringResource(R.string.upload_cancel_confirm),
             onConfirm = {
@@ -436,7 +433,7 @@ private fun QueueList(items: List<UploadItem>, actions: UploadActions) {
 @Composable
 private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> Unit) {
     val phase = stringResource(phaseLabel(item.phase))
-    val percentText = localizedDigits(java.text.NumberFormat.getPercentInstance(currentLocale()).format(item.fraction.toDouble()))
+    val percentText = percentLabel(item.fraction.toDouble())
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier.fillMaxWidth().testTag("upload-item-${item.id}")
@@ -460,23 +457,23 @@ private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> U
                 }
                 when (item.phase) {
                     UploadPhase.UPLOADING, UploadPhase.QUEUED, UploadPhase.WAITING -> IconButton(onClick = { actions.onPause(item.id) }) {
-                        Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.upload_pause_cd, item.title))
+                        Icon(Icons.Filled.Pause, contentDescription = aunString(R.string.upload_pause_cd, item.title))
                     }
                     UploadPhase.PAUSED -> IconButton(onClick = { actions.onResume(item.id) }) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.upload_resume_cd, item.title))
+                        Icon(Icons.Filled.PlayArrow, contentDescription = aunString(R.string.upload_resume_cd, item.title))
                     }
                     UploadPhase.FAILED -> IconButton(onClick = { actions.onRetry(item.id) }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.upload_retry_cd, item.title))
+                        Icon(Icons.Filled.Refresh, contentDescription = aunString(R.string.upload_retry_cd, item.title))
                     }
                     else -> Unit
                 }
                 if (item.isFinished) {
                     IconButton(onClick = { actions.onRemove(item.id) }) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.upload_dismiss_cd, item.title))
+                        Icon(Icons.Filled.Close, contentDescription = aunString(R.string.upload_dismiss_cd, item.title))
                     }
                 } else if (item.phase != UploadPhase.FINISHING) {
                     IconButton(onClick = onCancel, modifier = Modifier.testTag("upload-cancel-${item.id}")) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.upload_cancel_cd, item.title))
+                        Icon(Icons.Filled.Close, contentDescription = aunString(R.string.upload_cancel_cd, item.title))
                     }
                 }
             }
@@ -516,7 +513,7 @@ private fun TitlePatternField(state: UploadUiState, actions: UploadActions) {
                 selected = false,
                 onClick = { actions.onForm { it.copy(titlePattern = (it.titlePattern + " " + token).trim()) } },
                 label = { Text(isolate(token)) },
-                modifier = Modifier.semantics { contentDescription = resources.getString(R.string.upload_insert_token_cd, token) }
+                modifier = Modifier.semantics { contentDescription = resources.aunString(R.string.upload_insert_token_cd, token) }
             )
         }
     }
