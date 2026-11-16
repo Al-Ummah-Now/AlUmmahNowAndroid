@@ -199,4 +199,5 @@
         <item quantity="many">%d يومًا</item>
         <item quantity="other">%d يوم</item>
     </plurals>
+    <string name="quoted">«%1$s»</string>
 </resources>
