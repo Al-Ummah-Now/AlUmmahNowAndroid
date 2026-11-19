@@ -134,7 +134,7 @@ class StoreScreenshots {
     }
 
     private val screens: List<Pair<String, @Composable () -> Unit>> = listOf(
-        "dashboard" to inStudio(StudioTab.DASHBOARD) { DashboardScreen(channel, dashboard, onRetry = {}) },
+        "dashboard" to inStudio(StudioTab.DASHBOARD) { DashboardScreen(dashboard, onRetry = {}) },
         "content" to inStudio(StudioTab.CONTENT) { ContentScreen(ContentUiState(videos = videos, loading = false), contentActions) },
         "upload" to inStudio(StudioTab.UPLOAD) { UploadScreen(upload, listOf("Surat Al-Kahf 01", "Surat Al-Kahf 02"), uploadActions) },
         "analytics" to inStudio(StudioTab.ANALYTICS) { AnalyticsScreen(analytics, onRange = {}, onRetry = {}) }

@@ -1,9 +1,13 @@
 package net.alummahnow.studio
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -15,10 +19,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,7 +43,6 @@ import net.alummahnow.core.bridge.links.StudioSection
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.FanousHeaderBar
-import net.alummahnow.design.components.FanousHeaderButton
 import net.alummahnow.design.components.FanousHeaderTitle
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.feature.passkey.PasskeyHost
@@ -130,15 +140,24 @@ fun StudioApp(
         }
     }
 
+    var tab by rememberSaveable(selected?.id) { mutableStateOf(StudioTab.DASHBOARD) }
+    val wide = LocalConfiguration.current.screenWidthDp.dp >= RAIL_BREAKPOINT
     Scaffold(
-        topBar = { StudioTopBar(selected, onAccount = { sheetOpen = true }) },
+        topBar = {
+            StudioTopBar(
+                title = if (selected == null) stringResource(R.string.app_name) else stringResource(tab.label),
+                // Phones: identity at the end of the header. Large screens: in the rail's header instead.
+                identity = if (wide && selected != null) null else selected,
+                railAligned = wide && selected != null,
+                onAccount = { sheetOpen = true }
+            )
+        },
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         val body = Modifier.fillMaxSize().padding(padding)
         if (selected == null) {
             ChannelPickerScreen(channelsState, onSelect = channels::select, onRetry = channels::load, modifier = body)
         } else {
-            var tab by rememberSaveable(selected.id) { mutableStateOf(StudioTab.DASHBOARD) }
             var editing by rememberSaveable(selected.id) { mutableStateOf<String?>(null) }
             LaunchedEffect(pendingLink, selected.id) {
                 val link = pendingLink ?: return@LaunchedEffect
@@ -160,7 +179,13 @@ fun StudioApp(
                     content.load()
                 }, modifier = body)
             } else {
-                StudioHome(StudioTab.entries, tab, onSelect = { tab = it }, modifier = body) { t ->
+                StudioHome(
+                    StudioTab.entries,
+                    tab,
+                    onSelect = { tab = it },
+                    modifier = body,
+                    railHeader = { IdentityButton(selected, onClick = { sheetOpen = true }) }
+                ) { t ->
                     when (t) {
                         StudioTab.CONTENT -> ContentRoute(content, onEdit = { editing = it })
                         StudioTab.UPLOAD -> {
@@ -180,7 +205,7 @@ fun StudioApp(
                                 DashboardViewModel(container.repository, selected.id)
                             }
                             val dashboardState by dashboard.state.collectAsStateWithLifecycle()
-                            DashboardScreen(selected, dashboardState, onRetry = dashboard::load)
+                            DashboardScreen(dashboardState, onRetry = dashboard::load)
                         }
                     }
                 }
@@ -240,22 +265,31 @@ private fun StudioSection.toTab(): StudioTab = when (this) {
 /** "Add a passkey" needs a sign-in within 15 minutes (the server's step_up_required window). */
 private const val STEP_UP_MAX_AGE_S = 900
 
-/** The web header: the channel acting as, and the account menu. */
+/**
+ * The web header: the screen title and, on phones, the identity (the channel being acted as), which opens the
+ * account sheet. On large screens the title starts on the rail's edge and identity lives in the rail header.
+ */
 @Composable
-private fun StudioTopBar(channel: StudioChannel?, onAccount: () -> Unit) {
+private fun StudioTopBar(title: String, identity: StudioChannel?, railAligned: Boolean, onAccount: () -> Unit) {
     FanousHeaderBar {
-        if (channel != null) {
-            ChannelAvatar(channel, 32)
-            FanousHeaderTitle(channel.localizedName(currentLocale().language), Modifier.weight(1f))
-        } else {
-            FanousHeaderTitle(stringResource(R.string.app_name), Modifier.weight(1f), large = true)
-        }
-        FanousHeaderButton(
-            onClick = onAccount,
-            contentDescription = stringResource(net.alummahnow.feature.studio.R.string.studio_account_menu_cd),
-            icon = Icons.Filled.AccountCircle,
-            outlined = false,
-            modifier = Modifier.testTag("account-button")
-        )
+        if (railAligned) Spacer(Modifier.width(RAIL_WIDTH - 12.dp))
+        FanousHeaderTitle(title, Modifier.weight(1f), large = true)
+        if (identity != null) IdentityButton(identity, onClick = onAccount)
     }
+}
+
+/** The identity control: the channel's avatar, no ring (as the web header). Opens the account sheet. */
+@Composable
+private fun IdentityButton(channel: StudioChannel, onClick: () -> Unit) {
+    val name = channel.localizedName(currentLocale().language)
+    val label = stringResource(net.alummahnow.feature.studio.R.string.studio_account_menu_cd)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = "$label, $name" }
+            .testTag("account-button"),
+        contentAlignment = Alignment.Center
+    ) { ChannelAvatar(channel, 36) }
 }

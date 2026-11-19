@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,19 +22,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FullScreenLoading
-import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.localizedDigits
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
-import net.alummahnow.feature.studio.channels.ChannelAvatar
-import net.alummahnow.feature.studio.channels.roleLabel
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DashboardScreen(channel: StudioChannel, state: DashboardUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+fun DashboardScreen(state: DashboardUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     when (state) {
         DashboardUiState.Loading -> FullScreenLoading(modifier)
         is DashboardUiState.Error -> ErrorState(stringResource(state.message), onRetry, modifier)
@@ -45,21 +40,7 @@ fun DashboardScreen(channel: StudioChannel, state: DashboardUiState, onRetry: ()
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val width = Modifier.widthIn(max = 720.dp).fillMaxWidth()
-            Row(
-                width,
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
-            ) {
-                ChannelAvatar(channel, 56)
-                Column {
-                    Text(
-                        channel.localizedName(currentLocale().language),
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.semantics { heading() }
-                    )
-                    Text(stringResource(roleLabel(channel.role)), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            // Identity lives only in the navigation (the header avatar or the rail), never on the page.
             state.access?.let { a ->
                 Card(width, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
                     Text(
