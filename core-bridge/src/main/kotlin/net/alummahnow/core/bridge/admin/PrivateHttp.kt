@@ -1,6 +1,7 @@
 package net.alummahnow.core.bridge.admin
 
 import java.util.concurrent.TimeUnit
+import net.alummahnow.core.bridge.AunClient
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -12,6 +13,9 @@ import okhttp3.Request
  * `MediaNeverOnDiskTest` fails if anything it loads lands in the app's cache or files directories.
  */
 object PrivateHttp {
+    /** `X-AUN-Client` for every request (see [AunClient]); the Admin app sets it once at start. */
+    @Volatile var aunClient: String? = null
+
     /**
      * TLS only (loopback excepted, for tests and the local stack), checked before every hop connects. OkHttp's own
      * redirects are off; this follows them itself so a redirect to plain HTTP is refused, not fetched. Every request
@@ -23,7 +27,10 @@ object PrivateHttp {
         while (true) {
             val url = request.url
             require(url.isHttps || isLoopback(url.host)) { "Admin traffic is TLS only" }
-            val response = chain.proceed(request.newBuilder().header("Cache-Control", "no-store").header("Pragma", "no-cache").build())
+            val response = chain.proceed(
+                request.newBuilder().header("Cache-Control", "no-store").header("Pragma", "no-cache")
+                    .apply { aunClient?.let { header(AunClient.HEADER, it) } }.build()
+            )
             val next = response.header("Location")?.takeIf { response.isRedirect }?.let { url.resolve(it) }
             if (next == null || hops++ >= MAX_REDIRECTS) {
                 return@Interceptor response.newBuilder().header("Cache-Control", "no-store").removeHeader("ETag").build()
