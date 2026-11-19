@@ -1,10 +1,5 @@
 package net.alummahnow.feature.editor
 
-import net.alummahnow.core.bridge.media.EditClip
-import kotlinx.coroutines.launch
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.runtime.CompositionLocalProvider
 import android.content.Context
 import android.content.Intent
 import android.media.MediaMetadataRetriever
@@ -14,6 +9,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,6 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,7 +29,9 @@ import androidx.media3.ui.compose.ContentFrame
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import net.alummahnow.core.bridge.media.EditClip
 import net.alummahnow.core.bridge.media.EditDecisionList
 
 /** Reads a picked video's length with the platform retriever, off the main thread. */
@@ -114,35 +114,35 @@ fun EditorRoute(
     val frames = remember { ClipFrames(context.applicationContext) }
     val tick by frames.loaded.collectAsStateWithLifecycle()
     CompositionLocalProvider(LocalClipThumbnail provides { clip -> tick.let { frames.frame(clip) } }) {
-    EditorScreen(
-        state = state,
-        playing = playing,
-        onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
-        onSelect = viewModel::select,
-        onScrub = { t ->
-            viewModel.scrub(t)
-            state.list.locate(t)?.let { (index, offset) -> player.seekTo(index, offset) }
-        },
-        onMove = viewModel::move,
-        onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
-        modifier = modifier,
-        tools = EditorTools(
-            onSplit = viewModel::split,
-            onDelete = viewModel::deleteSelected,
-            onTrim = viewModel::trim,
-            onUndo = viewModel::undo,
-            onRedo = viewModel::redo,
-            onExport = viewModel::export,
-            onShare = { state.exportedPath?.let { context.shareVideo(File(it)) } },
-            onSendToUpload = {
-                state.exportedPath?.let { path ->
-                    val file = File(path)
-                    onSendToUpload(context.exportUri(file).toString(), file.name, file.length())
+        EditorScreen(
+            state = state,
+            playing = playing,
+            onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+            onSelect = viewModel::select,
+            onScrub = { t ->
+                viewModel.scrub(t)
+                state.list.locate(t)?.let { (index, offset) -> player.seekTo(index, offset) }
+            },
+            onMove = viewModel::move,
+            onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+            modifier = modifier,
+            tools = EditorTools(
+                onSplit = viewModel::split,
+                onDelete = viewModel::deleteSelected,
+                onTrim = viewModel::trim,
+                onUndo = viewModel::undo,
+                onRedo = viewModel::redo,
+                onExport = viewModel::export,
+                onShare = { state.exportedPath?.let { context.shareVideo(File(it)) } },
+                onSendToUpload = {
+                    state.exportedPath?.let { path ->
+                        val file = File(path)
+                        onSendToUpload(context.exportUri(file).toString(), file.name, file.length())
+                    }
                 }
-            }
-        ),
-        preview = { ContentFrame(player = player, modifier = Modifier.fillMaxSize()) }
-    )
+            ),
+            preview = { ContentFrame(player = player, modifier = Modifier.fillMaxSize()) }
+        )
     }
 }
 
