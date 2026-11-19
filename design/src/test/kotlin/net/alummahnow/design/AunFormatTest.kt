@@ -113,4 +113,14 @@ class AunFormatTest {
         assertEquals("arab", AunFormat.numberingLocale(Locale.forLanguageTag("ar-u-nu-latn")).getUnicodeLocaleType("nu"))
         assertEquals(en, AunFormat.numberingLocale(en))
     }
+
+    @Test fun `Arabic compact counts use the Arabic decimal separator, never a Latin comma or point`() {
+        val c = AunFormat.compact(1_520, ar)
+        assertEquals("١٫٥", c.number)
+        // Placed into a resource string ("%1$s ألف مشاهدة") the separator stays U+066B.
+        val label = AunFormat.format("%1\$s ألف مشاهدة", ar, c.number)
+        assertEquals("١٫٥ ألف مشاهدة", label)
+        listOf(",", ".", "\u060C").forEach { assertEquals(false, label.contains(it)) }
+        assertEquals(true, label.contains('\u066B'))
+    }
 }

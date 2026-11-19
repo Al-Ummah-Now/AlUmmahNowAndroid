@@ -8,8 +8,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +37,8 @@ import net.alummahnow.design.format.durationLabel
 import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
+import net.alummahnow.design.theme.LocalFanous
+import net.alummahnow.design.theme.color
 
 /** Display model for a video card. Features map core models into this so `:design` stays core-agnostic. */
 data class VideoCardData(
@@ -82,15 +89,31 @@ fun VideoCard(
     }
 }
 
+/**
+ * A video's thumbnail with its duration. Until the image loads, or when the video has none (or it fails), a designed
+ * placeholder shows: the theme's raised surface with a gold play glyph, never an empty gradient.
+ */
 @Composable
 fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifier) {
+    val f = LocalFanous.current
     Box(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
             .clip(MaterialTheme.shapes.medium)
-            .background(Brush.linearGradient(listOf(FanousTokens.NightDeep, FanousTokens.NightShallow, FanousTokens.Earth)))
+            .background(Brush.verticalGradient(listOf(f.colors.surfaceRaised.color, f.colors.surface.color)))
+            .testTag("thumbnail")
     ) {
+        Box(
+            Modifier
+                .align(Alignment.Center)
+                .size(PLAY_GLYPH)
+                .clip(CircleShape)
+                .background(f.colors.primary.color.copy(alpha = PLAY_ALPHA)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = f.colors.onPrimary.color)
+        }
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
@@ -112,3 +135,6 @@ fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifie
         }
     }
 }
+
+private val PLAY_GLYPH = 32.dp
+private const val PLAY_ALPHA = 0.92f

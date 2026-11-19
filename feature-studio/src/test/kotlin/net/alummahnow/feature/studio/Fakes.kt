@@ -36,6 +36,7 @@ val sampleVideos = listOf(
     StudioVideo(
         "v1",
         "Introduction to Tafsir",
+        thumbnailUrl = "${FIXTURE_THUMBS}tafsir.jpg",
         titleLocalized = mapOf("ar" to "مقدمة في التفسير"),
         views = 1520,
         durationSeconds = 1830.0,
@@ -47,6 +48,7 @@ val sampleVideos = listOf(
     StudioVideo(
         "v2",
         "Seerah overview",
+        thumbnailUrl = "${FIXTURE_THUMBS}seerah.jpg",
         titleLocalized = mapOf("ar" to "نظرة عامة على السيرة"),
         isPublic = false,
         views = 87,
@@ -57,11 +59,13 @@ val sampleVideos = listOf(
     StudioVideo(
         "v3",
         "Ramadan reminders",
+        thumbnailUrl = "${FIXTURE_THUMBS}ramadan.jpg",
         titleLocalized = mapOf("ar" to "تذكيرات رمضان"),
         views = 12000,
         durationSeconds = 45.0,
         category = "ramadan",
-        status = ContentStatus.PUBLISHED
+        status = ContentStatus.PUBLISHED,
+        createdAt = "2026-11-04T10:00:00Z"
     )
 )
 

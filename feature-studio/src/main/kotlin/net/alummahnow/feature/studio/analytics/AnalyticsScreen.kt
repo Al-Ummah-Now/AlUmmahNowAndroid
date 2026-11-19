@@ -1,7 +1,6 @@
 package net.alummahnow.feature.studio.analytics
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +39,8 @@ import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FanousCard
 import net.alummahnow.design.components.FanousChip
+import net.alummahnow.design.components.FanousChipRow
+import net.alummahnow.design.components.bleedHorizontal
 import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.compactCount
@@ -65,19 +65,18 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= WIDE
+            val pad = if (wide) FanousTokens.Spacing.xl else FanousTokens.Spacing.lg
             Column(
                 Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(if (wide) FanousTokens.Spacing.xl else FanousTokens.Spacing.lg)
+                    .padding(pad)
                     .testTag("analytics"),
                 verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)
             ) {
                 // The range as chips, the selected one gold (as Apple's).
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
-                ) {
+                // Full width (past the page padding) so the edge fade sits at the screen edge.
+                FanousChipRow(Modifier.bleedHorizontal(pad), sidePadding = pad) {
                     ranges.forEach { (r, label) ->
                         FanousChip(
                             aunString(label, r.days),

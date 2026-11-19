@@ -53,6 +53,8 @@ class StoreScreenshots {
         StudioVideo(
             "v1",
             "Introduction to tafsir",
+            thumbnailUrl = "${FIXTURE_THUMBS}tafsir.jpg",
+            createdAt = "2026-11-06T10:00:00Z",
             titleLocalized = mapOf("ar" to "مقدمة في التفسير"),
             views = 4_167,
             durationSeconds = 1_830.0,
@@ -62,6 +64,8 @@ class StoreScreenshots {
         StudioVideo(
             "v2",
             "Seerah overview",
+            thumbnailUrl = "${FIXTURE_THUMBS}seerah.jpg",
+            createdAt = "2026-11-05T10:00:00Z",
             titleLocalized = mapOf("ar" to "نظرة عامة على السيرة"),
             isPublic = false,
             views = 87,
@@ -72,6 +76,8 @@ class StoreScreenshots {
         StudioVideo(
             "v3",
             "Ramadan reminder",
+            thumbnailUrl = "${FIXTURE_THUMBS}ramadan.jpg",
+            createdAt = "2026-11-04T10:00:00Z",
             titleLocalized = mapOf("ar" to "تذكير رمضان"),
             views = 12_400,
             durationSeconds = 245.0,
@@ -81,6 +87,8 @@ class StoreScreenshots {
         StudioVideo(
             "v4",
             "Surat Al-Kahf recitation",
+            thumbnailUrl = "${FIXTURE_THUMBS}kahf.jpg",
+            createdAt = "2026-11-03T10:00:00Z",
             titleLocalized = mapOf("ar" to "تلاوة سورة الكهف"),
             views = 8_020,
             durationSeconds = 2_710.0,
