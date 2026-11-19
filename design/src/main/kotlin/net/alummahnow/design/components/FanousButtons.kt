@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.alummahnow.design.theme.FanousTokens
@@ -129,16 +130,17 @@ fun FanousChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: M
 }
 
 /**
- * A row of [FanousChip]s that scrolls sideways when it is wider than the screen. Both edges fade over the row's side
- * padding (as on Apple), so a chip cut at the edge reads as "more this way"; at rest the first chip is not faded.
+ * A row of [FanousChip]s that scrolls sideways when it is wider than the screen. A side with more chips past the edge
+ * fades out (as on Apple), so a cut chip reads as "more this way"; a side with nothing hidden does not fade.
  */
 @Composable
 fun FanousChipRow(modifier: Modifier = Modifier, sidePadding: Dp = FanousTokens.Spacing.lg, content: @Composable RowScope.() -> Unit) {
+    val scroll = rememberScrollState()
     Row(
         modifier
             .fillMaxWidth()
-            .edgeFade(sidePadding)
-            .horizontalScroll(rememberScrollState())
+            .edgeFade(CHIP_FADE, fadeStart = scroll.canScrollBackward, fadeEnd = scroll.canScrollForward)
+            .horizontalScroll(scroll)
             .padding(horizontal = sidePadding, vertical = FanousTokens.Spacing.sm)
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm),
@@ -147,16 +149,29 @@ fun FanousChipRow(modifier: Modifier = Modifier, sidePadding: Dp = FanousTokens.
     )
 }
 
-/** Fades both horizontal edges of the content over [width] (transparent at the edge, opaque inside). */
-fun Modifier.edgeFade(width: Dp): Modifier = graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent {
-        drawContent()
-        val fade = (width.toPx() / size.width).coerceIn(0f, HALF)
-        drawRect(
-            Brush.horizontalGradient(0f to Color.Transparent, fade to Color.Black, 1f - fade to Color.Black, 1f to Color.Transparent),
-            blendMode = BlendMode.DstIn
-        )
-    }
+/**
+ * Fades the content's start and/or end edge over [width] (transparent at the edge). Start and end follow the layout
+ * direction, so Arabic fades on the mirrored sides.
+ */
+fun Modifier.edgeFade(width: Dp, fadeStart: Boolean = true, fadeEnd: Boolean = true): Modifier =
+    graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val f = (width.toPx() / size.width).coerceIn(0f, HALF)
+            val rtl = layoutDirection == LayoutDirection.Rtl
+            val left = if (rtl) fadeEnd else fadeStart
+            val right = if (rtl) fadeStart else fadeEnd
+            if (!left && !right) return@drawWithContent
+            drawRect(
+                Brush.horizontalGradient(
+                    0f to if (left) Color.Transparent else Color.Black,
+                    (if (left) f else 0f) to Color.Black,
+                    (if (right) 1f - f else 1f) to Color.Black,
+                    1f to if (right) Color.Transparent else Color.Black
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
 
 /** Lets a full-width row (a chip row) reach past its parent's side padding by [by] on each side. */
 fun Modifier.bleedHorizontal(by: Dp): Modifier = layout { measurable, constraints ->
@@ -166,3 +181,4 @@ fun Modifier.bleedHorizontal(by: Dp): Modifier = layout { measurable, constraint
 }
 
 private const val HALF = 0.5f
+private val CHIP_FADE = 40.dp
