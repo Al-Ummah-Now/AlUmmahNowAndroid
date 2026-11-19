@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -48,6 +49,9 @@ import net.alummahnow.design.components.FanousHeaderBar
 import net.alummahnow.design.components.FanousHeaderButton
 import net.alummahnow.design.components.FanousHeaderTitle
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.feature.editor.EditorRoute
+import net.alummahnow.feature.editor.EditorViewModel
+import net.alummahnow.feature.editor.RetrieverDurationProbe
 import net.alummahnow.feature.passkey.PasskeyHost
 import net.alummahnow.feature.passkey.PasskeyUiState
 import net.alummahnow.feature.passkey.PasskeyViewModel
@@ -203,6 +207,13 @@ fun StudioApp(
                                 viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
                             val analyticsState by analytics.state.collectAsStateWithLifecycle()
                             AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
+                        }
+                        StudioTab.EDITOR -> {
+                            val probeContext = LocalContext.current.applicationContext
+                            val editor: EditorViewModel = viewModel(key = "editor-$key") {
+                                EditorViewModel(RetrieverDurationProbe(probeContext))
+                            }
+                            EditorRoute(editor)
                         }
                         StudioTab.DASHBOARD -> {
                             val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") {

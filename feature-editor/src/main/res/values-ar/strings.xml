@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="editor_title">المحرر</string>
+    <string name="editor_import">استيراد مقطع</string>
+    <string name="editor_empty">استورد مقاطع لبدء التحرير.</string>
+    <string name="editor_clips">المقاطع</string>
+    <string name="editor_clip">المقطع %1$s</string>
+    <string name="editor_move_up">نقل للأمام</string>
+    <string name="editor_move_down">نقل للخلف</string>
+    <string name="editor_timeline">الخط الزمني</string>
+    <string name="editor_preview">المعاينة</string>
+    <string name="editor_play">تشغيل</string>
+    <string name="editor_pause">إيقاف مؤقت</string>
+    <string name="editor_import_failed">تعذّرت إضافة هذا المرئي.</string>
+</resources>

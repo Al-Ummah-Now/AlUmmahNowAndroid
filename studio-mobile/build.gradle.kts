@@ -40,6 +40,7 @@ dependencies {
     implementation(project(":design"))
     implementation(project(":feature-upload"))
     implementation(project(":feature-studio"))
+    implementation(project(":feature-editor"))
     implementation(libs.androidx.browser)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(project(":feature-editor"))

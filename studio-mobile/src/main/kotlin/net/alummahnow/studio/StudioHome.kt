@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import net.alummahnow.design.components.fanousLayers
 import net.alummahnow.design.theme.LocalFanous
 import net.alummahnow.design.theme.color
+import net.alummahnow.feature.editor.R as EditorR
 import net.alummahnow.feature.studio.R as StudioR
 
 /** Studio sections. */
@@ -43,7 +45,8 @@ enum class StudioTab(val label: Int, val icon: ImageVector) {
     DASHBOARD(R.string.studio_tab_dashboard, Icons.Filled.Dashboard),
     CONTENT(StudioR.string.studio_tab_content, Icons.Filled.VideoLibrary),
     UPLOAD(StudioR.string.studio_tab_upload, Icons.Filled.CloudUpload),
-    ANALYTICS(StudioR.string.studio_tab_analytics, Icons.Filled.Insights)
+    ANALYTICS(StudioR.string.studio_tab_analytics, Icons.Filled.Insights),
+    EDITOR(EditorR.string.editor_title, Icons.Filled.ContentCut)
 }
 
 /** Width at which phones switch from the bottom bar to the rail. */
