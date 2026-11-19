@@ -1,7 +1,9 @@
 package net.alummahnow.feature.studio.content
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Restore
@@ -31,11 +34,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -66,7 +68,12 @@ import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.components.ErrorState
+import net.alummahnow.design.components.FanousButton
+import net.alummahnow.design.components.FanousButtonKind
+import net.alummahnow.design.components.FanousChip
+import net.alummahnow.design.components.FanousMaterialKind
 import net.alummahnow.design.components.Thumbnail
+import net.alummahnow.design.components.fanousMaterial
 import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.aunPlural
 import net.alummahnow.design.format.aunString
@@ -76,6 +83,8 @@ import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.localizedDigits
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
+import net.alummahnow.design.theme.LocalFanous
+import net.alummahnow.design.theme.color
 import net.alummahnow.feature.studio.R
 import net.alummahnow.feature.studio.studioText
 
@@ -164,16 +173,20 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
 
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
-            PrimaryScrollableTabRow(
-                selectedTabIndex = tabs.indexOfFirst { it.first == state.status },
-                edgePadding = FanousTokens.Spacing.lg,
-                containerColor = MaterialTheme.colorScheme.background
+            // Status chips, the selected one gold (as Apple's), scrolling sideways on phones.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.sm)
+                    .selectableGroup(),
+                horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
             ) {
                 tabs.forEach { (status, label) ->
-                    Tab(
+                    FanousChip(
+                        stringResource(label),
                         selected = status == state.status,
                         onClick = { actions.onStatus(status) },
-                        text = { Text(stringResource(label)) },
                         modifier = Modifier.testTag("status-${status.apiValue}")
                     )
                 }
@@ -289,40 +302,63 @@ private fun SearchBox(state: ContentUiState, actions: ContentActions) {
 
 @Composable
 private fun SelectionBar(state: ContentUiState, deleted: Boolean, onBulkEdit: () -> Unit, onDelete: () -> Unit, actions: ContentActions) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer) {
-        Row(
-            Modifier.fillMaxWidth().padding(
-                horizontal = FanousTokens.Spacing.sm,
-                vertical = FanousTokens.Spacing.xs
-            ).testTag("selection-bar"),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = actions.onClearSelection) {
-                Icon(Icons.Filled.Clear, contentDescription = stringResource(R.string.studio_clear_selection))
-            }
-            Text(
-                aunPlural(R.plurals.studio_selected_count, state.selected.size, state.selected.size),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
+    // A raised card; the one gold action (Bulk edit, or Restore) at the end.
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = FanousTokens.Spacing.md, vertical = FanousTokens.Spacing.xs)
+            .fanousMaterial(FanousMaterialKind.Raised, RoundedCornerShape(FanousTokens.Radius.lg))
+            .padding(horizontal = FanousTokens.Spacing.sm, vertical = FanousTokens.Spacing.xs)
+            .testTag("selection-bar"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xs)
+    ) {
+        val f = LocalFanous.current
+        IconButton(onClick = actions.onClearSelection) {
+            Icon(
+                Icons.Filled.Clear,
+                contentDescription = stringResource(R.string.studio_clear_selection),
+                tint = f.colors.textPrimary.color
             )
-            IconButton(onClick = actions.onSelectAll) {
-                Icon(Icons.Filled.SelectAll, contentDescription = stringResource(R.string.studio_select_all))
-            }
-            if (deleted) {
-                TextButton(onClick = actions.onRestore, enabled = !state.busy, modifier = Modifier.testTag("bulk-restore")) {
-                    Icon(Icons.Filled.Restore, contentDescription = null)
-                    Text(stringResource(R.string.studio_restore))
-                }
-            } else {
-                TextButton(onClick = onBulkEdit, enabled = !state.busy, modifier = Modifier.testTag("bulk-edit")) {
-                    Icon(Icons.Filled.Edit, contentDescription = null)
-                    Text(stringResource(R.string.studio_bulk_edit))
-                }
-                TextButton(onClick = onDelete, enabled = !state.busy, modifier = Modifier.testTag("bulk-delete")) {
-                    Icon(Icons.Filled.Delete, contentDescription = null)
-                    Text(stringResource(R.string.studio_delete))
-                }
-            }
+        }
+        Text(
+            aunPlural(R.plurals.studio_selected_count, state.selected.size, state.selected.size),
+            style = MaterialTheme.typography.titleSmall,
+            color = f.colors.textPrimary.color,
+            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
+        )
+        IconButton(onClick = actions.onSelectAll) {
+            Icon(
+                Icons.Filled.SelectAll,
+                contentDescription = stringResource(R.string.studio_select_all),
+                tint = f.colors.textPrimary.color
+            )
+        }
+        if (deleted) {
+            FanousButton(
+                stringResource(R.string.studio_restore),
+                actions.onRestore,
+                kind = FanousButtonKind.Primary,
+                icon = Icons.Filled.Restore,
+                enabled = !state.busy,
+                modifier = Modifier.testTag("bulk-restore")
+            )
+        } else {
+            FanousButton(
+                stringResource(R.string.studio_delete),
+                onDelete,
+                kind = FanousButtonKind.Destructive,
+                enabled = !state.busy,
+                modifier = Modifier.testTag("bulk-delete")
+            )
+            FanousButton(
+                stringResource(R.string.studio_bulk_edit),
+                onBulkEdit,
+                kind = FanousButtonKind.Primary,
+                icon = Icons.Filled.Edit,
+                enabled = !state.busy,
+                modifier = Modifier.testTag("bulk-edit")
+            )
         }
     }
 }
@@ -367,13 +403,14 @@ private fun VideoRow(
     val title = v.titleLocalized[language]?.takeIf { it.isNotBlank() } ?: v.title
     val selectLabel = aunString(R.string.studio_selection_cd, isolate(title))
     val selectedState = aunPlural(R.plurals.studio_selected_count, 1, 1)
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer
-        ),
+    val f = LocalFanous.current
+    val shape = RoundedCornerShape(FanousTokens.Radius.lg)
+    Box(
         modifier = Modifier
-            .widthIn(max = 960.dp)
             .fillMaxWidth()
+            .fanousMaterial(FanousMaterialKind.Card, shape)
+            .then(if (selected) Modifier.border(2.dp, f.colors.primary.color, shape) else Modifier)
+            .clip(shape)
             .combinedClickable(
                 onClick = { if (selecting || deleted) actions.onToggle(v.id) else actions.onEdit(v.id) },
                 onLongClick = { actions.onToggle(v.id) }
@@ -399,13 +436,33 @@ private fun VideoRow(
             )
             Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(120.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = f.colors.textPrimary.color,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                // One line that truncates; the date has its own column so it never wraps.
                 Text(
                     meta(v, deleted),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2
+                    color = f.colors.textSecondary.color,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (!deleted) {
+                v.createdAt?.let {
+                    Text(
+                        formatDate(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = f.colors.textMuted.color,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.align(Alignment.Top).padding(top = FanousTokens.Spacing.xs)
+                    )
+                }
             }
             if (deleted) {
                 IconButton(onClick = onDeleteForever, modifier = Modifier.testTag("forever-${v.id}")) {
@@ -417,7 +474,11 @@ private fun VideoRow(
                 }
             } else if (!selecting) {
                 IconButton(onClick = { actions.onEdit(v.id) }) {
-                    Icon(Icons.Filled.Edit, contentDescription = aunString(R.string.studio_video_edit_cd, isolate(title)))
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = aunString(R.string.studio_video_edit_cd, isolate(title)),
+                        tint = f.colors.textPrimary.color
+                    )
                 }
             }
         }
@@ -438,7 +499,6 @@ private fun meta(v: StudioVideo, deleted: Boolean): String {
             }
         )
         parts += viewsLabel(v.views)
-        v.createdAt?.let { parts += formatDate(it) }
     }
     return joinMeta(parts)
 }
