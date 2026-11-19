@@ -32,6 +32,25 @@ object FanousTokens {
     val InkMuted = Color(0xFF52626A)
     val LanternDeep = Color(0xFF9A5200)
 
+    /**
+     * App chrome (header, navigation rail, bottom bar), from the native token registry
+     * (packages/fanous-tokens, Fawanees: `surface`, `surfaceRaised`, `divider`).
+     */
+    object Chrome {
+        val Night = Color(0xFF0E2B3D)
+        val NightRaised = Color(0xFF184456)
+        val NightDivider = Color(0xFF184456)
+        val Parchment = Color(0xFFFFFDF9)
+        val ParchmentRaised = Color(0xFFFFFFFF)
+        val ParchmentDivider = Color(0xFFE4DED3)
+    }
+
+    /** Registry `FanousElevation`. */
+    object Elevation {
+        val low = 2.5.dp
+        val medium = 10.dp
+    }
+
     object Spacing {
         val xs = 4.dp
         val sm = 8.dp

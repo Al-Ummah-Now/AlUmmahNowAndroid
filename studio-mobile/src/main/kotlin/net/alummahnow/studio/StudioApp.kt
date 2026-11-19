@@ -1,21 +1,7 @@
 package net.alummahnow.studio
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,13 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,8 +22,6 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.StudioSection
 import net.alummahnow.core.bridge.studio.SignInMode
-import net.alummahnow.core.bridge.studio.StudioChannel
-import net.alummahnow.design.format.currentLocale
 import net.alummahnow.feature.passkey.PasskeyHost
 import net.alummahnow.feature.passkey.PasskeyUiState
 import net.alummahnow.feature.passkey.PasskeyViewModel
@@ -52,7 +30,6 @@ import net.alummahnow.feature.studio.analytics.AnalyticsScreen
 import net.alummahnow.feature.studio.analytics.AnalyticsViewModel
 import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.channels.AccountSheet
-import net.alummahnow.feature.studio.channels.ChannelAvatar
 import net.alummahnow.feature.studio.channels.ChannelPickerScreen
 import net.alummahnow.feature.studio.channels.ChannelsUiState
 import net.alummahnow.feature.studio.channels.ChannelsViewModel
@@ -139,16 +116,19 @@ fun StudioApp(
         }
     }
 
-    Scaffold(
-        topBar = { StudioTopBar(selected, onAccount = { sheetOpen = true }) },
+    // Hoisted so the header knows whether a rail sits under it (a channel is open and the editor is not).
+    var tab by rememberSaveable(selected?.id) { mutableStateOf(StudioTab.DASHBOARD) }
+    var editing by rememberSaveable(selected?.id) { mutableStateOf<String?>(null) }
+    StudioScaffold(
+        channel = selected,
+        railBelow = selected != null && editing == null,
+        onAccount = { sheetOpen = true },
+        scrollResetKey = Triple(selected?.id, tab, editing),
         snackbarHost = { SnackbarHost(snackbar) }
-    ) { padding ->
-        val body = Modifier.fillMaxSize().padding(padding)
+    ) { body ->
         if (selected == null) {
             ChannelPickerScreen(channelsState, onSelect = channels::select, onRetry = channels::load, modifier = body)
         } else {
-            var tab by rememberSaveable(selected.id) { mutableStateOf(StudioTab.DASHBOARD) }
-            var editing by rememberSaveable(selected.id) { mutableStateOf<String?>(null) }
             LaunchedEffect(pendingLink, selected.id) {
                 val link = pendingLink ?: return@LaunchedEffect
                 if (link.channelId != null && link.channelId != selected.id) return@LaunchedEffect
@@ -189,7 +169,7 @@ fun StudioApp(
                                 DashboardViewModel(container.repository, selected.id)
                             }
                             val dashboardState by dashboard.state.collectAsStateWithLifecycle()
-                            DashboardScreen(selected, dashboardState, onRetry = dashboard::load)
+                            DashboardScreen(dashboardState, onRetry = dashboard::load)
                         }
                     }
                 }
@@ -248,34 +228,3 @@ private fun StudioSection.toTab(): StudioTab = when (this) {
 
 /** "Add a passkey" needs a sign-in within 15 minutes (the server's step_up_required window). */
 private const val STEP_UP_MAX_AGE_S = 900
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun StudioTopBar(channel: StudioChannel?, onAccount: () -> Unit) {
-    TopAppBar(
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (channel != null) {
-                    ChannelAvatar(channel, 32)
-                    Spacer(Modifier.width(12.dp))
-                    Text(channel.localizedName(currentLocale().language), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                } else {
-                    Text(
-                        stringResource(R.string.app_name),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-            }
-        },
-        actions = {
-            IconButton(onClick = onAccount, modifier = Modifier.testTag("account-button")) {
-                Icon(
-                    Icons.Filled.AccountCircle,
-                    contentDescription = stringResource(net.alummahnow.feature.studio.R.string.studio_account_menu_cd)
-                )
-            }
-        }
-    )
-}

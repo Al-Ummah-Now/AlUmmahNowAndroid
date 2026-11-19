@@ -130,11 +130,12 @@ class StoreScreenshots {
     private val uploadActions = UploadActions({}, {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, { ZonedDateTime.now() })
 
     private fun inStudio(tab: StudioTab, body: @Composable () -> Unit): @Composable () -> Unit = {
-        StudioHome(StudioTab.entries, tab, onSelect = {}) { body() }
+        StudioScaffold(channel, railBelow = true, onAccount = {
+        }) { m -> StudioHome(StudioTab.entries, tab, onSelect = {}, modifier = m) { body() } }
     }
 
     private val screens: List<Pair<String, @Composable () -> Unit>> = listOf(
-        "dashboard" to inStudio(StudioTab.DASHBOARD) { DashboardScreen(channel, dashboard, onRetry = {}) },
+        "dashboard" to inStudio(StudioTab.DASHBOARD) { DashboardScreen(dashboard, onRetry = {}) },
         "content" to inStudio(StudioTab.CONTENT) { ContentScreen(ContentUiState(videos = videos, loading = false), contentActions) },
         "upload" to inStudio(StudioTab.UPLOAD) { UploadScreen(upload, listOf("Surat Al-Kahf 01", "Surat Al-Kahf 02"), uploadActions) },
         "analytics" to inStudio(StudioTab.ANALYTICS) { AnalyticsScreen(analytics, onRange = {}, onRetry = {}) }
