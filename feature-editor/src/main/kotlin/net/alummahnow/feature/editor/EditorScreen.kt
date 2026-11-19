@@ -1,6 +1,7 @@
 package net.alummahnow.feature.editor
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -33,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,8 +44,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -52,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import net.alummahnow.core.bridge.media.EditClip
 import net.alummahnow.design.components.FanousButton
 import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.components.FanousCard
@@ -62,6 +69,32 @@ import net.alummahnow.design.format.localizedDigits
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.design.theme.LocalFanous
 import net.alummahnow.design.theme.color
+
+/** A frame of the clip's source at its start, or null while it loads (the route provides it; tests leave it null). */
+val LocalClipThumbnail = staticCompositionLocalOf<(EditClip) -> ImageBitmap?> { { null } }
+
+/** The clip's frame, or the night placeholder with the lantern gold edge while it loads. */
+@Composable
+private fun ClipThumbnail(clip: EditClip) {
+    val f = LocalFanous.current
+    val shape = RoundedCornerShape(FanousTokens.Radius.md)
+    val frame = LocalClipThumbnail.current(clip)
+    Box(
+        Modifier
+            .width(96.dp)
+            .aspectRatio(16f / 9f)
+            .clip(shape)
+            .background(f.colors.surfaceRaised.color)
+            .border(1.dp, f.colors.outline.color, shape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (frame != null) {
+            Image(frame, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else {
+            Icon(Icons.Filled.Movie, contentDescription = null, tint = f.colors.primary.color.copy(alpha = 0.6f))
+        }
+    }
+}
 
 /** Width from which the clip list sits beside the preview (tablets, unfolded foldables). */
 private val TwoColumns = 840.dp
@@ -84,7 +117,10 @@ fun EditorScreen(
     preview: @Composable () -> Unit = {}
 ) {
     if (state.list.clips.isEmpty()) {
-        Box(modifier.fillMaxSize().padding(FanousTokens.Spacing.lg), contentAlignment = Alignment.Center) {
+        Box(
+            modifier.fillMaxSize().background(LocalFanous.current.colors.background.color).padding(FanousTokens.Spacing.lg),
+            contentAlignment = Alignment.Center
+        ) {
             FanousCard(
                 Modifier.widthIn(max = 480.dp).fillMaxWidth().testTag("editor-empty"),
                 actions = {
@@ -106,7 +142,7 @@ fun EditorScreen(
         }
         return
     }
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize().background(LocalFanous.current.colors.background.color)) {
         val wide = maxWidth >= TwoColumns
         val gap = Arrangement.spacedBy(FanousTokens.Spacing.lg)
         if (wide) {
@@ -177,7 +213,7 @@ private fun Timeline(state: EditorUiState, onScrub: (Long) -> Unit) {
     )
     FanousCard(status = { Text(timecode, color = f.colors.textSecondary.color, fontSize = 13.sp) }) {
         val clipFill = f.colors.surfaceRaised.color
-        val clipEdge = f.colors.divider.color
+        val clipEdge = f.colors.outline.color
         val gold = f.colors.primary.color
         val description = stringResource(R.string.editor_timeline)
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -262,6 +298,7 @@ private fun Clips(state: EditorUiState, onImport: () -> Unit, onSelect: (String)
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
             ) {
+                ClipThumbnail(clip)
                 Column(Modifier.weight(1f)) {
                     Text(
                         stringResource(R.string.editor_clip, number),
