@@ -1,6 +1,5 @@
 package net.alummahnow.feature.studio.channels
 
-import net.alummahnow.design.format.avatarInitial
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +43,7 @@ import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.format.aunString
+import net.alummahnow.design.format.avatarInitial
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.isolate
 import net.alummahnow.design.theme.FanousTokens
