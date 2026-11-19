@@ -12,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -44,7 +45,6 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.theme.AunTheme
-import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.home.HomeScreen
 import net.alummahnow.feature.home.HomeViewModel
 import net.alummahnow.feature.watch.WatchScreen
@@ -68,7 +68,9 @@ class MainActivity : ComponentActivity() {
         val container = (application as AunViewerApp).container
         if (savedInstanceState == null) handle(intent)
         setContent {
-            val theme by container.displayPrefs.theme.collectAsState(initial = ThemeMode.SYSTEM)
+            val theme by container.displayPrefs.theme.collectAsState(initial = null)
+            val deviceDark = isSystemInDarkTheme()
+            LaunchedEffect(Unit) { container.displayPrefs.adoptDeviceMode(deviceDark) }
             AunTheme(mode = theme) {
                 ViewerNavHost(container, inPip.value, links.receiveAsFlow(), onPipEligible = ::setPipEligible)
             }
@@ -158,7 +160,7 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var settingsOpen by remember { mutableStateOf(false) }
-    val theme by container.displayPrefs.theme.collectAsState(initial = ThemeMode.SYSTEM)
+    val theme by container.displayPrefs.theme.collectAsState(initial = null)
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {

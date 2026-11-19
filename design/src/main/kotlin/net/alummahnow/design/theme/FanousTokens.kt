@@ -2,35 +2,35 @@ package net.alummahnow.design.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import net.alummahnow.fanous.FanousThemeId
 
 /**
- * Placeholder Fanous tokens from EPICS.md §3. Epic 10 will publish a generated Compose theme; when it
- * does, this file is replaced by the generated one and nothing else should need to change.
+ * Fixed Fanous values for parts that look the same in both modes (the loader lantern, the player, thumbnail
+ * placeholders). Every colour comes from the generated registry (`net.alummahnow.fanous.FanousThemes`, vendored by
+ * `scripts/sync-fanous.sh`); screens read the window theme through [LocalFanous] instead.
  */
 object FanousTokens {
-    val Night = Color(0xFF093041)
-    val NightDeep = Color(0xFF07425A)
-    val NightShallow = Color(0xFF083F58)
-    val Lantern = Color(0xFFFFA037)
-    val Glow = Color(0xFFFFC46B)
-    val Earth = Color(0xFF8E6C53)
-    val Parchment = Color(0xFFF7F1E8)
-    val Verified = Color(0xFF16A34A)
-    val Error = Color(0xFFB00020)
+    private val night = FanousThemeId.FALLBACK.tokens.dark.colors
+    private val day = FanousThemeId.FALLBACK.tokens.light.colors
 
-    /** Error on night surfaces: [Error] is too dark there (≈2:1); this is ≥ 4.5:1 on Night and NightSurfaceHigh. */
-    val ErrorOnNight = Color(0xFFFFB4AB)
-
-    // Derived surfaces (not in the spec table; chosen for AA contrast on night / parchment).
-    val NightSurface = Color(0xFF0D3B4F)
-    val NightSurfaceHigh = Color(0xFF134A61)
-    val OnNight = Color(0xFFF3EEE6)
-    val OnNightMuted = Color(0xFFB8C7CE)
-    val ParchmentSurface = Color(0xFFFFFBF5)
-    val ParchmentSurfaceHigh = Color(0xFFEDE4D6)
-    val Ink = Color(0xFF1B2A30)
-    val InkMuted = Color(0xFF52626A)
-    val LanternDeep = Color(0xFF9A5200)
+    val Night = night.background.color
+    val NightDeep = night.surface.color
+    val NightShallow = night.surfaceRaised.color
+    val Lantern = night.primary.color
+    val Glow = night.primaryHover.color
+    val Earth = night.secondary.color
+    val Parchment = day.background.color
+    val Error = day.errorText.color
+    val ErrorOnNight = night.errorText.color
+    val NightSurface = night.surface.color
+    val NightSurfaceHigh = night.surfaceRaised.color
+    val OnNight = night.textPrimary.color
+    val OnNightMuted = night.textMuted.color
+    val ParchmentSurface = day.surface.color
+    val ParchmentSurfaceHigh = day.heroStart.color
+    val Ink = day.textPrimary.color
+    val InkMuted = day.textMuted.color
+    val LanternDeep = day.link.color
 
     object Spacing {
         val xs = 4.dp
@@ -43,7 +43,11 @@ object FanousTokens {
 
     object Radius {
         val sm = 6.dp
-        val md = 12.dp
-        val lg = 20.dp
+        val md = 10.dp
+        val lg = 14.dp
+        val xl = 22.dp
     }
 }
+
+/** A registry colour as a Compose colour. */
+val net.alummahnow.fanous.FanousRgba.color: Color get() = Color(argb)

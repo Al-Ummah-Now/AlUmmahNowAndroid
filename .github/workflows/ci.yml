@@ -28,6 +28,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      - name: Fanous registry matches fanous.lock
+        run: scripts/sync-fanous.sh --check
       - run: ./gradlew ktlintCheck detekt lint checkStoreListings --continue
       - name: Build-logic unit tests (store listing rules)
         run: ./gradlew -p build-logic :convention:test
