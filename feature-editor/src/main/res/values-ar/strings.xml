@@ -12,4 +12,8 @@
     <string name="editor_play">تشغيل</string>
     <string name="editor_pause">إيقاف مؤقت</string>
     <string name="editor_import_failed">تعذّرت إضافة هذا المرئي.</string>
+    <string name="editor_split">تقسيم</string>
+    <string name="editor_delete">حذف متموّج</string>
+    <string name="editor_undo">تراجع</string>
+    <string name="editor_redo">إعادة</string>
 </resources>

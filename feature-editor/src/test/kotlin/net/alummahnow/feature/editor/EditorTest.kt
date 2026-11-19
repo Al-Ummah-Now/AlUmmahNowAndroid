@@ -83,6 +83,29 @@ class EditorTest {
         assertEquals(first, vm.state.value.list.clips[1].id)
     }
 
+    @Test fun splitDeleteTrimAreUndoableSteps() {
+        val vm = vm()
+        vm.import(listOf("a", "b"))
+        vm.scrub(500_000)
+        vm.split()
+        assertEquals(3, vm.state.value.list.clips.size)
+        vm.select(vm.state.value.list.clips[1].id)
+        vm.deleteSelected()
+        assertEquals(listOf(500_000L, 634_000L), vm.state.value.list.clips.map { it.durationMs })
+        val id = vm.state.value.list.clips[1].id
+        vm.trim(id, 10_000, 634_000, done = false)
+        vm.trim(id, 20_000, 634_000, done = false)
+        vm.trim(id, 30_000, 600_000, done = true)
+        assertEquals(570_000L, vm.state.value.list.clips[1].durationMs)
+        vm.undo() // the whole trim drag is one step
+        assertEquals(634_000L, vm.state.value.list.clips[1].durationMs)
+        vm.undo()
+        assertEquals(3, vm.state.value.list.clips.size)
+        vm.redo()
+        assertEquals(2, vm.state.value.list.clips.size)
+        assertTrue(vm.state.value.canUndo && vm.state.value.canRedo)
+    }
+
     private val sample = EditorUiState(
         list = EditDecisionList(
             listOf(
@@ -92,7 +115,8 @@ class EditorTest {
             )
         ),
         selectedId = "c2",
-        playheadMs = 1_210_000
+        playheadMs = 1_210_000,
+        canUndo = true
     )
 
     private val editor = @Composable { EditorScreen(sample, false, {}, {}, {}, { _, _ -> }, {}) }

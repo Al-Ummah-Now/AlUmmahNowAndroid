@@ -1,5 +1,10 @@
 package net.alummahnow.feature.editor
 
+import net.alummahnow.core.bridge.media.EditClip
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.runtime.CompositionLocalProvider
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -10,7 +15,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,8 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -29,11 +31,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.ContentFrame
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import net.alummahnow.core.bridge.media.EditClip
 import net.alummahnow.core.bridge.media.EditDecisionList
 
 /** Reads a picked video's length with the platform retriever, off the main thread. */
@@ -105,23 +104,29 @@ fun EditorRoute(viewModel: EditorViewModel, modifier: Modifier = Modifier) {
         if (uris.isNotEmpty()) viewModel.import(uris.map { it.toString() })
     }
     val frames = remember { ClipFrames(context.applicationContext) }
-    DisposableEffect(frames) { onDispose { frames.close() } }
     val tick by frames.loaded.collectAsStateWithLifecycle()
     CompositionLocalProvider(LocalClipThumbnail provides { clip -> tick.let { frames.frame(clip) } }) {
-        EditorScreen(
-            state = state,
-            playing = playing,
-            onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
-            onSelect = viewModel::select,
-            onScrub = { t ->
-                viewModel.scrub(t)
-                state.list.locate(t)?.let { (index, offset) -> player.seekTo(index, offset) }
-            },
-            onMove = viewModel::move,
-            onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
-            modifier = modifier,
-            preview = { ContentFrame(player = player, modifier = Modifier.fillMaxSize()) }
-        )
+    EditorScreen(
+        state = state,
+        playing = playing,
+        onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+        onSelect = viewModel::select,
+        onScrub = { t ->
+            viewModel.scrub(t)
+            state.list.locate(t)?.let { (index, offset) -> player.seekTo(index, offset) }
+        },
+        onMove = viewModel::move,
+        onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+        modifier = modifier,
+        tools = EditorTools(
+            onSplit = viewModel::split,
+            onDelete = viewModel::deleteSelected,
+            onTrim = viewModel::trim,
+            onUndo = viewModel::undo,
+            onRedo = viewModel::redo
+        ),
+        preview = { ContentFrame(player = player, modifier = Modifier.fillMaxSize()) }
+    )
     }
 }
 
@@ -137,9 +142,6 @@ class ClipFrames(private val context: Context) {
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     private val tick = kotlinx.coroutines.flow.MutableStateFlow(0)
     val loaded: kotlinx.coroutines.flow.StateFlow<Int> = tick
-
-    /** Stops reading frames (the editor left the screen). */
-    fun close() = scope.cancel()
 
     fun frame(clip: EditClip): ImageBitmap? {
         val key = "${clip.sourceUri}@${clip.sourceStartMs}"
