@@ -106,11 +106,15 @@ object FanousPaint {
         }
     }
 
-    /** Inset 1px lines (`inset 0 1px 0 …`): sheens and inner rings that need no blur. */
-    fun DrawScope.insetLines(shadows: List<FanousBoxShadow>, path: Path) {
+    /**
+     * Inset 1px lines (`inset 0 1px 0 …`): sheens and inner rings that need no blur. The x offset mirrors in RTL, so
+     * an edge line on the content side (the rail's) stays on the content side.
+     */
+    fun DrawScope.insetLines(shadows: List<FanousBoxShadow>, path: Path, rtl: Boolean) {
         for (s in shadows.asReversed()) {
             if (!s.inset || s.blur > 0f) continue
-            val inner = Path().apply { addPath(path, Offset(s.x.dp.toPx(), s.y.dp.toPx())) }
+            val x = if (rtl) -s.x else s.x
+            val inner = Path().apply { addPath(path, Offset(x.dp.toPx(), s.y.dp.toPx())) }
             val ring = Path().apply { op(path, inner, PathOperation.Difference) }
             drawPath(ring, s.color.color)
         }
@@ -158,7 +162,7 @@ fun Modifier.fanousLayers(
                     .apply { translate(Offset(inset, inset)) }
                 fills(fills, inner, rtl)
             }
-            insetLines(shadows, outer)
+            insetLines(shadows, outer, rtl)
         }
     }
 }
