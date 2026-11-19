@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -194,17 +196,20 @@ fun FanousCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val theme = LocalFanous.current
-    Column(modifier.fanousMaterial(FanousMaterialKind.Card, FanousCardShape)) {
-        Column(Modifier.fillMaxWidth().padding(FanousTokens.Spacing.lg), content = content)
-        if (status != null || actions != null) {
-            Box(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(theme.colors.divider.color) })
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = FanousTokens.Spacing.md, vertical = FanousTokens.Spacing.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                status?.invoke(this)
-                Spacer(Modifier.weight(1f))
-                actions?.invoke(this)
+    // Icons and text inside a card default to the card's text colour (without it, icons fell back to black on Dark).
+    CompositionLocalProvider(LocalContentColor provides theme.colors.textPrimary.color) {
+        Column(modifier.fanousMaterial(FanousMaterialKind.Card, FanousCardShape)) {
+            Column(Modifier.fillMaxWidth().padding(FanousTokens.Spacing.lg), content = content)
+            if (status != null || actions != null) {
+                Box(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(theme.colors.divider.color) })
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = FanousTokens.Spacing.md, vertical = FanousTokens.Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    status?.invoke(this)
+                    Spacer(Modifier.weight(1f))
+                    actions?.invoke(this)
+                }
             }
         }
     }
