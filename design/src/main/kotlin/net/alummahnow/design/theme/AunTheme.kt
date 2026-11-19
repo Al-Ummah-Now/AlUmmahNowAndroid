@@ -10,7 +10,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -107,6 +109,16 @@ data class AunDisplayPrefs(val easternArabicDigits: Boolean = true)
 
 val LocalAunDisplayPrefs = staticCompositionLocalOf { AunDisplayPrefs() }
 
+/** App chrome colours (header, rail, bottom bar) for the current mode; see [FanousTokens.Chrome]. */
+@Immutable
+data class AunChromeColors(val surface: Color, val raised: Color, val divider: Color)
+
+internal val NightChrome = AunChromeColors(FanousTokens.Chrome.Night, FanousTokens.Chrome.NightRaised, FanousTokens.Chrome.NightDivider)
+internal val ParchmentChrome =
+    AunChromeColors(FanousTokens.Chrome.Parchment, FanousTokens.Chrome.ParchmentRaised, FanousTokens.Chrome.ParchmentDivider)
+
+val LocalAunChrome = staticCompositionLocalOf { NightChrome }
+
 @Composable
 fun AunTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
@@ -118,7 +130,10 @@ fun AunTheme(
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
-    CompositionLocalProvider(LocalAunDisplayPrefs provides displayPrefs) {
+    CompositionLocalProvider(
+        LocalAunDisplayPrefs provides displayPrefs,
+        LocalAunChrome provides if (dark) NightChrome else ParchmentChrome
+    ) {
         MaterialTheme(
             colorScheme = if (dark) NightColors else ParchmentColors,
             typography = AunTypography,
