@@ -1,7 +1,7 @@
 package net.alummahnow.core.bridge
 
-import org.junit.Test
 import org.junit.Assert.assertEquals
+import org.junit.Test
 
 class AunClientTest {
     @Test fun namesTheAppVersionAndOs() {
