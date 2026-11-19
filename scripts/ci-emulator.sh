@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Runs inside android-emulator-runner: instrumented tests, then en + ar screenshots of the viewer.
+# Runs inside android-emulator-runner on PRs and main: instrumented tests, then en + ar screenshots of the viewer.
+# Tests against the deployed QA (QA_DEPLOYED_TESTS) are left out here: they run only on releases
+# (.github/workflows/qa-e2e.yml, called by release.yml). Owner rule 2026-11-13: no E2E against deployed QA
+# on PRs, main or a schedule.
 set -euo pipefail
-./gradlew :viewer-mobile:connectedQaDebugAndroidTest :studio-mobile:connectedQaDebugAndroidTest :admin-mobile:connectedQaDebugAndroidTest --continue
+source "$(dirname "$0")/qa-deployed-tests.sh"
+./gradlew :viewer-mobile:connectedQaDebugAndroidTest :studio-mobile:connectedQaDebugAndroidTest :admin-mobile:connectedQaDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.notClass="$QA_DEPLOYED_TESTS" --continue
 mkdir -p emulator-screenshots
 APK=viewer-mobile/build/outputs/apk/qa/debug/viewer-mobile-qa-debug.apk
 PKG=net.alummahnow.app.qa

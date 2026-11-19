@@ -22,7 +22,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * End-to-end against the public QA API: home rails load, a video opens, and the HLS stream reaches READY
+ * End-to-end against the public QA API (release gate only, scripts/qa-deployed-tests.sh): home rails load,
+ * a video opens, and the HLS stream reaches READY
  * in the background playback service.
  */
 @RunWith(AndroidJUnit4::class)

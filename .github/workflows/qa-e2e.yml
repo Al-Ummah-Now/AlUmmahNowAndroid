@@ -1,0 +1,58 @@
+name: QA E2E (release gate)
+
+# Instrumented tests against the deployed QA (auth.qa / videos.api.qa): Studio signs in with the browser,
+# uploads, bulk-edits, deletes, restores and signs out; the viewer plays a QA video.
+# Owner rule 2026-11-13: tests against the deployed QA run only on releases, never on PRs, main or a
+# schedule (QA D1 cost). release.yml calls this before anything is published; it can also be run by hand.
+# The test list lives in scripts/qa-deployed-tests.sh; PR/main CI leaves exactly those tests out.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  qa-e2e:
+    name: QA E2E on emulator (API 35)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build test APKs
+        run: ./gradlew :viewer-mobile:assembleQaDebug :viewer-mobile:assembleQaDebugAndroidTest :studio-mobile:assembleQaDebug :studio-mobile:assembleQaDebugAndroidTest
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # QA seed creator account (qa-creator) for Studio's QA flow. The gate fails when it is missing.
+          QA_SEED_PASSWORD: ${{ secrets.QA_SEED_PASSWORD }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./scripts/ci-emulator-qa.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-e2e-results
+          path: |
+            **/build/reports/androidTests/
+            **/build/outputs/androidTest-results/
+            **/build/outputs/connected_android_test_additional_output/
+          if-no-files-found: ignore
