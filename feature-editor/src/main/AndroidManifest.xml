@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- RTL is first-class (Arabic). Declared here too so library screenshot tests render RTL. -->
-    <application android:supportsRtl="true" />
+    <application android:supportsRtl="true">
+        <!-- Shares a finished export with other apps (the editor's Share), read-only and per-intent. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.editor.exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/editor_exports" />
+        </provider>
+    </application>
 </manifest>
