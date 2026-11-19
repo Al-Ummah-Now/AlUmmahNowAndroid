@@ -53,6 +53,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
+    testImplementation(libs.coil.compose)
     testImplementation(libs.androidx.test.junit)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.roborazzi.junit.rule)

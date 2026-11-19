@@ -2,30 +2,47 @@ package net.alummahnow.design.components
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.design.theme.LocalFanous
 import net.alummahnow.design.theme.color
 
@@ -82,6 +99,9 @@ fun FanousButton(
 @Composable
 fun FanousChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val f = LocalFanous.current
+    // In a scrolling row, the chosen chip scrolls fully into view (also when it is chosen from elsewhere).
+    val requester = remember { BringIntoViewRequester() }
+    LaunchedEffect(selected) { if (selected) requester.bringIntoView() }
     val surface = if (selected) {
         Modifier.fanousLayers(f.material.primary, CircleShape, shadows = f.material.primaryEdge)
     } else {
@@ -89,6 +109,7 @@ fun FanousChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: M
     }
     Row(
         modifier
+            .bringIntoViewRequester(requester)
             .heightIn(min = 40.dp)
             .then(surface)
             .clip(CircleShape)
@@ -106,3 +127,42 @@ fun FanousChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: M
         )
     }
 }
+
+/**
+ * A row of [FanousChip]s that scrolls sideways when it is wider than the screen. Both edges fade over the row's side
+ * padding (as on Apple), so a chip cut at the edge reads as "more this way"; at rest the first chip is not faded.
+ */
+@Composable
+fun FanousChipRow(modifier: Modifier = Modifier, sidePadding: Dp = FanousTokens.Spacing.lg, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .edgeFade(sidePadding)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = sidePadding, vertical = FanousTokens.Spacing.sm)
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+/** Fades both horizontal edges of the content over [width] (transparent at the edge, opaque inside). */
+fun Modifier.edgeFade(width: Dp): Modifier = graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val fade = (width.toPx() / size.width).coerceIn(0f, HALF)
+        drawRect(
+            Brush.horizontalGradient(0f to Color.Transparent, fade to Color.Black, 1f - fade to Color.Black, 1f to Color.Transparent),
+            blendMode = BlendMode.DstIn
+        )
+    }
+
+/** Lets a full-width row (a chip row) reach past its parent's side padding by [by] on each side. */
+fun Modifier.bleedHorizontal(by: Dp): Modifier = layout { measurable, constraints ->
+    val extra = (by * 2).roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.maxWidth + extra, maxWidth = constraints.maxWidth + extra))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-by.roundToPx(), 0) }
+}
+
+private const val HALF = 0.5f

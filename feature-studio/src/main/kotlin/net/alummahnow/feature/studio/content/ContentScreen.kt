@@ -3,7 +3,6 @@ package net.alummahnow.feature.studio.content
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,8 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -54,6 +51,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onLongClick
@@ -72,6 +70,7 @@ import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FanousButton
 import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.components.FanousChip
+import net.alummahnow.design.components.FanousChipRow
 import net.alummahnow.design.components.FanousMaterialKind
 import net.alummahnow.design.components.Thumbnail
 import net.alummahnow.design.components.fanousMaterial
@@ -175,14 +174,7 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
             // Status chips, the selected one gold (as Apple's), scrolling sideways on phones.
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.sm)
-                    .selectableGroup(),
-                horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
-            ) {
+            FanousChipRow {
                 tabs.forEach { (status, label) ->
                     FanousChip(
                         stringResource(label),
@@ -454,15 +446,16 @@ private fun VideoRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 // The date on its own line under the details: a separate column left phones no room for the title.
+                // A video without a date keeps the line (empty), so every row has the same height.
                 if (!deleted) {
-                    v.createdAt?.let {
-                        Text(
-                            formatDate(it),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = f.colors.textMuted.color,
-                            maxLines = 1
-                        )
-                    }
+                    val date = v.createdAt?.let { formatDate(it) }
+                    Text(
+                        date.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = f.colors.textMuted.color,
+                        maxLines = 1,
+                        modifier = if (date == null) Modifier.clearAndSetSemantics {} else Modifier
+                    )
                 }
             }
             if (deleted) {

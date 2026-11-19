@@ -43,7 +43,9 @@ internal object StoreShots {
         Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
         val file = "src/main/play/listings/${locale.dir}/graphics/${device.dir}/$name.png"
         captureRoboImage(file, roborazziOptions = RoborazziOptions(taskType = RoborazziTaskType.Record)) {
-            AunTheme(mode = mode) { Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() } }
+            AunTheme(mode = mode) {
+                WithFixtureImages { Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() } }
+            }
         }
     }
 }
