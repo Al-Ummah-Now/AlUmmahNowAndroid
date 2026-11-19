@@ -8,6 +8,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,6 +16,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
@@ -22,8 +25,11 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.ContentFrame
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import net.alummahnow.core.bridge.media.EditClip
 import net.alummahnow.core.bridge.media.EditDecisionList
 
 /** Reads a picked video's length with the platform retriever, off the main thread. */
@@ -93,20 +99,70 @@ fun EditorRoute(viewModel: EditorViewModel, modifier: Modifier = Modifier) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         if (uris.isNotEmpty()) viewModel.import(uris.map { it.toString() })
     }
-    EditorScreen(
-        state = state,
-        playing = playing,
-        onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
-        onSelect = viewModel::select,
-        onScrub = { t ->
-            viewModel.scrub(t)
-            state.list.locate(t)?.let { (index, offset) -> player.seekTo(index, offset) }
-        },
-        onMove = viewModel::move,
-        onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
-        modifier = modifier,
-        preview = { ContentFrame(player = player, modifier = Modifier.fillMaxSize()) }
-    )
+    val frames = remember { ClipFrames(context.applicationContext) }
+    DisposableEffect(frames) { onDispose { frames.close() } }
+    val tick by frames.loaded.collectAsStateWithLifecycle()
+    CompositionLocalProvider(LocalClipThumbnail provides { clip -> tick.let { frames.frame(clip) } }) {
+        EditorScreen(
+            state = state,
+            playing = playing,
+            onImport = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+            onSelect = viewModel::select,
+            onScrub = { t ->
+                viewModel.scrub(t)
+                state.list.locate(t)?.let { (index, offset) -> player.seekTo(index, offset) }
+            },
+            onMove = viewModel::move,
+            onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+            modifier = modifier,
+            preview = { ContentFrame(player = player, modifier = Modifier.fillMaxSize()) }
+        )
+    }
 }
 
 private const val PLAYHEAD_TICK_MS = 100L
+
+/**
+ * Frames for the clip list: the source at the clip's start, scaled down, read off the main thread once per source
+ * position. `loaded` ticks when one arrives so the list recomposes.
+ */
+class ClipFrames(private val context: Context) {
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, ImageBitmap>()
+    private val pending = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val tick = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val loaded: kotlinx.coroutines.flow.StateFlow<Int> = tick
+
+    /** Stops reading frames (the editor left the screen). */
+    fun close() = scope.cancel()
+
+    fun frame(clip: EditClip): ImageBitmap? {
+        val key = "${clip.sourceUri}@${clip.sourceStartMs}"
+        cache[key]?.let { return it }
+        if (pending.add(key)) {
+            scope.launch {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, Uri.parse(clip.sourceUri))
+                    retriever.getScaledFrameAtTime(
+                        clip.sourceStartMs * MICROS_PER_MS,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        FRAME_WIDTH,
+                        FRAME_WIDTH * 9 / 16
+                    )?.let { cache[key] = it.asImageBitmap() }
+                } catch (e: IllegalArgumentException) {
+                    net.alummahnow.core.bridge.AunLog.w("editor", "no frame", "type" to e.javaClass.simpleName)
+                } finally {
+                    retriever.release()
+                    tick.value += 1
+                }
+            }
+        }
+        return null
+    }
+
+    private companion object {
+        const val MICROS_PER_MS = 1000L
+        const val FRAME_WIDTH = 320
+    }
+}
