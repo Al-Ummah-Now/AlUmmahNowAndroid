@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -59,6 +60,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import java.time.Instant
 import net.alummahnow.admin.R
@@ -324,7 +326,13 @@ private fun FindingRow(finding: ReviewFinding, blurred: Boolean) {
         // The model's note is free English text (no code to translate by): labelled as the model's English note, and
         // isolated so its punctuation stays with it.
         finding.rationale?.let {
-            Text(aunString(R.string.model_note, isolate(it)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // The page's direction, not the note's: an English note must not turn the Arabic label's line left-to-right
+            val direction = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextDirection.Rtl else TextDirection.Ltr
+            Text(
+                aunString(R.string.model_note, isolate(it)),
+                style = MaterialTheme.typography.bodySmall.copy(textDirection = direction),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
