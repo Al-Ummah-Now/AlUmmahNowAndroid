@@ -1,8 +1,13 @@
 package net.alummahnow.studio
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import java.time.ZonedDateTime
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentStatus
@@ -32,6 +37,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.time.ZonedDateTime
 
 /** Studio store screenshots (phone, 7" and 10" tablets; en + ar) from the real screens inside Studio's navigation. */
 @RunWith(AndroidJUnit4::class)
@@ -129,8 +135,27 @@ class StoreScreenshots {
     )
     private val uploadActions = UploadActions({}, {}, { _, _ -> }, {}, {}, {}, {}, {}, {}, {}, {}, { ZonedDateTime.now() })
 
+    /** The app's Studio frame, as StudioApp draws it: the web header over the bar (phone) or the rail (tablet). */
     private fun inStudio(tab: StudioTab, body: @Composable () -> Unit): @Composable () -> Unit = {
-        StudioHome(StudioTab.entries, tab, onSelect = {}) { body() }
+        val wide = LocalConfiguration.current.screenWidthDp.dp >= RAIL_BREAKPOINT
+        Scaffold(
+            topBar = {
+                StudioTopBar(
+                    title = stringResource(tab.label),
+                    identity = if (wide) null else channel,
+                    railAligned = wide,
+                    onAccount = {}
+                )
+            }
+        ) { padding ->
+            StudioHome(
+                StudioTab.entries,
+                tab,
+                onSelect = {},
+                modifier = Modifier.padding(padding),
+                railHeader = { IdentityButton(channel, onClick = {}) }
+            ) { body() }
+        }
     }
 
     private val screens: List<Pair<String, @Composable () -> Unit>> = listOf(
