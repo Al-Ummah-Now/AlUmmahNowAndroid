@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -25,9 +27,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -40,11 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -81,6 +77,11 @@ import net.alummahnow.core.bridge.studio.VideoLanguages
 import net.alummahnow.core.bridge.studio.Visibility
 import net.alummahnow.core.bridge.studio.core.describeDocument
 import net.alummahnow.design.components.ConfirmDialog
+import net.alummahnow.design.components.FanousButton
+import net.alummahnow.design.components.FanousButtonKind
+import net.alummahnow.design.components.FanousChip
+import net.alummahnow.design.components.FanousMaterialKind
+import net.alummahnow.design.components.fanousMaterial
 import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.StudioLabels
 import net.alummahnow.design.format.aunPlural
@@ -179,18 +180,22 @@ fun UploadScreen(state: UploadUiState, titles: List<String>, actions: UploadActi
 private fun Form(state: UploadUiState, titles: List<String>, actions: UploadActions) {
     Column(verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
         Heading(stringResource(R.string.upload_files))
-        OutlinedButton(onClick = actions.onPick, modifier = Modifier.fillMaxWidth().testTag("upload-pick")) {
-            Icon(Icons.Filled.VideoLibrary, contentDescription = null)
-            Spacer(Modifier.padding(FanousTokens.Spacing.xs))
-            Text(stringResource(R.string.upload_pick))
+        // The pick action is the gold one, at the trailing end (owner rule).
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            FanousButton(
+                stringResource(R.string.upload_pick),
+                actions.onPick,
+                kind = FanousButtonKind.Primary,
+                icon = Icons.Filled.VideoLibrary,
+                modifier = Modifier.testTag("upload-pick")
+            )
         }
         if (state.files.isEmpty()) {
             Text(aunString(R.string.upload_no_files, UploadViewModel.MAX_FILES), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         state.files.forEachIndexed { i, f ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                modifier = Modifier.testTag("upload-file-$i")
+            Column(
+                Modifier.fanousMaterial(FanousMaterialKind.Card, RoundedCornerShape(FanousTokens.Radius.lg)).testTag("upload-file-$i")
             ) {
                 Column(Modifier.padding(FanousTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -252,24 +257,24 @@ private fun SetForAllSection(state: UploadUiState, actions: UploadActions) {
             tag = "upload-language"
         )
         Text(stringResource(R.string.upload_visibility), style = MaterialTheme.typography.labelLarge)
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            Visibility.entries.forEachIndexed { i, v ->
-                SegmentedButton(
+        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
+            Visibility.entries.forEach { v ->
+                FanousChip(
+                    stringResource(if (v == Visibility.PUBLIC) R.string.upload_public else R.string.upload_private),
                     selected = state.form.visibility == v,
                     onClick = { actions.onForm { it.copy(visibility = v) } },
-                    shape = SegmentedButtonDefaults.itemShape(i, Visibility.entries.size),
                     modifier = Modifier.testTag("upload-visibility-${v.name.lowercase()}")
-                ) { Text(stringResource(if (v == Visibility.PUBLIC) R.string.upload_public else R.string.upload_private)) }
+                )
             }
         }
         if (state.playlists.isNotEmpty()) {
             Text(stringResource(R.string.upload_playlists), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
                 state.playlists.forEach { p ->
-                    FilterChip(
+                    FanousChip(
+                        p.title,
                         selected = p.id in state.form.playlistIds,
                         onClick = { actions.onTogglePlaylist(p.id) },
-                        label = { Text(p.title) },
                         modifier = Modifier.testTag("upload-playlist-${p.id}")
                     )
                 }
@@ -299,19 +304,17 @@ private fun SetForAllSection(state: UploadUiState, actions: UploadActions) {
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
             )
         }
-        Button(
-            onClick = actions.onStart,
+        FanousButton(
+            if (state.files.isEmpty()) {
+                stringResource(R.string.upload_start_none)
+            } else {
+                aunPlural(R.plurals.upload_start, state.files.size, state.files.size)
+            },
+            actions.onStart,
+            kind = FanousButtonKind.Primary,
             enabled = state.files.isNotEmpty() && !state.submitting,
             modifier = Modifier.fillMaxWidth().testTag("upload-start")
-        ) {
-            Text(
-                if (state.files.isEmpty()) {
-                    stringResource(R.string.upload_start_none)
-                } else {
-                    aunPlural(R.plurals.upload_start, state.files.size, state.files.size)
-                }
-            )
-        }
+        )
     }
 }
 
@@ -436,9 +439,11 @@ private fun QueueList(items: List<UploadItem>, actions: UploadActions) {
 private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> Unit) {
     val phase = stringResource(phaseLabel(item.phase))
     val percentText = percentLabel(item.fraction.toDouble())
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        modifier = Modifier.fillMaxWidth().testTag("upload-item-${item.id}")
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .fanousMaterial(FanousMaterialKind.Card, RoundedCornerShape(FanousTokens.Radius.lg))
+            .testTag("upload-item-${item.id}")
     ) {
         Column(Modifier.padding(FanousTokens.Spacing.md), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xs)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
