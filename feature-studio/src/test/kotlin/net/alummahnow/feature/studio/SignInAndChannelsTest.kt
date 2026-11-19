@@ -135,7 +135,6 @@ class SignInAndChannelsTest {
     private val picker = @androidx.compose.runtime.Composable { ChannelPickerScreen(ChannelsUiState.Content(sampleChannels, "c1"), {}, {}) }
     private val dashboard = @androidx.compose.runtime.Composable {
         DashboardScreen(
-            sampleChannels[0],
             DashboardUiState.Content(
                 net.alummahnow.core.bridge.studio.CreatorAccess(true, false, null),
                 net.alummahnow.core.bridge.studio.ContentCounts(12, 2, 3, 1, 1)
