@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -43,6 +45,7 @@ import net.alummahnow.core.bridge.links.StudioSection
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.FanousHeaderBar
+import net.alummahnow.design.components.FanousHeaderButton
 import net.alummahnow.design.components.FanousHeaderTitle
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.feature.passkey.PasskeyHost
@@ -274,7 +277,17 @@ private fun StudioTopBar(title: String, identity: StudioChannel?, railAligned: B
     FanousHeaderBar {
         if (railAligned) Spacer(Modifier.width(RAIL_WIDTH - 12.dp))
         FanousHeaderTitle(title, Modifier.weight(1f), large = true)
-        if (identity != null) IdentityButton(identity, onClick = onAccount)
+        when {
+            identity != null -> IdentityButton(identity, onClick = onAccount)
+            // No channel chosen yet (the channel picker): the account menu stays reachable, to switch or sign out.
+            !railAligned -> FanousHeaderButton(
+                onClick = onAccount,
+                contentDescription = stringResource(net.alummahnow.feature.studio.R.string.studio_account_menu_cd),
+                icon = Icons.Filled.AccountCircle,
+                outlined = false,
+                modifier = Modifier.testTag("account-button")
+            )
+        }
     }
 }
 
