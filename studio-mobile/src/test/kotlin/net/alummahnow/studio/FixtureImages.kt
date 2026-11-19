@@ -14,10 +14,9 @@ internal const val FIXTURE_THUMBS = "fixture:thumbs/"
 
 @OptIn(ExperimentalCoilApi::class)
 private val fixtureImages = AsyncImagePreviewHandler { request ->
-    val path = (request.data as? String)?.takeIf { it.startsWith("fixture:") }?.removePrefix("fixture:")
-    path?.let { FixtureImagesLoader::class.java.getResourceAsStream("/$it") }
-        ?.use { BitmapFactory.decodeStream(it) }
-        ?.asImage()
+    val path = (request.data as? String)?.removePrefix("fixture:")
+    val bitmap = path?.let { FixtureImagesLoader::class.java.getResourceAsStream("/$it") }?.use { BitmapFactory.decodeStream(it) }
+    requireNotNull(bitmap) { "No fixture image for ${request.data}: use $FIXTURE_THUMBS<name>.jpg" }.asImage()
 }
 
 private object FixtureImagesLoader
