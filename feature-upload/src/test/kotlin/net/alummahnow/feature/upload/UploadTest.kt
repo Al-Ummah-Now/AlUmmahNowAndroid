@@ -67,7 +67,7 @@ class UploadTest {
         assertEquals(2, vm.state.value.files.size)
         vm.updateForm {
             it.copy(
-                titlePattern = "Dars {n}",
+                titlePattern = "Tafsir {n}",
                 description = "d",
                 category = "fiqh",
                 language = "ar",
@@ -77,10 +77,10 @@ class UploadTest {
         }
         vm.togglePlaylist("p1")
         vm.setTitle(1, "Custom title")
-        assertEquals(listOf("Dars 1", "Custom title"), vm.titles())
+        assertEquals(listOf("Tafsir 1", "Custom title"), vm.titles())
         vm.start()
         val d = queue.drafts.single()
-        assertEquals(listOf("Dars 1", "Custom title"), d.map { it.title })
+        assertEquals(listOf("Tafsir 1", "Custom title"), d.map { it.title })
         assertEquals(setOf("c1"), d.map { it.channelId }.toSet())
         assertEquals(Visibility.PRIVATE, d[0].visibility)
         assertEquals("fiqh", d[0].category)
