@@ -15,6 +15,8 @@ name: Release
 #                   Release and never uploaded as an artifact: the repo is public and the app is staff-only.
 #                   Published in the play job once the owner has created the app in Play Console (repo
 #                   variable ADMIN_PLAY_READY=true); its Firebase config comes from ADMIN_GOOGLE_SERVICES_JSON.
+#   qa-e2e:         the release gate: instrumented tests against the deployed QA (qa-e2e.yml). Nothing is
+#                   published until it passes. They run only here, never on PRs or main (owner rule 2026-11-13).
 on:
   push:
     tags: ['v[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*']
@@ -47,8 +49,13 @@ jobs:
           echo "code=$(( days * 100 + n ))" >> "$GITHUB_OUTPUT"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
-  github-release:
+  qa-e2e:
     needs: verify
+    uses: ./.github/workflows/qa-e2e.yml
+    secrets: inherit
+
+  github-release:
+    needs: [verify, qa-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: github-release
@@ -128,7 +135,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* --title "Studio $v" --notes-file notes.md "${flags[@]}" --verify-tag
 
   play:
-    needs: verify
+    needs: [verify, qa-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: play-release

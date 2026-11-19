@@ -119,12 +119,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build test APKs
         run: ./gradlew :viewer-mobile:assembleQaDebug :viewer-mobile:assembleQaDebugAndroidTest :studio-mobile:assembleQaDebugAndroidTest :admin-mobile:assembleQaDebugAndroidTest :viewer-tv:assembleQaGoogleDebugAndroidTest
+      # Tests against the deployed QA (scripts/qa-deployed-tests.sh) are left out: they run only on
+      # releases (qa-e2e.yml). Owner rule 2026-11-13: no E2E against deployed QA on PRs, main or a schedule.
       - name: Run on emulator
         uses: reactivecircus/android-emulator-runner@v2
-        env:
-          # QA seed creator account: Studio's QA flow test signs in, uploads, bulk-edits and cleans up.
-          # Without it (fork PRs) that test is skipped.
-          QA_SEED_PASSWORD: ${{ secrets.QA_SEED_PASSWORD }}
         with:
           api-level: 35
           target: google_apis

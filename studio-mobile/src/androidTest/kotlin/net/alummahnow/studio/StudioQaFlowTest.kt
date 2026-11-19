@@ -34,7 +34,8 @@ import org.junit.runner.RunWith
 /**
  * The real app against QA (videos.api.qa / auth.qa): browser sign-in with PKCE in a Custom Tab,
  * a resumable upload through aun-upload and the WorkManager worker, bulk edit through the UI, then
- * clean-up and sign-out. Runs only when the QA seed password is passed (`-e qaPassword`).
+ * clean-up and sign-out. Runs only in the release gate (qa-e2e.yml, scripts/qa-deployed-tests.sh), never on
+ * PRs or main; skipped when the QA seed password is not passed (`-e qaPassword`).
  */
 @RunWith(AndroidJUnit4::class)
 class StudioQaFlowTest {

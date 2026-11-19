@@ -63,7 +63,7 @@ Dependency direction: `apps → feature-* → (player, design, core-bridge)`; fe
 | Pure logic (repositories, mappers, ViewModels, quality/speed policies) | JUnit4, kotlinx-coroutines-test, Turbine, MockWebServer | JVM (`test*UnitTest`) |
 | Compose UI behaviour | Compose UI test on Robolectric | JVM |
 | Screenshot tests: en + ar (RTL), light + dark, phone / tablet / TV | Roborazzi on Robolectric (native graphics) | JVM; goldens in `*/src/test/screenshots` |
-| Instrumented (real app, real player, real network to QA) | AndroidX Test + Compose UI test | API 35 emulator in GitHub Actions |
+| Instrumented (real app on the device) | AndroidX Test + Compose UI test | API 35 emulator in GitHub Actions on every PR; the tests against the deployed QA (`scripts/qa-deployed-tests.sh`) run only in the release gate (`qa-e2e.yml`) |
 | Static | ktlint, detekt, Android lint | CI |
 
 Goldens are recorded on Linux (CI image) so renders match the CI machine: run the **Record screenshots**

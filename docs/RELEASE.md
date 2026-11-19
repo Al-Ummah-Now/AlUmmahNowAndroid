@@ -12,6 +12,7 @@ is missing: that step is skipped with a `::notice::` naming what is missing.
 
 | Job | Does | Needs (else skipped with a notice) |
 |---|---|---|
+| `qa-e2e` (gate) | instrumented tests against the deployed QA (`qa-e2e.yml`, list in `scripts/qa-deployed-tests.sh`): Studio's sign-in → upload → bulk edit → delete/restore → sign-out flow and the viewer's QA playback. `github-release` and `play` wait for it, so a red gate publishes nothing. PRs and `main` never run these tests (owner rule 2026-11-13: QA E2E only on releases); run it by hand from Actions → **QA E2E (release gate)** | `QA_SEED_PASSWORD` (fails, not skipped, when missing) |
 | `github-release` | GitHub Release with `AlUmmahNowStudio-<v>.apk` (prod), `-qa.apk`, `.aab`, `SHA256SUMS.txt` | the upload key secrets, **or** the pre-release key secrets (set) |
 | `play` → build | signed prod bundles for viewer, TV (Google), Studio as the `play-bundles` artifact (for each app's first manual upload), and the signed Fire TV APK as `fire-tv-apk` | the four `AUN_UPLOAD_*` secrets |
 | `play` → upload | per app: bundle + store listing (texts from `src/main/play/`, screenshots generated in the job) to the Play **internal** track | the above + `PLAY_SERVICE_ACCOUNT_JSON` + that app's repo variable `PLAY_VIEWER_READY` / `PLAY_TV_READY` / `PLAY_STUDIO_READY` = `true` |
