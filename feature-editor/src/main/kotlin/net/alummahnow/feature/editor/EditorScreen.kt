@@ -64,8 +64,10 @@ import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.components.FanousCard
 import net.alummahnow.design.components.FanousMaterialKind
 import net.alummahnow.design.components.fanousMaterial
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.durationLabel
 import net.alummahnow.design.format.localizedDigits
+import net.alummahnow.design.format.numberLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.design.theme.LocalFanous
 import net.alummahnow.design.theme.color
@@ -280,7 +282,7 @@ private fun Clips(state: EditorUiState, onImport: () -> Unit, onSelect: (String)
         )
         state.list.clips.forEachIndexed { index, clip ->
             val selected = clip.id == state.selectedId
-            val number = localizedDigits("${index + 1}")
+            val number = numberLabel(index + 1L)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -301,7 +303,7 @@ private fun Clips(state: EditorUiState, onImport: () -> Unit, onSelect: (String)
                 ClipThumbnail(clip)
                 Column(Modifier.weight(1f)) {
                     Text(
-                        stringResource(R.string.editor_clip, number),
+                        aunString(R.string.editor_clip, number),
                         color = if (selected) f.parts.navActiveText.color else f.colors.textPrimary.color,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
