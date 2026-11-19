@@ -126,7 +126,10 @@ fun EditorScreen(
     preview: @Composable () -> Unit = {}
 ) {
     if (state.list.clips.isEmpty()) {
-        Box(modifier.fillMaxSize().background(LocalFanous.current.colors.background.color).padding(FanousTokens.Spacing.lg), contentAlignment = Alignment.Center) {
+        Box(
+            modifier.fillMaxSize().background(LocalFanous.current.colors.background.color).padding(FanousTokens.Spacing.lg),
+            contentAlignment = Alignment.Center
+        ) {
             FanousCard(
                 Modifier.widthIn(max = 480.dp).fillMaxWidth().testTag("editor-empty"),
                 actions = {
