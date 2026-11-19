@@ -3,6 +3,7 @@ package net.alummahnow.studio
 import android.content.Context
 import net.alummahnow.core.ApiClient
 import net.alummahnow.core.ApiClientConfig
+import net.alummahnow.core.bridge.AunClient
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.attestation.HttpAttestationApi
 import net.alummahnow.core.bridge.attestation.PlayIntegrityProofProvider
@@ -35,7 +36,8 @@ class AppContainer(context: Context) {
                     userAgent = "AlUmmahNow-Studio-Android/${BuildConfig.VERSION_NAME}",
                     locale = null,
                     timeoutMs = null,
-                    maxAttempts = null
+                    maxAttempts = null,
+                    client = AunClient.value("studio", BuildConfig.VERSION_NAME)
                 ),
                 userId
             )

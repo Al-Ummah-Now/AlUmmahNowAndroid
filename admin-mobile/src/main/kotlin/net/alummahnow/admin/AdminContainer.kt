@@ -3,6 +3,7 @@ package net.alummahnow.admin
 import android.content.Context
 import net.alummahnow.admin.security.AppLock
 import net.alummahnow.admin.security.StepUp
+import net.alummahnow.core.bridge.AunClient
 import net.alummahnow.core.bridge.admin.HttpReviewService
 import net.alummahnow.core.bridge.admin.PrivateHttp
 import net.alummahnow.core.bridge.admin.PushRegistrar
@@ -27,6 +28,10 @@ interface AdminServices {
 
 /** Manual DI. Sign-in and tokens go through aun-core (the Studio sign-in); admin-api through the private client. */
 class AdminContainer(context: Context) : AdminServices {
+    init {
+        PrivateHttp.aunClient = AunClient.value("admin", BuildConfig.VERSION_NAME)
+    }
+
     override val session: AccountSession = CoreAccountSession(
         OAuthClientSettings(issuer = BuildConfig.AUTH_ISSUER, clientId = BuildConfig.AUTH_CLIENT_ID, redirectUri = REDIRECT_URI),
         // Its own key store, separate from Studio's: signing out of one app never touches the other.
