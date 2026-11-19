@@ -1,5 +1,6 @@
 package net.alummahnow.feature.studio.channels
 
+import net.alummahnow.design.format.avatarInitial
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -132,7 +133,7 @@ private fun ChannelRow(channel: StudioChannel, selected: Boolean, onClick: () ->
 
 @Composable
 fun ChannelAvatar(channel: StudioChannel, sizeDp: Int) {
-    val initial = channel.localizedName(currentLocale().language).trim().firstOrNull()?.uppercase() ?: "?"
+    val initial = avatarInitial(channel.localizedName(currentLocale().language)).ifEmpty { "?" }
     Box(
         Modifier.size(sizeDp.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
         contentAlignment = Alignment.Center

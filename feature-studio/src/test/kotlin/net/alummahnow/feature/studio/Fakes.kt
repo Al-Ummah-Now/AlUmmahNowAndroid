@@ -25,7 +25,7 @@ import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.VideoEdit
 import net.alummahnow.core.bridge.studio.VideoStat
 
-val sampleAccount = StudioAccount("u1", "Creator", "creator@example.com", null, null, false)
+val sampleAccount = StudioAccount("u1", "Amina Yusuf", "amina.yusuf@example.org", null, null, false)
 
 val sampleChannels = listOf(
     StudioChannel("c1", "Lectures", mapOf("ar" to "محاضرات"), handle = "lectures", isMain = true),
