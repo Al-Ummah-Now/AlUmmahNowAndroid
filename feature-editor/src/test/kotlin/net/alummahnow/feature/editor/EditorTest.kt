@@ -42,7 +42,7 @@ class EditorTest {
     @After fun reset() = Dispatchers.resetMain()
 
     private val durations = mapOf("a" to 980_000L, "b" to 634_000L, "c" to 1_278_000L)
-    private fun vm() = EditorViewModel { uri -> durations[uri] }
+    private fun vm() = EditorViewModel(probe = { uri -> durations[uri] })
 
     @Test fun importAddsReadableVideosInOrderAndReportsTheRest() {
         val vm = vm()
@@ -106,6 +106,29 @@ class EditorTest {
         assertTrue(vm.state.value.canUndo && vm.state.value.canRedo)
     }
 
+    @Test fun exportReportsProgressThenTheFileAndAnEditMakesItStale() {
+        val dir = java.nio.file.Files.createTempDirectory("export").toFile()
+        val vm = EditorViewModel({ durations[it] }, { _, output, progress ->
+            progress(0.5f)
+            output.writeText("mp4")
+        }, { dir })
+        vm.import(listOf("a"))
+        vm.export()
+        val path = vm.state.value.exportedPath
+        assertTrue(path != null && java.io.File(path).exists())
+        vm.import(listOf("b"))
+        assertEquals(null, vm.state.value.exportedPath)
+    }
+
+    @Test fun aFailedExportSaysSo() {
+        val vm =
+            EditorViewModel({ durations[it] }, { _, _, _ -> error("encoder") }, { java.nio.file.Files.createTempDirectory("x").toFile() })
+        vm.import(listOf("a"))
+        vm.export()
+        assertTrue(vm.state.value.exportFailed)
+        assertEquals(null, vm.state.value.exportProgress)
+    }
+
     private val sample = EditorUiState(
         list = EditDecisionList(
             listOf(
@@ -120,6 +143,9 @@ class EditorTest {
     )
 
     private val editor = @Composable { EditorScreen(sample, false, {}, {}, {}, { _, _ -> }, {}) }
+    private val exported = @Composable {
+        EditorScreen(sample.copy(exportedPath = "/cache/editor-exports/edit.mp4"), false, {}, {}, {}, { _, _ -> }, {})
+    }
     private val empty = @Composable { EditorScreen(EditorUiState(), false, {}, {}, {}, { _, _ -> }, {}) }
 
     @Test fun shots() {
@@ -127,6 +153,7 @@ class EditorTest {
             for (mode in ThemeMode.entries) {
                 for (device in Device.entries) shoot("editor", lang, mode, device, editor)
                 shoot("editor_empty", lang, mode, Device.PHONE, empty)
+                shoot("editor_exported", lang, mode, Device.TABLET, exported)
             }
         }
     }

@@ -2,6 +2,7 @@ package net.alummahnow.feature.editor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,7 +24,12 @@ data class EditorUiState(
     val playheadMs: Long = 0,
     val importFailed: Boolean = false,
     val canUndo: Boolean = false,
-    val canRedo: Boolean = false
+    val canRedo: Boolean = false,
+    /** 0..1 while an export runs, null otherwise. */
+    val exportProgress: Float? = null,
+    /** The finished export, until the edit changes. */
+    val exportedPath: String? = null,
+    val exportFailed: Boolean = false
 ) {
     val selectedIndex: Int get() = list.clips.indexOfFirst { it.id == selectedId }
 }
@@ -32,7 +38,11 @@ data class EditorUiState(
  * The editor's state: the edit list (with undo and redo over whole snapshots), the selected clip and the playhead.
  * Edits are Apple's (`EditDecisionList`); every edit is one undo step, a trim drag included.
  */
-class EditorViewModel(private val probe: DurationProbe) : ViewModel() {
+class EditorViewModel(
+    private val probe: DurationProbe,
+    private val exporter: EditExport = EditExport { _, _, _ -> error("no exporter") },
+    private val exportDir: () -> File = { File(System.getProperty("java.io.tmpdir") ?: ".") }
+) : ViewModel() {
     private val mutable = MutableStateFlow(EditorUiState())
     val state: StateFlow<EditorUiState> = mutable.asStateFlow()
     private var history = SnapshotHistory(EditDecisionList())
@@ -55,7 +65,9 @@ class EditorViewModel(private val probe: DurationProbe) : ViewModel() {
                 selectedId = keep ?: list.clips.getOrNull(s.selectedIndex.coerceAtMost(list.clips.lastIndex))?.id,
                 playheadMs = s.playheadMs.coerceIn(0, (list.durationMs - 1).coerceAtLeast(0)),
                 canUndo = history.canUndo,
-                canRedo = history.canRedo
+                canRedo = history.canRedo,
+                // An edit after an export makes the exported file stale.
+                exportedPath = s.exportedPath.takeIf { list == s.list }
             )
         }
     }
@@ -115,6 +127,24 @@ class EditorViewModel(private val probe: DurationProbe) : ViewModel() {
         val dragging = base !== history.current
         commit(base.trim(id, startMs, endMs), amend = dragging, select = id)
         if (done) trimBase = null
+    }
+
+    /** Renders the edit to an MP4 for sharing or uploading. One export at a time. */
+    fun export() {
+        if (state.value.exportProgress != null || history.current.clips.isEmpty()) return
+        val list = history.current
+        mutable.update { it.copy(exportProgress = 0f, exportedPath = null, exportFailed = false) }
+        viewModelScope.launch {
+            val dir = exportDir().apply { mkdirs() }
+            val file = File(dir, "edit-${System.currentTimeMillis()}.mp4")
+            runCatching { exporter.export(list, file) { p -> mutable.update { it.copy(exportProgress = p) } } }
+                .onSuccess { mutable.update { it.copy(exportProgress = null, exportedPath = file.path) } }
+                .onFailure { e ->
+                    AunLog.e("editor", "export failed", e)
+                    file.delete()
+                    mutable.update { it.copy(exportProgress = null, exportFailed = true) }
+                }
+        }
     }
 
     fun undo() {

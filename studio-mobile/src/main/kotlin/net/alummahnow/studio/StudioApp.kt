@@ -52,6 +52,8 @@ import net.alummahnow.design.format.currentLocale
 import net.alummahnow.feature.editor.EditorRoute
 import net.alummahnow.feature.editor.EditorViewModel
 import net.alummahnow.feature.editor.RetrieverDurationProbe
+import net.alummahnow.feature.editor.TransformerExport
+import net.alummahnow.feature.editor.editorExportDir
 import net.alummahnow.feature.passkey.PasskeyHost
 import net.alummahnow.feature.passkey.PasskeyUiState
 import net.alummahnow.feature.passkey.PasskeyViewModel
@@ -74,6 +76,7 @@ import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
 import net.alummahnow.feature.studio.studioText
+import net.alummahnow.feature.upload.PickedFile
 import net.alummahnow.feature.upload.UploadRoute
 import net.alummahnow.feature.upload.UploadViewModel
 
@@ -209,11 +212,22 @@ fun StudioApp(
                             AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
                         }
                         StudioTab.EDITOR -> {
-                            val probeContext = LocalContext.current.applicationContext
+                            val appContext = LocalContext.current.applicationContext
                             val editor: EditorViewModel = viewModel(key = "editor-$key") {
-                                EditorViewModel(RetrieverDurationProbe(probeContext))
+                                EditorViewModel(
+                                    RetrieverDurationProbe(appContext),
+                                    TransformerExport(appContext),
+                                    exportDir = { editorExportDir(appContext) }
+                                )
                             }
-                            EditorRoute(editor)
+                            // The same view model the Upload tab uses, so the export joins its queue.
+                            val upload: UploadViewModel = viewModel(key = "upload-$key") {
+                                UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                            }
+                            EditorRoute(editor, onSendToUpload = { uri, name, size ->
+                                upload.addFiles(listOf(PickedFile(uri, name, size, "video/mp4")))
+                                tab = StudioTab.UPLOAD
+                            })
                         }
                         StudioTab.DASHBOARD -> {
                             val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") {

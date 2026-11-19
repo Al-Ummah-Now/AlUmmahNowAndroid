@@ -27,15 +27,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -160,7 +163,10 @@ fun EditorScreen(
                     Preview(playing, onPlayPause, preview)
                     Timeline(state, onScrub, tools)
                 }
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { Clips(state, onImport, onSelect, onMove) }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = gap) {
+                    Clips(state, onImport, onSelect, onMove, tools)
+                    Exported(state, tools)
+                }
             }
         } else {
             Column(
@@ -169,7 +175,8 @@ fun EditorScreen(
             ) {
                 Preview(playing, onPlayPause, preview)
                 Timeline(state, onScrub, tools)
-                Clips(state, onImport, onSelect, onMove)
+                Clips(state, onImport, onSelect, onMove, tools)
+                Exported(state, tools)
             }
         }
     }
@@ -218,7 +225,10 @@ data class EditorTools(
     val onDelete: () -> Unit = {},
     val onTrim: (id: String, startMs: Long, endMs: Long, done: Boolean) -> Unit = { _, _, _, _ -> },
     val onUndo: () -> Unit = {},
-    val onRedo: () -> Unit = {}
+    val onRedo: () -> Unit = {},
+    val onExport: () -> Unit = {},
+    val onShare: () -> Unit = {},
+    val onSendToUpload: () -> Unit = {}
 )
 
 private enum class Drag { Scrub, TrimStart, TrimEnd }
@@ -371,15 +381,30 @@ private fun Timeline(state: EditorUiState, onScrub: (Long) -> Unit, tools: Edito
 private val HANDLE_REACH = 20.dp
 
 @Composable
-private fun Clips(state: EditorUiState, onImport: () -> Unit, onSelect: (String) -> Unit, onMove: (String, Int) -> Unit) {
+private fun Clips(
+    state: EditorUiState,
+    onImport: () -> Unit,
+    onSelect: (String) -> Unit,
+    onMove: (String, Int) -> Unit,
+    tools: EditorTools
+) {
     val f = LocalFanous.current
+    val exporting = state.exportProgress != null
     FanousCard(
         actions = {
             FanousButton(
                 stringResource(R.string.editor_import),
                 onImport,
                 icon = Icons.Filled.VideoLibrary,
+                enabled = !exporting,
                 modifier = Modifier.testTag("editor-import")
+            )
+            FanousButton(
+                stringResource(if (exporting) R.string.editor_exporting else R.string.editor_export),
+                tools.onExport,
+                kind = FanousButtonKind.Primary,
+                enabled = !exporting,
+                modifier = Modifier.testTag("editor-export")
             )
         }
     ) {
@@ -431,6 +456,48 @@ private fun Clips(state: EditorUiState, onImport: () -> Unit, onSelect: (String)
                     Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.editor_move_down))
                 }
             }
+        }
+    }
+}
+
+/** Export progress, the finished export (Share, Upload this video) or why it failed. Nothing when idle. */
+@Composable
+private fun Exported(state: EditorUiState, tools: EditorTools) {
+    val f = LocalFanous.current
+    val progress = state.exportProgress
+    when {
+        progress != null -> FanousCard {
+            Text(stringResource(R.string.editor_exporting), color = f.colors.textPrimary.color, fontSize = 14.sp)
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().padding(top = FanousTokens.Spacing.sm).testTag("editor-export-progress"),
+                color = f.colors.primary.color,
+                trackColor = f.colors.surfaceRaised.color,
+                drawStopIndicator = {}
+            )
+        }
+        state.exportedPath != null -> FanousCard(
+            Modifier.testTag("editor-exported"),
+            actions = {
+                FanousButton(stringResource(R.string.editor_share), tools.onShare, icon = Icons.Filled.Share)
+                FanousButton(
+                    stringResource(R.string.editor_to_upload),
+                    tools.onSendToUpload,
+                    kind = FanousButtonKind.Primary,
+                    icon = Icons.Filled.CloudUpload,
+                    modifier = Modifier.testTag("editor-to-upload")
+                )
+            }
+        ) {
+            Text(
+                stringResource(R.string.editor_exported),
+                color = f.colors.successText.color,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
+            )
+        }
+        state.exportFailed -> FanousCard(Modifier.testTag("editor-export-failed")) {
+            Text(stringResource(R.string.editor_export_failed), color = f.colors.errorText.color, fontSize = 14.sp)
         }
     }
 }
