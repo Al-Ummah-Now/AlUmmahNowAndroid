@@ -177,5 +177,6 @@
         <item quantity="one">%d day</item>
         <item quantity="other">%d days</item>
     </plurals>
+    <string name="model_note">Model note: %1$s</string>
     <string name="quoted">“%1$s”</string>
 </resources>
