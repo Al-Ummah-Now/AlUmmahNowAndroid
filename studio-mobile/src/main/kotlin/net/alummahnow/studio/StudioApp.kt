@@ -273,7 +273,7 @@ private const val STEP_UP_MAX_AGE_S = 900
  * account sheet. On large screens the title starts on the rail's edge and identity lives in the rail header.
  */
 @Composable
-private fun StudioTopBar(title: String, identity: StudioChannel?, railAligned: Boolean, onAccount: () -> Unit) {
+internal fun StudioTopBar(title: String, identity: StudioChannel?, railAligned: Boolean, onAccount: () -> Unit) {
     FanousHeaderBar {
         if (railAligned) Spacer(Modifier.width(RAIL_WIDTH - 12.dp))
         FanousHeaderTitle(title, Modifier.weight(1f), large = true)
@@ -293,7 +293,7 @@ private fun StudioTopBar(title: String, identity: StudioChannel?, railAligned: B
 
 /** The identity control: the channel's avatar, no ring (as the web header). Opens the account sheet. */
 @Composable
-private fun IdentityButton(channel: StudioChannel, onClick: () -> Unit) {
+internal fun IdentityButton(channel: StudioChannel, onClick: () -> Unit) {
     val name = channel.localizedName(currentLocale().language)
     val label = stringResource(net.alummahnow.feature.studio.R.string.studio_account_menu_cd)
     Box(
