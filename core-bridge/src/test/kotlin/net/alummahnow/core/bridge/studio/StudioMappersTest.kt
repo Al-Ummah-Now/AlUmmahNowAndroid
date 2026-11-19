@@ -15,13 +15,13 @@ class StudioMappersTest {
     @Test
     fun `channels from access envelope and from the paginated list`() {
         val access = """{"success":true,"data":[
-            {"id":"c1","userId":"u","name":"Lectures","nameLocalized":{"ar":"محاضرات"},"isMain":true,"role":"owner","capabilities":[]},
+            {"id":"c1","userId":"u","name":"Seerah","nameLocalized":{"ar":"السيرة"},"isMain":true,"role":"owner","capabilities":[]},
             {"id":"c2","userId":"x","name":"Shared","handle":"shared","role":"editor","capabilities":["video.upload","video.edit"]},
             {"name":"no id"}]}"""
         val list = StudioMappers.channels(access)
         assertEquals(listOf("c1", "c2"), list.map { it.id })
-        assertEquals("محاضرات", list[0].localizedName("ar"))
-        assertEquals("Lectures", list[0].localizedName("fr"))
+        assertEquals("السيرة", list[0].localizedName("ar"))
+        assertEquals("Seerah", list[0].localizedName("fr"))
         assertTrue(list[0].isMain)
         assertEquals(ChannelRole.EDITOR, list[1].role)
         assertTrue(list[1].can(StudioChannel.VIDEO_EDIT))
