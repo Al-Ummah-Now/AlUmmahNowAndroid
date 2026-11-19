@@ -1,21 +1,12 @@
 package net.alummahnow.studio
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,13 +15,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,6 +31,9 @@ import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.StudioSection
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
+import net.alummahnow.design.components.FanousHeaderBar
+import net.alummahnow.design.components.FanousHeaderButton
+import net.alummahnow.design.components.FanousHeaderTitle
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.feature.passkey.PasskeyHost
 import net.alummahnow.feature.passkey.PasskeyUiState
@@ -250,33 +241,22 @@ private fun StudioSection.toTab(): StudioTab = when (this) {
 /** "Add a passkey" needs a sign-in within 15 minutes (the server's step_up_required window). */
 private const val STEP_UP_MAX_AGE_S = 900
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** The web header: the channel acting as, and the account menu. */
 @Composable
 private fun StudioTopBar(channel: StudioChannel?, onAccount: () -> Unit) {
-    TopAppBar(
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (channel != null) {
-                    ChannelAvatar(channel, 32)
-                    Spacer(Modifier.width(12.dp))
-                    Text(channel.localizedName(currentLocale().language), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                } else {
-                    Text(
-                        stringResource(R.string.app_name),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-            }
-        },
-        actions = {
-            IconButton(onClick = onAccount, modifier = Modifier.testTag("account-button")) {
-                Icon(
-                    Icons.Filled.AccountCircle,
-                    contentDescription = stringResource(net.alummahnow.feature.studio.R.string.studio_account_menu_cd)
-                )
-            }
+    FanousHeaderBar {
+        if (channel != null) {
+            ChannelAvatar(channel, 32)
+            FanousHeaderTitle(channel.localizedName(currentLocale().language), Modifier.weight(1f))
+        } else {
+            FanousHeaderTitle(stringResource(R.string.app_name), Modifier.weight(1f), large = true)
         }
-    )
+        FanousHeaderButton(
+            onClick = onAccount,
+            contentDescription = stringResource(net.alummahnow.feature.studio.R.string.studio_account_menu_cd),
+            icon = Icons.Filled.AccountCircle,
+            outlined = false,
+            modifier = Modifier.testTag("account-button")
+        )
+    }
 }
