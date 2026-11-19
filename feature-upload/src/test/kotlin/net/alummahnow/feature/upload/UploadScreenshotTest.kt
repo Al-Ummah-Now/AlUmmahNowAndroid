@@ -22,8 +22,8 @@ import org.robolectric.annotation.GraphicsMode
 class UploadScreenshotTest {
     private val state = UploadUiState(
         files = listOf(
-            PickedFile("u1", "dars-01.mp4", 734_003_200, "video/mp4"),
-            PickedFile("u2", "dars-02.mp4", 512_000_000, "video/mp4")
+            PickedFile("u1", "tafsir-01.mp4", 734_003_200, "video/mp4"),
+            PickedFile("u2", "tafsir-02.mp4", 512_000_000, "video/mp4")
         ),
         form = SetForAll(
             titlePattern = "Tafsir {n}",
