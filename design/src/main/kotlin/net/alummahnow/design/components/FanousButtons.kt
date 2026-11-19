@@ -21,6 +21,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,5 +75,34 @@ fun FanousButton(
     ) {
         if (icon != null) Icon(icon, contentDescription = null, tint = textColor, modifier = Modifier.size(18.dp))
         Text(text, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** A filter chip: the selected one in the gold primary material, the others outlined (Apple's StatusChip). */
+@Composable
+fun FanousChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val f = LocalFanous.current
+    val surface = if (selected) {
+        Modifier.fanousLayers(f.material.primary, CircleShape, shadows = f.material.primaryEdge)
+    } else {
+        Modifier.border(1.dp, f.colors.outline.color, CircleShape)
+    }
+    Row(
+        modifier
+            .heightIn(min = 40.dp)
+            .then(surface)
+            .clip(CircleShape)
+            .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text,
+            color = if (selected) f.parts.buttonPrimaryText.color else f.colors.textSecondary.color,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1
+        )
     }
 }
