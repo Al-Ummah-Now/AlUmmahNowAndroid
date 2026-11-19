@@ -210,7 +210,18 @@ class StudioQaFlowTest {
     private companion object {
         const val SIGN_IN_TIMEOUT_MS = 90_000L
         const val POLL_MS = 1_000L
-        val CHROME_PROMPTS = listOf("Accept & continue", "Use without an account", "No thanks", "No, thanks", "Got it", "Continue as guest")
+
+        // "Wait" dismisses a system "… isn't responding" dialog (a slow CI emulator's launcher) over the browser.
+        val CHROME_PROMPTS = listOf(
+            "Wait",
+            "Accept & continue",
+            "Use without an account",
+            "No thanks",
+            "No, thanks",
+            "Got it",
+            "Continue as guest"
+        )
+
         const val LIST_TIMEOUT_MS = 30_000L
         const val UPLOAD_TIMEOUT_MS = 180_000L
         const val TAB_SWITCH_MS = 2_000L
