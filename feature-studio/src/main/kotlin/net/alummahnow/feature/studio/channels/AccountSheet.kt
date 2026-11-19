@@ -1,5 +1,6 @@
 package net.alummahnow.feature.studio.channels
 
+import net.alummahnow.design.format.avatarInitial
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -168,6 +169,6 @@ private fun Initial(label: String) {
         Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary),
         contentAlignment = Alignment.Center
     ) {
-        Text(label.trim().firstOrNull()?.uppercase() ?: "?", color = MaterialTheme.colorScheme.onTertiary)
+        Text(avatarInitial(label).ifEmpty { "?" }, color = MaterialTheme.colorScheme.onTertiary)
     }
 }
