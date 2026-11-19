@@ -24,11 +24,11 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class DesignScreenshotTest {
     private val enItems = listOf(
-        VideoCardData("1", "Introduction to Tafsir", null, 75, "Al Ummah Now — Lectures", 4167),
+        VideoCardData("1", "Introduction to Tafsir", null, 75, "Al Ummah Now — Seerah", 4167),
         VideoCardData("2", "Seerah in 30 lessons: Part 1", null, 3725, "Seerah Institute", 1)
     )
     private val arItems = listOf(
-        VideoCardData("1", "مقدمة في التفسير", null, 75, "الأمة الآن — محاضرات", 4167),
+        VideoCardData("1", "مقدمة في التفسير", null, 75, "الأمة الآن — السيرة", 4167),
         VideoCardData("2", "السيرة في ٣٠ درساً: الجزء الأول", null, 3725, "معهد السيرة", 2)
     )
 

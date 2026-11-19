@@ -16,7 +16,7 @@ internal fun summary(id: String, en: String, ar: String, views: Long = 4167, dur
     durationSeconds = duration,
     views = views,
     channelId = "c1",
-    channelName = "Al Ummah Now — Lectures",
+    channelName = "Al Ummah Now — Seerah",
     publishedAt = null,
     category = "quran_tafsir"
 )

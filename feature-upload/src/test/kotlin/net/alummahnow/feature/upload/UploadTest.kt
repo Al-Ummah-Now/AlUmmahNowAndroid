@@ -41,10 +41,10 @@ class UploadTest {
     @Test
     fun `title tokens follow the shared web rename engine`() {
         val ar = java.util.Locale.forLanguageTag("ar")
-        assertEquals("Fajr reminder", TitlePattern.apply("{filename}", "Fajr reminder.mp4", 0, today, "Lectures"))
+        assertEquals("Fajr reminder", TitlePattern.apply("{filename}", "Fajr reminder.mp4", 0, today, "Seerah"))
         assertEquals("Lesson 03.final", TitlePattern.apply("{filename}", "Lesson 03.final.mp4", 0, today, "C"))
         assertEquals("Tafsir 03 · 10 November 2026", TitlePattern.apply("Tafsir {n} · {date}", "a.mp4", 2, today, "C", pad = 2))
-        assertEquals("Lectures part 12", TitlePattern.apply("{channel} part {n}", "x.mov", 1, today, "Lectures", start = 11))
+        assertEquals("Seerah part 12", TitlePattern.apply("{channel} part {n}", "x.mov", 1, today, "Seerah", start = 11))
         assertEquals("{oops} a", TitlePattern.apply("{oops} {filename}", "a.mp4", 0, today, "C"))
         assertEquals("  clip ", TitlePattern.apply("  {filename} ", "clip.mp4", 0, today, "C"))
         assertEquals("clip", TitlePattern.apply("", "clip.mp4", 0, today, "C"))
@@ -61,7 +61,7 @@ class UploadTest {
     @Test
     fun `batch drafts carry the set-for-all values and per-file titles`() = runTest {
         val queue = FakeQueue()
-        val vm = UploadViewModel(queue, FakeRepo(), "c1", "Lectures", { today }, { now }, { zone })
+        val vm = UploadViewModel(queue, FakeRepo(), "c1", "Seerah", { today }, { now }, { zone })
         assertEquals(listOf("p1"), vm.state.value.playlists.map { it.id })
         vm.addFiles(listOf(file("a.mp4"), file("b.mp4"), file("a.mp4")))
         assertEquals(2, vm.state.value.files.size)
