@@ -2,6 +2,8 @@ package net.alummahnow.feature.editor
 
 import android.provider.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -68,8 +70,9 @@ class EditorTest {
         val vm = vm()
         var imported = 0
         compose.setContent {
+            val state by vm.state.collectAsState()
             AunTheme(mode = ThemeMode.DARK) {
-                EditorScreen(vm.state.value, false, { imported++ }, {}, {}, { _, _ -> }, {})
+                EditorScreen(state, false, { imported++ }, {}, {}, { _, _ -> }, {})
             }
         }
         compose.onNodeWithTag("editor-import").performClick()
