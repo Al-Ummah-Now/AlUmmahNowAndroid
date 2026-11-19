@@ -443,7 +443,6 @@ private fun VideoRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                // One line that truncates; the date has its own column so it never wraps.
                 Text(
                     meta(v, deleted),
                     style = MaterialTheme.typography.bodySmall,
@@ -451,17 +450,16 @@ private fun VideoRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            if (!deleted) {
-                v.createdAt?.let {
-                    Text(
-                        formatDate(it),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = f.colors.textMuted.color,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.align(Alignment.Top).padding(top = FanousTokens.Spacing.xs)
-                    )
+                // The date on its own line under the details: a separate column left phones no room for the title.
+                if (!deleted) {
+                    v.createdAt?.let {
+                        Text(
+                            formatDate(it),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = f.colors.textMuted.color,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
             if (deleted) {

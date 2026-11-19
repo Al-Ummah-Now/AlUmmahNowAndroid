@@ -41,7 +41,8 @@ val sampleVideos = listOf(
         durationSeconds = 1830.0,
         category = "quran_tafsir",
         status = ContentStatus.PUBLISHED,
-        tags = listOf("tafsir")
+        tags = listOf("tafsir"),
+        createdAt = "2026-11-06T10:00:00Z"
     ),
     StudioVideo(
         "v2",
@@ -50,7 +51,8 @@ val sampleVideos = listOf(
         isPublic = false,
         views = 87,
         durationSeconds = 600.0,
-        status = ContentStatus.PUBLISHED
+        status = ContentStatus.PUBLISHED,
+        createdAt = "2026-11-05T10:00:00Z"
     ),
     StudioVideo(
         "v3",
