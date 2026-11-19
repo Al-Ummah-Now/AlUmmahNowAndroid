@@ -40,8 +40,9 @@ testing only, never a public APK; owner media rule: nothing cached or downloaded
   backed by the Rust core (UniFFI AAR).
 - **Logging:** use `AunLog` from `:core-bridge` (tagged, stripped of PII). No `println`. Use `Log.*` only inside `AunLog`.
 - Small PRs into `main`, CI green, then a rebase merge (`gh pr merge --rebase`). Never squash: a squash commit carries the merging account's email.
-- Fanous tokens in `:design` are placeholders from the spec (§3) until Epic 10 ships the generated theme;
-  don't hand-tune colours elsewhere.
+- Fanous colours come from the generated registry (`design/.../net/alummahnow/fanous/FanousThemes.kt`, vendored by
+  `scripts/sync-fanous.sh` at the commit in `fanous.lock`; CI checks it). Screens read `LocalFanous` / Material roles;
+  never hand-tune colours. The app header is the web header (`FanousHeaderBar`).
 - Screenshot tests set the layout direction explicitly (`ar-ldrtl`, `en-ldltr`): Robolectric does not derive it
   from the locale the way a device does.
 - Golden screenshots are recorded on Linux. Re-record them with the "Record screenshots" workflow, not on macOS.

@@ -9,74 +9,85 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import net.alummahnow.fanous.FanousMaterial
+import net.alummahnow.fanous.FanousModeTokens
+import net.alummahnow.fanous.FanousPalette
+import net.alummahnow.fanous.FanousParts
+import net.alummahnow.fanous.FanousThemeId
+import net.alummahnow.fanous.FanousThemeTokens
 
-/** User's theme choice. Dark ("night") is the brand default; SYSTEM follows the device. */
-enum class ThemeMode { SYSTEM, DARK, LIGHT }
+/**
+ * Light or dark, the person's choice. There is no "System" option (owner, 2026-11-13): until a mode is stored the app
+ * follows the device (pass `null`), and the app stores the device's mode the first time it starts.
+ */
+enum class ThemeMode { DARK, LIGHT }
 
-internal val NightColors: ColorScheme = darkColorScheme(
-    primary = FanousTokens.Lantern,
-    onPrimary = FanousTokens.Night,
-    primaryContainer = FanousTokens.LanternDeep,
-    onPrimaryContainer = FanousTokens.Glow,
-    secondary = FanousTokens.Earth,
-    onSecondary = FanousTokens.OnNight,
-    // Every container role is set, so no Material baseline (purple) colour can leak into the brand.
-    secondaryContainer = FanousTokens.LanternDeep,
-    onSecondaryContainer = FanousTokens.Glow,
-    tertiary = FanousTokens.Glow,
-    onTertiary = FanousTokens.Night,
-    tertiaryContainer = FanousTokens.NightSurfaceHigh,
-    onTertiaryContainer = FanousTokens.Glow,
-    background = FanousTokens.Night,
-    onBackground = FanousTokens.OnNight,
-    surface = FanousTokens.Night,
-    onSurface = FanousTokens.OnNight,
-    surfaceVariant = FanousTokens.NightSurface,
-    onSurfaceVariant = FanousTokens.OnNightMuted,
-    surfaceContainer = FanousTokens.NightSurface,
-    surfaceContainerLowest = FanousTokens.Night,
-    surfaceContainerLow = FanousTokens.NightSurface,
-    surfaceContainerHigh = FanousTokens.NightSurfaceHigh,
-    surfaceContainerHighest = FanousTokens.NightSurfaceHigh,
-    surfaceTint = FanousTokens.Lantern,
-    outlineVariant = FanousTokens.NightSurfaceHigh,
-    outline = FanousTokens.Earth,
-    error = FanousTokens.ErrorOnNight,
-    onError = FanousTokens.Night
-)
+/** The window theme: the site theme (Fawanees) from the generated registry, in the light or dark mode. */
+@Immutable
+data class FanousTheme(val tokens: FanousThemeTokens, val dark: Boolean) {
+    val mode: FanousModeTokens get() = tokens.mode(dark)
+    val colors: FanousPalette get() = mode.colors
+    val parts: FanousParts get() = mode.parts
+    val material: FanousMaterial get() = mode.material
+}
 
-internal val ParchmentColors: ColorScheme = lightColorScheme(
-    primary = FanousTokens.LanternDeep,
-    onPrimary = FanousTokens.ParchmentSurface,
-    primaryContainer = FanousTokens.Lantern,
-    onPrimaryContainer = FanousTokens.Night,
-    secondary = FanousTokens.Earth,
-    onSecondary = FanousTokens.ParchmentSurface,
-    secondaryContainer = FanousTokens.Glow,
-    onSecondaryContainer = FanousTokens.Ink,
-    tertiary = FanousTokens.Night,
-    onTertiary = FanousTokens.Parchment,
-    tertiaryContainer = FanousTokens.ParchmentSurfaceHigh,
-    onTertiaryContainer = FanousTokens.Night,
-    background = FanousTokens.Parchment,
-    onBackground = FanousTokens.Ink,
-    surface = FanousTokens.Parchment,
-    onSurface = FanousTokens.Ink,
-    surfaceVariant = FanousTokens.ParchmentSurfaceHigh,
-    onSurfaceVariant = FanousTokens.InkMuted,
-    surfaceContainer = FanousTokens.ParchmentSurface,
-    surfaceContainerLowest = FanousTokens.ParchmentSurface,
-    surfaceContainerLow = FanousTokens.Parchment,
-    surfaceContainerHigh = FanousTokens.ParchmentSurfaceHigh,
-    surfaceContainerHighest = FanousTokens.ParchmentSurfaceHigh,
-    surfaceTint = FanousTokens.LanternDeep,
-    outlineVariant = FanousTokens.ParchmentSurfaceHigh,
-    outline = FanousTokens.Earth,
-    error = FanousTokens.Error
-)
+/** The window's Fanous theme, for parts Material's colour scheme has no slot for (header, card edge, glow). */
+val LocalFanous = staticCompositionLocalOf { FanousTheme(FanousThemeId.FALLBACK.tokens, dark = true) }
+
+/** Material 3 roles from the registry, so stock components can never show a baseline (purple) colour. */
+internal fun colorScheme(theme: FanousTheme): ColorScheme {
+    val c = theme.colors
+    // Gold is too light for text on the cream page; Material uses `primary` for text buttons, so light mode takes the
+    // link colour there and keeps gold for containers, as the web does.
+    val primary = if (theme.dark) c.primary.color else c.link.color
+    val onPrimary = if (theme.dark) c.onPrimary.color else c.background.color
+    val base = if (theme.dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = primary,
+        onPrimary = onPrimary,
+        primaryContainer = c.primary.color,
+        onPrimaryContainer = c.onPrimary.color,
+        inversePrimary = c.primaryHover.color,
+        secondary = c.secondary.color,
+        onSecondary = c.onSecondary.color,
+        secondaryContainer = c.surfaceRaised.color,
+        onSecondaryContainer = c.textPrimary.color,
+        tertiary = c.accent.color,
+        onTertiary = c.background.color,
+        tertiaryContainer = c.heroStart.color,
+        onTertiaryContainer = c.textPrimary.color,
+        background = c.background.color,
+        onBackground = c.textPrimary.color,
+        surface = c.background.color,
+        onSurface = c.textPrimary.color,
+        surfaceVariant = c.surfaceRaised.color,
+        onSurfaceVariant = c.textSecondary.color,
+        surfaceTint = c.primary.color,
+        surfaceBright = c.surfaceRaised.color,
+        surfaceDim = c.background.color,
+        surfaceContainerLowest = c.background.color,
+        surfaceContainerLow = c.surface.color,
+        surfaceContainer = c.surface.color,
+        surfaceContainerHigh = c.surfaceRaised.color,
+        surfaceContainerHighest = c.surfaceRaised.color,
+        inverseSurface = c.textPrimary.color,
+        inverseOnSurface = c.background.color,
+        outline = c.outline.color,
+        outlineVariant = c.divider.color,
+        error = c.errorText.color,
+        onError = c.background.color,
+        errorContainer = c.errorFill.color,
+        onErrorContainer = c.onErrorFill.color,
+        scrim = Color.Black
+    )
+}
 
 /**
  * Type scale. Font family is the platform default (Roboto / Noto Naskh Arabic) until decision D6 picks
@@ -100,20 +111,24 @@ internal val AunShapes = Shapes(
     large = RoundedCornerShape(FanousTokens.Radius.lg)
 )
 
+/** Applies the Fanous theme. `mode == null` follows the device until the person picks Light or Dark. */
 @Composable
 fun AunTheme(
-    mode: ThemeMode = ThemeMode.SYSTEM,
+    mode: ThemeMode? = null,
     content: @Composable () -> Unit
 ) {
     val dark = when (mode) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        null -> isSystemInDarkTheme()
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
     }
-    MaterialTheme(
-        colorScheme = if (dark) NightColors else ParchmentColors,
-        typography = AunTypography,
-        shapes = AunShapes,
-        content = content
-    )
+    val theme = FanousTheme(FanousThemeId.FALLBACK.tokens, dark)
+    CompositionLocalProvider(LocalFanous provides theme) {
+        MaterialTheme(
+            colorScheme = colorScheme(theme),
+            typography = AunTypography,
+            shapes = AunShapes,
+            content = content
+        )
+    }
 }

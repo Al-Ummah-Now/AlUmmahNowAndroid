@@ -14,8 +14,17 @@ private val Context.dataStore by preferencesDataStore(name = "display")
 class DisplayPrefsStore(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme")
 
-    val theme: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
-        prefs[themeKey]?.let { saved -> ThemeMode.entries.firstOrNull { it.name == saved } } ?: ThemeMode.SYSTEM
+    /** The stored mode, or null until one is stored (then the app follows the device). A stored "SYSTEM" is null. */
+    val theme: Flow<ThemeMode?> = context.dataStore.data.map { prefs ->
+        prefs[themeKey]?.let { saved -> ThemeMode.entries.firstOrNull { it.name == saved } }
+    }
+
+    /** Stores the device's mode the first time the app starts (owner 2026-11-13: Light or Dark, no System). */
+    suspend fun adoptDeviceMode(dark: Boolean) {
+        context.dataStore.edit { prefs ->
+            val stored = prefs[themeKey]?.let { saved -> ThemeMode.entries.firstOrNull { it.name == saved } }
+            if (stored == null) prefs[themeKey] = (if (dark) ThemeMode.DARK else ThemeMode.LIGHT).name
+        }
     }
 
     suspend fun setTheme(mode: ThemeMode) {

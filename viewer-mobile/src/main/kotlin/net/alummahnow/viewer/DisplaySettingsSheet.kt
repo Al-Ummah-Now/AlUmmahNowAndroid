@@ -22,7 +22,7 @@ import net.alummahnow.design.theme.ThemeMode
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DisplaySettingsSheet(
-    theme: ThemeMode,
+    theme: ThemeMode?,
     language: String?,
     languageSwitchSupported: Boolean,
     onTheme: (ThemeMode) -> Unit,
@@ -32,7 +32,6 @@ fun DisplaySettingsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(bottom = 24.dp)) {
             Title(stringResource(R.string.settings_theme))
-            Option(stringResource(R.string.settings_theme_system), theme == ThemeMode.SYSTEM) { onTheme(ThemeMode.SYSTEM) }
             Option(stringResource(R.string.settings_theme_dark), theme == ThemeMode.DARK) { onTheme(ThemeMode.DARK) }
             Option(stringResource(R.string.settings_theme_light), theme == ThemeMode.LIGHT) { onTheme(ThemeMode.LIGHT) }
             if (languageSwitchSupported) {
