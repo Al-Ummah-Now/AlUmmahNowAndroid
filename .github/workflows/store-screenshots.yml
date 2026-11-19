@@ -21,9 +21,12 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      # `--tests` filters the test task before it, so each task carries its own filter.
       - run: >
-          ./gradlew -PaunStoreScreenshots=true --tests '*StoreScreenshots*'
-          :viewer-mobile:testProdDebugUnitTest :studio-mobile:testProdDebugUnitTest :viewer-tv:testProdGoogleDebugUnitTest
+          ./gradlew -PaunStoreScreenshots=true
+          :viewer-mobile:testProdDebugUnitTest --tests '*StoreScreenshots*'
+          :studio-mobile:testProdDebugUnitTest --tests '*StoreScreenshots*'
+          :viewer-tv:testProdGoogleDebugUnitTest --tests '*StoreScreenshots*'
       - uses: actions/upload-artifact@v4
         with:
           name: store-screenshots
