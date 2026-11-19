@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -434,7 +435,9 @@ private fun VideoRow(
                 onCheckedChange = { actions.onToggle(v.id) },
                 modifier = Modifier.testTag("select-${v.id}").semantics { contentDescription = selectLabel }
             )
-            Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(120.dp))
+            // A smaller thumbnail on narrow phones (360dp) so the title keeps a readable width.
+            val narrow = LocalConfiguration.current.screenWidthDp < NARROW_DP
+            Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(if (narrow) 80.dp else 120.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -447,7 +450,7 @@ private fun VideoRow(
                     meta(v, deleted),
                     style = MaterialTheme.typography.bodySmall,
                     color = f.colors.textSecondary.color,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 // The date on its own line under the details: a separate column left phones no room for the title.
@@ -509,3 +512,5 @@ internal fun formatDate(iso: String): String {
 }
 
 private const val DATE_CHARS = 10
+
+private const val NARROW_DP = 400
