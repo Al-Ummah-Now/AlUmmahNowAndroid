@@ -69,39 +69,65 @@ fun compactCount(n: Long): String {
     val c = AunFormat.compact(n, currentLocale())
     return when (c.scale) {
         AunFormat.Scale.NONE -> c.number
-        // Arabic: «١٫٣ ألف», «٢ ألفان», «٨ آلاف», «١٢ ألف» (see [AunFormat.ScaleForm]).
+        // Arabic: «ألف», «ألفان», «٣ آلاف», «١١ ألف», «١٫٣ ألف» (see [AunFormat.ScaleForm]); no digit before 1 or the dual.
         AunFormat.Scale.THOUSAND -> aunString(
-            c.form.pick(R.string.aun_count_thousand, R.string.aun_count_thousand_dual, R.string.aun_count_thousand_plural),
+            c.form.pick(
+                R.string.aun_count_thousand_one,
+                R.string.aun_count_thousand_dual,
+                R.string.aun_count_thousand_plural,
+                R.string.aun_count_thousand
+            ),
             c.number
         )
         AunFormat.Scale.MILLION -> aunString(
-            c.form.pick(R.string.aun_count_million, R.string.aun_count_million_dual, R.string.aun_count_million_plural),
+            c.form.pick(
+                R.string.aun_count_million_one,
+                R.string.aun_count_million_dual,
+                R.string.aun_count_million_plural,
+                R.string.aun_count_million
+            ),
             c.number
         )
         AunFormat.Scale.BILLION -> aunString(
-            c.form.pick(R.string.aun_count_billion, R.string.aun_count_billion_dual, R.string.aun_count_billion_plural),
+            c.form.pick(
+                R.string.aun_count_billion_one,
+                R.string.aun_count_billion_dual,
+                R.string.aun_count_billion_plural,
+                R.string.aun_count_billion
+            ),
             c.number
         )
     }
 }
 
-private fun AunFormat.ScaleForm.pick(singular: Int, dual: Int, plural: Int): Int = when (this) {
-    AunFormat.ScaleForm.SINGULAR -> singular
+private fun AunFormat.ScaleForm.pick(one: Int, dual: Int, plural: Int, singular: Int): Int = when (this) {
+    AunFormat.ScaleForm.ONE -> one
     AunFormat.ScaleForm.DUAL -> dual
     AunFormat.ScaleForm.PLURAL -> plural
+    AunFormat.ScaleForm.SINGULAR -> singular
 }
 
 /**
  * "1.2K views" / «١٫٢ ألف مشاهدة». Small counts take the Arabic plural form of the full count («٥ مشاهدات»); a compact
- * count is counted by its scale word, so the noun stays singular («٨ آلاف مشاهدة», «٢ ألفان مشاهدة», never «مشاهدات»).
+ * count is counted by its scale word, so the noun stays singular («ألف مشاهدة», «٨ آلاف مشاهدة», «١٫٣ ألف مشاهدة»),
+ * and exactly 2 takes the dual's construct form before the noun («ألفا مشاهدة», «مليونا مشاهدة»).
  */
 @Composable
 fun viewsLabel(views: Long): String {
-    if (AunFormat.compact(views, currentLocale()).scale != AunFormat.Scale.NONE) {
-        return aunString(R.string.aun_views_compact, compactCount(views))
+    val c = AunFormat.compact(views, currentLocale())
+    if (c.scale == AunFormat.Scale.NONE) {
+        val quantity = views.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+        return aunPlural(R.plurals.aun_views, quantity, c.number)
     }
-    val quantity = views.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
-    return aunPlural(R.plurals.aun_views, quantity, compactCount(views))
+    if (c.form == AunFormat.ScaleForm.DUAL) {
+        val id = when (c.scale) {
+            AunFormat.Scale.MILLION -> R.string.aun_views_million_dual
+            AunFormat.Scale.BILLION -> R.string.aun_views_billion_dual
+            else -> R.string.aun_views_thousand_dual
+        }
+        return aunString(id, c.number)
+    }
+    return aunString(R.string.aun_views_compact, compactCount(views))
 }
 
 @Composable
