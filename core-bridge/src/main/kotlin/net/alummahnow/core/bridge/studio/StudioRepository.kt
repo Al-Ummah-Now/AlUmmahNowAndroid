@@ -7,8 +7,17 @@ package net.alummahnow.core.bridge.studio
 interface StudioRepository {
     suspend fun channels(): List<StudioChannel>
     suspend fun creatorAccess(): CreatorAccess
+
+    /** What this person sees, evaluated against [channelId]'s owner tier when given (`GET /api/me/features`). */
+    suspend fun features(channelId: String?): UserFeatures
     suspend fun content(query: ContentQuery): ContentPage
     suspend fun counts(channelId: String): ContentCounts?
+
+    /**
+     * Comments waiting for review on this channel. Throws [StudioError.Forbidden] without `comment.moderate` and
+     * [StudioError.NotSupported] where the comments index is not deployed; both mean "no such section".
+     */
+    suspend fun commentsSummary(channelId: String): CommentsSummary
     suspend fun suggestions(channelId: String, text: String): List<StudioSuggestion>
     suspend fun video(id: String): StudioVideo
     suspend fun update(id: String, channelId: String, edit: VideoEdit): StudioVideo
@@ -25,15 +34,25 @@ interface StudioRepository {
     suspend fun analytics(channelId: String, range: AnalyticsRange): ChannelAnalytics
 }
 
+/**
+ * True for the failures that mean "this feature is not there for this person": the UI hides the entry point and
+ * shows no text ([StudioError.FeatureOff], [StudioError.NotSupported], [StudioError.UpgradeRequired]).
+ */
+fun Throwable.hidesFeature(): Boolean =
+    this is StudioError.FeatureOff || this is StudioError.NotSupported || this is StudioError.UpgradeRequired
+
 /** Studio-specific failures the UI explains (beyond the generic [net.alummahnow.core.bridge.CoreError]). */
 sealed class StudioError(message: String) : Exception(message) {
-    /** The server needs a newer feature (e.g. soft delete) that is not deployed here yet. */
+    /** The server predates this feature (its route answers 404). The UI hides the entry point; it never says so. */
     class NotSupported(what: String) : StudioError("not supported: $what")
+
+    /** The feature is switched off for this person (HTTP 404 `feature_off`). The UI hides the entry point, no text. */
+    class FeatureOff : StudioError("feature off")
 
     /** 403 for this channel or video. */
     class Forbidden : StudioError("forbidden")
 
-    /** The plan does not allow it (HTTP 402 `upgrade_required`). */
+    /** The plan does not allow it (HTTP 402 `upgrade_required`). The UI hides the entry point, no text. */
     class UpgradeRequired(val entitlement: String?) : StudioError("upgrade required")
 
     /** The restore window (30 days) has passed (HTTP 410). */

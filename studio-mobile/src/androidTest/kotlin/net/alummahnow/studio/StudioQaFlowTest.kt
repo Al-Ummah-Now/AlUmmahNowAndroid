@@ -10,6 +10,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -103,17 +104,17 @@ class StudioQaFlowTest {
         // Delete through the UI (asks first), restore it from Recently deleted, then delete it for good.
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("selection-bar").fetchSemanticsNodes().isEmpty() }
         deleteFromList(videoId)
-        compose.onNodeWithTag("status-deleted").performClick()
+        compose.onNodeWithTag("status-deleted").performScrollTo().performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("video-$videoId").performClick() // selects in this tab
         compose.onNodeWithTag("bulk-restore").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isEmpty() }
         assertEquals(title, runBlocking { app.container.repository.video(videoId) }.title)
 
-        compose.onNodeWithTag("status-processing").performClick()
+        compose.onNodeWithTag("status-processing").performScrollTo().performClick()
         findInAnyTab(videoId)
         deleteFromList(videoId)
-        compose.onNodeWithTag("status-deleted").performClick()
+        compose.onNodeWithTag("status-deleted").performScrollTo().performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("forever-$videoId").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("forever-$videoId").performClick()
         compose.onNodeWithTag("confirm-ok").performClick()
@@ -135,7 +136,7 @@ class StudioQaFlowTest {
         compose.waitUntil(UPLOAD_TIMEOUT_MS) {
             val found = has("video-$videoId")
             if (!found) {
-                runCatching { compose.onNodeWithTag(LIVE_TABS[i++ % LIVE_TABS.size]).performClick() }
+                runCatching { compose.onNodeWithTag(LIVE_TABS[i++ % LIVE_TABS.size]).performScrollTo().performClick() }
                 Thread.sleep(TAB_SWITCH_MS)
             }
             found
@@ -211,7 +212,18 @@ class StudioQaFlowTest {
     private companion object {
         const val SIGN_IN_TIMEOUT_MS = 90_000L
         const val POLL_MS = 1_000L
-        val CHROME_PROMPTS = listOf("Accept & continue", "Use without an account", "No thanks", "No, thanks", "Got it", "Continue as guest")
+
+        // "Wait" dismisses a system "… isn't responding" dialog (a slow CI emulator's launcher) over the browser.
+        val CHROME_PROMPTS = listOf(
+            "Wait",
+            "Accept & continue",
+            "Use without an account",
+            "No thanks",
+            "No, thanks",
+            "Got it",
+            "Continue as guest"
+        )
+
         const val LIST_TIMEOUT_MS = 30_000L
         const val UPLOAD_TIMEOUT_MS = 180_000L
         const val TAB_SWITCH_MS = 2_000L

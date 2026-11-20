@@ -160,6 +160,27 @@ data class StudioPlaylist(val id: String, val title: String, val isPublic: Boole
 
 data class CreatorAccess(val canUpload: Boolean, val canCreateChannel: Boolean, val tierName: String?)
 
+/** Comments on the channel's videos and posts (`GET /api/channels/{id}/comments/summary`): what is waiting for review. */
+data class CommentsSummary(val held: Int, val inbox: Int)
+
+/**
+ * Which user-facing features this person sees (api-videos `GET /api/me/features`, owner rule 2026-11-16).
+ * A feature that is off, not configured or not in the tier is invisible: no tab, button or text about it.
+ * Only keys the server answered `true` are on; a missing or unknown key is hidden (fail closed).
+ */
+data class UserFeatures(val enabled: Set<String>) {
+    operator fun contains(key: String): Boolean = key in enabled
+
+    val upload: Boolean get() = UPLOAD in enabled
+
+    companion object {
+        const val UPLOAD = "upload"
+
+        /** Every feature hidden: what the app uses before it has read the answer. */
+        val NONE = UserFeatures(emptySet())
+    }
+}
+
 /** Analytics window. [days] null = all time. */
 enum class AnalyticsRange(val days: Int?) { LAST_7(7), LAST_28(28), LAST_90(90), LAST_365(365) }
 

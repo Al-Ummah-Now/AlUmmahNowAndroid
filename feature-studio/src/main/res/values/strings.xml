@@ -28,8 +28,6 @@
     <string name="studio_channel_switch">Switch channel</string>
     <string name="studio_error_forbidden">You don\'t have access to this.</string>
     <string name="studio_error_signed_out">Your session ended. Sign in again.</string>
-    <string name="studio_error_upgrade">Your plan doesn\'t include this.</string>
-    <string name="studio_error_not_supported">This isn\'t available yet.</string>
     <string name="studio_error_restore_expired">It\'s been more than %1$d days, so it can\'t be restored.</string>
     <string name="studio_error_invalid">Check the details and try again.</string>
     <string name="studio_tab_content">Content</string>
@@ -125,4 +123,15 @@
     </plurals>
     <string name="studio_dashboard_title">Channel dashboard</string>
     <string name="studio_dashboard_counts">Your videos</string>
+    <string name="studio_dashboard_recent">Recent videos</string>
+    <string name="studio_dashboard_recent_empty">No videos yet.</string>
+    <string name="studio_dashboard_drafts_empty">No drafts.</string>
+    <string name="studio_dashboard_scheduled_empty">Nothing is scheduled.</string>
+    <string name="studio_dashboard_comments">Comments awaiting review</string>
+    <string name="studio_dashboard_comments_empty">No comments are waiting for review.</string>
+    <plurals name="studio_dashboard_comments_held">
+        <item quantity="one">%1$d comment is waiting for review.</item>
+        <item quantity="other">%1$d comments are waiting for review.</item>
+    </plurals>
+    <string name="studio_dashboard_section_failed">This section couldn\'t load.</string>
 </resources>

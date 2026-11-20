@@ -9,6 +9,7 @@ import net.alummahnow.core.bridge.studio.BulkItemResult
 import net.alummahnow.core.bridge.studio.BulkResult
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.core.bridge.studio.ChannelRole
+import net.alummahnow.core.bridge.studio.CommentsSummary
 import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentPage
 import net.alummahnow.core.bridge.studio.ContentQuery
@@ -22,6 +23,7 @@ import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.StudioSuggestion
 import net.alummahnow.core.bridge.studio.StudioVideo
+import net.alummahnow.core.bridge.studio.UserFeatures
 import net.alummahnow.core.bridge.studio.VideoEdit
 import net.alummahnow.core.bridge.studio.VideoStat
 
@@ -112,6 +114,19 @@ class FakeRepository : StudioRepository {
     val videos = sampleVideos.toMutableList()
     val deleted = mutableListOf<StudioVideo>()
     var softDelete = true
+    var features = UserFeatures(setOf(UserFeatures.UPLOAD))
+    var featuresError: Exception? = null
+    var featuresCalls = 0
+    var analyticsError: Exception? = null
+    var deletedError: Exception? = null
+    var restoreError: Exception? = null
+    var bulkError: Exception? = null
+    val contentErrors = mutableMapOf<ContentStatus, Exception>()
+    var comments = CommentsSummary(held = 2, inbox = 14)
+    var commentsError: Exception? = null
+    var countsError: Exception? = null
+    var countsMissing = false
+    var canUpload = true
     val bulkCalls = mutableListOf<Pair<List<String>, BulkChanges>>()
     val queries = mutableListOf<ContentQuery>()
 
@@ -120,15 +135,34 @@ class FakeRepository : StudioRepository {
         return channels
     }
 
-    override suspend fun creatorAccess() = CreatorAccess(canUpload = true, canCreateChannel = false, tierName = "Creator")
+    override suspend fun creatorAccess() = CreatorAccess(canUpload = canUpload, canCreateChannel = false, tierName = "Creator")
+
+    override suspend fun features(channelId: String?): UserFeatures {
+        featuresCalls++
+        featuresError?.let { throw it }
+        return features
+    }
 
     override suspend fun content(query: ContentQuery): ContentPage {
         queries += query
+        if (query.status == ContentStatus.DELETED) deletedError?.let { throw it }
+        contentErrors[query.status]?.let { throw it }
         val source = if (query.status == ContentStatus.DELETED) deleted else videos.filter { it.status == query.status }
         return ContentPage(source.filter { query.text.isBlank() || it.title.contains(query.text, ignoreCase = true) }, null)
     }
 
-    override suspend fun counts(channelId: String) = ContentCounts(
+    override suspend fun commentsSummary(channelId: String): CommentsSummary {
+        commentsError?.let { throw it }
+        return comments
+    }
+
+    override suspend fun counts(channelId: String): ContentCounts? {
+        countsError?.let { throw it }
+        if (countsMissing) return null
+        return sampleCounts()
+    }
+
+    private fun sampleCounts() = ContentCounts(
         published = videos.size,
         scheduled = 1,
         drafts = 2,
@@ -157,6 +191,7 @@ class FakeRepository : StudioRepository {
     }
 
     override suspend fun bulkUpdate(ids: List<String>, changes: BulkChanges): BulkResult {
+        bulkError?.let { throw it }
         bulkCalls += ids to changes
         ids.forEach { id ->
             val i = videos.indexOfFirst { it.id == id }
@@ -181,6 +216,7 @@ class FakeRepository : StudioRepository {
     }
 
     override suspend fun restore(ids: List<String>, channelId: String): BulkResult {
+        restoreError?.let { throw it }
         val back = deleted.filter { it.id in ids }
         deleted.removeAll(back)
         videos += back.map { it.copy(status = ContentStatus.PUBLISHED, restorableUntil = null) }
@@ -200,7 +236,10 @@ class FakeRepository : StudioRepository {
 
     override suspend fun addToPlaylists(videoId: String, channelId: String, playlistIds: List<String>, orderKey: String) = Unit
 
-    override suspend fun analytics(channelId: String, range: AnalyticsRange) = sampleAnalytics
+    override suspend fun analytics(channelId: String, range: AnalyticsRange): ChannelAnalytics {
+        analyticsError?.let { throw it }
+        return sampleAnalytics
+    }
 }
 
 val sampleAnalytics = ChannelAnalytics(

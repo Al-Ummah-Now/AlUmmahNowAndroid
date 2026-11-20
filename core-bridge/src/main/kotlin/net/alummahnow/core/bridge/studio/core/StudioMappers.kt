@@ -1,6 +1,8 @@
 package net.alummahnow.core.bridge.studio.core
 
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import net.alummahnow.core.bridge.studio.BulkItemResult
 import net.alummahnow.core.bridge.studio.BulkResult
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
@@ -10,10 +12,22 @@ import net.alummahnow.core.bridge.studio.DailyMetric
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.StudioVideo
+import net.alummahnow.core.bridge.studio.UserFeatures
 import net.alummahnow.core.bridge.studio.VideoStat
 
 /** JSON → model mapping, kept pure for unit tests. */
 object StudioMappers {
+    /**
+     * `GET /api/me/features` → [UserFeatures]. Only a JSON `true` turns a key on; anything else (false, a string,
+     * missing, an unreadable body) is hidden, like shared-types' `parseUserFeatures`.
+     */
+    fun features(body: String): UserFeatures {
+        val root = runCatching { J.parse(body).obj() }.getOrNull() ?: return UserFeatures.NONE
+        val map = root.o("features") ?: root.unwrap().obj()?.o("features") ?: return UserFeatures.NONE
+        val on = map.filterValues { v -> (v as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull == true }.keys
+        return UserFeatures(on)
+    }
+
     fun channel(o: JsonObject): StudioChannel? {
         val id = o.s("id") ?: return null
         return StudioChannel(

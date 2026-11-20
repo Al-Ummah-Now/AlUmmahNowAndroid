@@ -3,6 +3,7 @@ package net.alummahnow.feature.studio.content
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.StudioSuggestion
 import net.alummahnow.core.bridge.studio.StudioVideo
+import net.alummahnow.core.bridge.studio.hidesFeature
 import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.studioMessage
 
@@ -43,11 +45,18 @@ data class ContentUiState(
     @param:StringRes val error: Int? = null,
     val selected: Set<String> = emptySet(),
     val busy: Boolean = false,
-    /** Deletes are restorable for 30 days (soft delete deployed); otherwise they are permanent. */
-    val softDelete: Boolean = true,
+    /**
+     * Deletes are restorable for 30 days (soft delete deployed); otherwise they are permanent and "Recently deleted",
+     * Restore and Delete forever are not there at all. False until the probe says otherwise (fail closed).
+     */
+    val softDelete: Boolean = false,
     val notice: ContentNotice? = null
 ) {
     val selecting: Boolean get() = selected.isNotEmpty()
+
+    /** The status tabs: "Recently deleted" only where soft delete is deployed. */
+    val tabs: List<ContentStatus>
+        get() = if (softDelete) ContentStatus.entries else ContentStatus.entries - ContentStatus.DELETED
 }
 
 /** Studio Content: status tabs, live search, multi-select bulk edit, delete and restore. */
@@ -71,7 +80,7 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
     }
 
     fun setStatus(status: ContentStatus) {
-        if (status == mutableState.value.status) return
+        if (status == mutableState.value.status || status !in mutableState.value.tabs) return
         mutableState.update { it.copy(status = status, selected = emptySet(), videos = emptyList()) }
         load()
     }
@@ -102,7 +111,7 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
         loadJob?.cancel()
         val s = mutableState.value
         mutableState.update { it.copy(loading = true, error = null) }
-        loadJob = viewModelScope.launch {
+        val current = viewModelScope.launch {
             attempt("studio", "content") { repository.content(ContentQuery(channelId, s.status, s.query)) }.fold(
                 onSuccess = { page ->
                     mutableState.update {
@@ -118,8 +127,50 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
                         )
                     }
                 },
-                onFailure = { e -> mutableState.update { it.copy(loading = false, error = e.studioMessage()) } }
+                onFailure = { e ->
+                    if (e.hidesFeature() && s.status == ContentStatus.DELETED) {
+                        softDeleteGone()
+                    } else {
+                        mutableState.update { it.copy(loading = false, error = e.studioMessage()) }
+                    }
+                }
             )
+        }
+        loadJob = current
+        // A load cancelled without a newer one in its place must not leave the spinner up.
+        current.invokeOnCompletion { cause ->
+            if (cause is CancellationException && loadJob === current && mutableState.value.loading) {
+                mutableState.update { it.copy(loading = false, error = net.alummahnow.design.R.string.aun_error_generic) }
+            }
+        }
+    }
+
+    /**
+     * The server answered a soft-delete route with "not here" (404 / `feature_off`): drop "Recently deleted",
+     * Restore and Delete forever without a word, and go back to Published if that tab was open.
+     */
+    private fun softDeleteGone() {
+        val wasDeleted = mutableState.value.status == ContentStatus.DELETED
+        mutableState.update {
+            it.copy(
+                softDelete = false,
+                busy = false,
+                loading = false,
+                notice = null,
+                status = if (wasDeleted) ContentStatus.PUBLISHED else it.status,
+                selected = if (wasDeleted) emptySet() else it.selected,
+                videos = if (wasDeleted) emptyList() else it.videos
+            )
+        }
+        if (wasDeleted) load()
+    }
+
+    /** A failed action: hidden features vanish quietly, anything else is said in the snackbar. */
+    private fun actionFailed(e: Throwable) {
+        if (e.hidesFeature()) {
+            mutableState.update { it.copy(busy = false, notice = null) }
+        } else {
+            mutableState.update { it.copy(busy = false, notice = ContentNotice.Failed(e.studioMessage())) }
         }
     }
 
@@ -135,7 +186,13 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
                         it.copy(videos = (it.videos + page.items).distinctBy { v -> v.id }, cursor = page.cursor, loadingMore = false)
                     }
                 },
-                onFailure = { e -> mutableState.update { it.copy(loadingMore = false, notice = ContentNotice.Failed(e.studioMessage())) } }
+                onFailure = { e ->
+                    if (e.hidesFeature() && s.status == ContentStatus.DELETED) {
+                        softDeleteGone()
+                    } else {
+                        mutableState.update { it.copy(loadingMore = false, notice = ContentNotice.Failed(e.studioMessage())) }
+                    }
+                }
             )
         }
     }
@@ -165,7 +222,9 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
         act("delete", { repository.delete(it, channelId) }, ids) { r -> ContentNotice.Deleted(r.succeeded, r.failed) }
 
     fun restore(ids: Collection<String> = mutableState.value.selected) =
-        act("restore", { repository.restore(it, channelId) }, ids) { r -> ContentNotice.Restored(r.succeeded, r.failed) }
+        act("restore", { repository.restore(it, channelId) }, ids, softDeleteRoute = true) { r ->
+            ContentNotice.Restored(r.succeeded, r.failed)
+        }
 
     fun deleteForever(id: String) {
         mutableState.update { it.copy(busy = true) }
@@ -182,7 +241,7 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
                         )
                     }
                 },
-                onFailure = { e -> mutableState.update { it.copy(busy = false, notice = ContentNotice.Failed(e.studioMessage())) } }
+                onFailure = { e -> if (e.hidesFeature()) softDeleteGone() else actionFailed(e) }
             )
         }
     }
@@ -191,6 +250,7 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
         what: String,
         call: suspend (List<String>) -> BulkResult,
         ids: Collection<String> = mutableState.value.selected,
+        softDeleteRoute: Boolean = false,
         notice: (BulkResult) -> ContentNotice
     ) {
         val list = ids.toList().take(BulkChanges.MAX_BULK)
@@ -203,7 +263,7 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
                     mutableState.update { it.copy(busy = false, selected = r.failedIds.toSet(), notice = notice(r)) }
                     load()
                 },
-                onFailure = { e -> mutableState.update { it.copy(busy = false, notice = ContentNotice.Failed(e.studioMessage())) } }
+                onFailure = { e -> if (softDeleteRoute && e.hidesFeature()) softDeleteGone() else actionFailed(e) }
             )
         }
     }

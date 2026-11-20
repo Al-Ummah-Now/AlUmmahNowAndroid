@@ -159,7 +159,12 @@ class ManageTest {
         RuntimeEnvironment.setQualifiers("en-ldltr")
         val log = mutableListOf<String>()
         compose.setContent {
-            AunTheme { ContentScreen(ContentUiState(videos = sampleVideos, selected = setOf("v1"), loading = false), actions(log)) }
+            AunTheme {
+                ContentScreen(
+                    ContentUiState(videos = sampleVideos, selected = setOf("v1"), loading = false, softDelete = true),
+                    actions(log)
+                )
+            }
         }
         compose.onNodeWithTag("bulk-delete").performClick()
         compose.onNodeWithTag("confirm-cancel").performClick()
@@ -181,12 +186,13 @@ class ManageTest {
 
     // --- Screenshots ---
 
-    private val list = ContentUiState(videos = sampleVideos, loading = false)
+    private val list = ContentUiState(videos = sampleVideos, loading = false, softDelete = true)
     private val selecting = list.copy(selected = setOf("v1", "v3"))
     private val deletedTab =
         ContentUiState(
             status = ContentStatus.DELETED,
             loading = false,
+            softDelete = true,
             videos = sampleVideos.take(2).map {
                 it.copy(status = ContentStatus.DELETED, restorableUntil = "2026-12-10T09:00:00Z")
             }

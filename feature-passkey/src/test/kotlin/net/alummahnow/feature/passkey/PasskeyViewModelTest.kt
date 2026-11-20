@@ -73,6 +73,20 @@ class PasskeyViewModelTest {
         assertEquals(PasskeyUiState.Idle, vm.state.value)
     }
 
+    @Test fun `add answering feature_off hides Add a passkey for that account, with no dialog`() {
+        val vm = PasskeyViewModel(FakeSession(signedIn = true).apply { serverErrors += PasskeyError.Rejected("feature_off", 404) })
+        assertEquals(emptySet<String>(), vm.addHidden.value)
+        vm.add(FakeAuthenticator())
+        assertEquals(PasskeyUiState.Idle, vm.state.value)
+        assertEquals(setOf("u1"), vm.addHidden.value)
+    }
+
+    @Test fun `other add refusals keep Add a passkey`() {
+        val vm = PasskeyViewModel(FakeSession(signedIn = true).apply { serverErrors += PasskeyError.Rejected("limit", 409) })
+        vm.add(FakeAuthenticator())
+        assertEquals(emptySet<String>(), vm.addHidden.value)
+    }
+
     @Test fun `add problems map to dialogs`() {
         val cases = listOf(
             PasskeyError.AlreadyRegistered() to problem(PasskeyProblem.ALREADY_ADDED),

@@ -57,6 +57,13 @@ sealed interface PasskeyUiState {
 class PasskeyViewModel(private val session: AccountSession) : ViewModel() {
     private val mutableState = MutableStateFlow<PasskeyUiState>(PasskeyUiState.Idle)
     val state: StateFlow<PasskeyUiState> = mutableState.asStateFlow()
+    private val mutableAddHidden = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Accounts the server said "Add a passkey" is not there for (404 `feature_off`, e.g. no email provider for a staff
+     * member's first passkey). The app drops the entry for them; nothing is said.
+     */
+    val addHidden: StateFlow<Set<String>> = mutableAddHidden.asStateFlow()
 
     fun signIn(authenticator: PasskeyAuthenticator, onSignedIn: (StudioAccount) -> Unit = {}) {
         if (mutableState.value is PasskeyUiState.Working) return
@@ -84,7 +91,12 @@ class PasskeyViewModel(private val session: AccountSession) : ViewModel() {
                 session.addPasskey(authenticator)
                 PasskeyUiState.Added
             } catch (e: PasskeyError) {
-                addProblem(e)
+                if (e is PasskeyError.Rejected && e.code == FEATURE_OFF) {
+                    session.active.value?.userId?.let { id -> mutableAddHidden.value += id }
+                    PasskeyUiState.Idle
+                } else {
+                    addProblem(e)
+                }
             } catch (e: CoreError) {
                 AunLog.e("passkey", "add failed", e)
                 PasskeyUiState.Problem(if (e is CoreError.Network) PasskeyProblem.ADD_OFFLINE else PasskeyProblem.ADD_FAILED)
@@ -140,5 +152,8 @@ class PasskeyViewModel(private val session: AccountSession) : ViewModel() {
     private companion object {
         /** The web route's word for an old sign-in; treated like `step_up_required`. */
         val STALE = setOf("stale_sign_in")
+
+        /** Auth's answer when the feature is off for this person (404); the entry point is hidden, no text. */
+        const val FEATURE_OFF = "feature_off"
     }
 }
