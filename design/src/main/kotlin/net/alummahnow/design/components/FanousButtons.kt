@@ -131,4 +131,3 @@ fun FanousChipRow(modifier: Modifier = Modifier, sidePadding: Dp = FanousTokens.
         content = content
     )
 }
-

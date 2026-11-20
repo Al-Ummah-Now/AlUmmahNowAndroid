@@ -3,6 +3,13 @@
     <string name="aun_count_thousand">%1$sK</string>
     <string name="aun_count_million">%1$sM</string>
     <string name="aun_count_billion">%1$sB</string>
+    <string name="aun_count_thousand_dual">%1$sK</string>
+    <string name="aun_count_million_dual">%1$sM</string>
+    <string name="aun_count_billion_dual">%1$sB</string>
+    <string name="aun_count_thousand_plural">%1$sK</string>
+    <string name="aun_count_million_plural">%1$sM</string>
+    <string name="aun_count_billion_plural">%1$sB</string>
+    <string name="aun_views_compact">%1$s views</string>
     <plurals name="aun_views">
         <item quantity="one">%1$s view</item>
         <item quantity="other">%1$s views</item>
