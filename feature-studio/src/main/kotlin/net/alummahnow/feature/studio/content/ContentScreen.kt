@@ -156,7 +156,7 @@ fun ContentViewModel.actions(onEdit: (String) -> Unit) = ContentActions(
     onLoadMore = ::loadMore
 )
 
-private val tabs = listOf(
+private val tabLabels = mapOf(
     ContentStatus.PUBLISHED to R.string.studio_status_published,
     ContentStatus.SCHEDULED to R.string.studio_status_scheduled,
     ContentStatus.DRAFTS to R.string.studio_status_drafts,
@@ -171,6 +171,7 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
     var confirmDelete by remember { mutableStateOf(false) }
     var confirmForever by remember { mutableStateOf<StudioVideo?>(null) }
     val deleted = state.status == ContentStatus.DELETED
+    val tabs = state.tabs.map { it to tabLabels.getValue(it) }
 
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {

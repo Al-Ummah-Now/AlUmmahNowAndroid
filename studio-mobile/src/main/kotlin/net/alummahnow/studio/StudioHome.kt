@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemColors
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -34,6 +37,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import net.alummahnow.core.bridge.studio.UserFeatures
 import net.alummahnow.design.components.fanousLayers
 import net.alummahnow.design.theme.LocalFanous
 import net.alummahnow.design.theme.color
@@ -49,11 +54,29 @@ enum class StudioTab(val label: Int, val icon: ImageVector) {
     EDITOR(EditorR.string.editor_title, Icons.Filled.ContentCut)
 }
 
+/**
+ * The sections this person sees. A section that is off, unconfigured or outside the tier is simply not there:
+ * Upload only with the `upload` feature, Analytics only once the server has answered its route, and the Dashboard
+ * only while something on it is left (otherwise Content opens first). The Editor works on the device (export and
+ * share), so it stays.
+ */
+fun studioTabs(features: UserFeatures, analyticsVisible: Boolean, dashboardVisible: Boolean = true): List<StudioTab> =
+    StudioTab.entries.filter {
+        when (it) {
+            StudioTab.DASHBOARD -> dashboardVisible
+            StudioTab.UPLOAD -> features.upload
+            StudioTab.ANALYTICS -> analyticsVisible
+            StudioTab.CONTENT, StudioTab.EDITOR -> true
+        }
+    }
+
 /** Width at which phones switch from the bottom bar to the rail. */
 val RAIL_BREAKPOINT = 600.dp
 
 /** Width of the rail: the header's leading column matches it, so the title starts on the rail's edge. */
 val RAIL_WIDTH = 96.dp
+
+private val BAR_SIDE_INSET = 6.dp
 
 /** Item colours: the gold pill (`primary`) behind the active icon, `navActiveText`-like gold label, muted rest. */
 @Composable
@@ -95,7 +118,10 @@ fun StudioHome(
     val (barColors, railColors) = itemColors()
     val f = LocalFanous.current
     BoxWithConstraints(modifier.fillMaxSize()) {
-        if (maxWidth >= RAIL_BREAKPOINT) {
+        if (tabs.size <= 1) {
+            // One section left (e.g. only Content): no navigation with a single item in it.
+            content(selected)
+        } else if (maxWidth >= RAIL_BREAKPOINT) {
             Row(Modifier.fillMaxSize()) {
                 NavigationRail(
                     modifier = Modifier.width(RAIL_WIDTH).fillMaxHeight()
@@ -120,16 +146,19 @@ fun StudioHome(
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) { content(selected) }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(f.colors.divider.color))
+                // Five sections on a 360dp phone: a small side inset (inside the bar's background) and 11sp one-line
+                // labels keep "Dashboard" / «لوحة التحكم» off the screen edge.
                 NavigationBar(
                     containerColor = f.colors.surface.color,
-                    tonalElevation = 0.dp
+                    tonalElevation = 0.dp,
+                    windowInsets = NavigationBarDefaults.windowInsets.add(WindowInsets(left = BAR_SIDE_INSET, right = BAR_SIDE_INSET))
                 ) {
                     tabs.forEach { t ->
                         NavigationBarItem(
                             selected = t == selected,
                             onClick = { onSelect(t) },
                             icon = { Icon(t.icon, contentDescription = null) },
-                            label = { Text(stringResource(t.label)) },
+                            label = { Text(stringResource(t.label), fontSize = 11.sp, maxLines = 1, softWrap = false) },
                             colors = barColors,
                             modifier = Modifier.testTag("tab-${t.name.lowercase()}")
                         )

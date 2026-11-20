@@ -177,6 +177,7 @@ private fun AdminContent(
 
     val passkeys: PasskeyViewModel = viewModel { PasskeyViewModel(services.session) }
     val passkeyState by passkeys.state.collectAsStateWithLifecycle()
+    val passkeyAddHidden by passkeys.addHidden.collectAsStateWithLifecycle()
     val authenticator = rememberPasskeyAuthenticator()
     PasskeyHost(
         passkeys,
@@ -212,7 +213,11 @@ private fun AdminContent(
         is ProfileState.Ready -> StaffHome(
             services, session, p.profile, openTargets, captures, clock, dark, onDark, onLanguage, signOut,
             requireStepUp = { force, action -> open(session.requireStepUp(force, action)) },
-            onAddPasskey = if (authenticator.isSupported) ({ passkeys.add(authenticator) }) else null
+            onAddPasskey = if (authenticator.isSupported && account.userId !in passkeyAddHidden) {
+                { passkeys.add(authenticator) }
+            } else {
+                null
+            }
         )
     }
 }

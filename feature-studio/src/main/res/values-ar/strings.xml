@@ -28,8 +28,6 @@
     <string name="studio_channel_switch">تبديل القناة</string>
     <string name="studio_error_forbidden">ليس لديك صلاحية الوصول إلى هذا.</string>
     <string name="studio_error_signed_out">انتهت جلستك. سجّل الدخول مرة أخرى.</string>
-    <string name="studio_error_upgrade">خطتك لا تشمل هذه الميزة.</string>
-    <string name="studio_error_not_supported">هذه الميزة غير متاحة بعد.</string>
     <string name="studio_error_restore_expired">مضى أكثر من %1$d يومًا، لذا لا يمكن استعادته.</string>
     <string name="studio_error_invalid">راجع البيانات وحاول مرة أخرى.</string>
     <string name="studio_tab_content">المحتوى</string>
@@ -149,4 +147,19 @@
     </plurals>
     <string name="studio_dashboard_title">لوحة القناة</string>
     <string name="studio_dashboard_counts">مرئياتك</string>
+    <string name="studio_dashboard_recent">أحدث المرئيات</string>
+    <string name="studio_dashboard_recent_empty">لا توجد مرئيات بعد.</string>
+    <string name="studio_dashboard_drafts_empty">لا توجد مسودات.</string>
+    <string name="studio_dashboard_scheduled_empty">لا يوجد شيء مجدول.</string>
+    <string name="studio_dashboard_comments">تعليقات بانتظار المراجعة</string>
+    <string name="studio_dashboard_comments_empty">لا توجد تعليقات بانتظار المراجعة.</string>
+    <plurals name="studio_dashboard_comments_held">
+        <item quantity="zero">لا توجد تعليقات بانتظار المراجعة.</item>
+        <item quantity="one">تعليق واحد بانتظار المراجعة.</item>
+        <item quantity="two">تعليقان بانتظار المراجعة.</item>
+        <item quantity="few">%1$d تعليقات بانتظار المراجعة.</item>
+        <item quantity="many">%1$d تعليقًا بانتظار المراجعة.</item>
+        <item quantity="other">%1$d تعليق بانتظار المراجعة.</item>
+    </plurals>
+    <string name="studio_dashboard_section_failed">تعذّر تحميل هذا القسم.</string>
 </resources>

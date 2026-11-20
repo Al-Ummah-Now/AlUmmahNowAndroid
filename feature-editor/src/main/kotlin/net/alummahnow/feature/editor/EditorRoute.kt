@@ -77,7 +77,7 @@ fun editorExportDir(context: Context): File = File(context.cacheDir, "editor-exp
 @Composable
 fun EditorRoute(
     viewModel: EditorViewModel,
-    onSendToUpload: (uri: String, name: String, sizeBytes: Long) -> Unit,
+    onSendToUpload: ((uri: String, name: String, sizeBytes: Long) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -140,10 +140,13 @@ fun EditorRoute(
                 onRedo = viewModel::redo,
                 onExport = viewModel::export,
                 onShare = { state.exportedPath?.let { context.shareVideo(File(it)) } },
-                onSendToUpload = {
-                    state.exportedPath?.let { path ->
-                        val file = File(path)
-                        onSendToUpload(context.exportUri(file).toString(), file.name, file.length())
+                // No Upload action when uploading is off for this person (the Upload tab is hidden too).
+                onSendToUpload = onSendToUpload?.let { send ->
+                    {
+                        state.exportedPath?.let { path ->
+                            val file = File(path)
+                            send(context.exportUri(file).toString(), file.name, file.length())
+                        }
                     }
                 }
             ),

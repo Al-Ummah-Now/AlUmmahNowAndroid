@@ -228,7 +228,8 @@ data class EditorTools(
     val onRedo: () -> Unit = {},
     val onExport: () -> Unit = {},
     val onShare: () -> Unit = {},
-    val onSendToUpload: () -> Unit = {}
+    /** Null when uploading is off: the exported card then offers Share only. */
+    val onSendToUpload: (() -> Unit)? = {}
 )
 
 private enum class Drag { Scrub, TrimStart, TrimEnd }
@@ -479,14 +480,22 @@ private fun Exported(state: EditorUiState, tools: EditorTools) {
         state.exportedPath != null -> FanousCard(
             Modifier.testTag("editor-exported"),
             actions = {
-                FanousButton(stringResource(R.string.editor_share), tools.onShare, icon = Icons.Filled.Share)
+                val send = tools.onSendToUpload
                 FanousButton(
-                    stringResource(R.string.editor_to_upload),
-                    tools.onSendToUpload,
-                    kind = FanousButtonKind.Primary,
-                    icon = Icons.Filled.CloudUpload,
-                    modifier = Modifier.testTag("editor-to-upload")
+                    stringResource(R.string.editor_share),
+                    tools.onShare,
+                    kind = if (send == null) FanousButtonKind.Primary else FanousButtonKind.Secondary,
+                    icon = Icons.Filled.Share
                 )
+                if (send != null) {
+                    FanousButton(
+                        stringResource(R.string.editor_to_upload),
+                        send,
+                        kind = FanousButtonKind.Primary,
+                        icon = Icons.Filled.CloudUpload,
+                        modifier = Modifier.testTag("editor-to-upload")
+                    )
+                }
             }
         ) {
             Text(

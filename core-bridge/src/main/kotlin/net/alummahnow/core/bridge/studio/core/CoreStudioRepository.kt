@@ -28,6 +28,7 @@ import net.alummahnow.core.bridge.studio.AnalyticsRange
 import net.alummahnow.core.bridge.studio.BulkChanges
 import net.alummahnow.core.bridge.studio.BulkResult
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
+import net.alummahnow.core.bridge.studio.CommentsSummary
 import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentPage
 import net.alummahnow.core.bridge.studio.ContentQuery
@@ -39,6 +40,7 @@ import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.StudioSuggestion
 import net.alummahnow.core.bridge.studio.StudioVideo
+import net.alummahnow.core.bridge.studio.UserFeatures
 import net.alummahnow.core.bridge.studio.VideoEdit
 import net.alummahnow.core.bridge.studio.VideoStat
 import net.alummahnow.core.bridge.studio.VisibilityFilter
@@ -106,6 +108,9 @@ class CoreStudioRepository(
         val r = J.parse(call("GET", "/api/me/creator")).unwrap().obj() ?: JsonObject(emptyMap())
         return CreatorAccess(r.b("canUpload") == true, r.b("canCreateChannel") == true, r.o("tier")?.s("name"))
     }
+
+    override suspend fun features(channelId: String?): UserFeatures =
+        StudioMappers.features(call("GET", "/api/me/features", query = channelId?.let { mapOf("channelId" to it) }.orEmpty()))
 
     override suspend fun content(query: ContentQuery): ContentPage {
         if (query.status == ContentStatus.DELETED) return deleted(query)
@@ -195,6 +200,12 @@ class CoreStudioRepository(
         null
     }
 
+    override suspend fun commentsSummary(channelId: String): CommentsSummary {
+        val body = callNew("comments-summary") { call("GET", "/api/channels/{id}/comments/summary", mapOf("id" to channelId)) }
+        val r = J.parse(body).obj() ?: JsonObject(emptyMap())
+        return CommentsSummary(held = r.l("held").toInt(), inbox = r.l("inbox").toInt())
+    }
+
     override suspend fun suggestions(channelId: String, text: String): List<StudioSuggestion> = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext emptyList()
         try {
@@ -252,6 +263,8 @@ class CoreStudioRepository(
         true
     } catch (e: CoreError.NotFound) {
         false
+    } catch (e: StudioError.FeatureOff) {
+        false
     }.also { softDelete = it }
 
     override suspend fun delete(ids: List<String>, channelId: String): BulkResult {
@@ -298,15 +311,17 @@ class CoreStudioRepository(
     override suspend fun analytics(channelId: String, range: AnalyticsRange): ChannelAnalytics {
         val now = Instant.now()
         val from = range.days?.let { now.minus(it.toLong(), ChronoUnit.DAYS) }
-        val body = call(
-            "GET",
-            "/api/analytics/channels/{channelId}",
-            mapOf("channelId" to channelId),
-            buildMap {
-                from?.let { put("dateFrom", it.toString()) }
-                put("dateTo", now.toString())
-            }
-        )
+        val body = callNew("analytics") {
+            call(
+                "GET",
+                "/api/analytics/channels/{channelId}",
+                mapOf("channelId" to channelId),
+                buildMap {
+                    from?.let { put("dateFrom", it.toString()) }
+                    put("dateTo", now.toString())
+                }
+            )
+        }
         val analytics = StudioMappers.analytics(J.parse(body).unwrap().obj() ?: JsonObject(emptyMap()))
         return analytics.copy(topVideos = withLocalizedTitles(analytics.topVideos))
     }

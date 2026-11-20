@@ -69,9 +69,11 @@ import net.alummahnow.feature.studio.channels.ChannelsViewModel
 import net.alummahnow.feature.studio.content.ContentRoute
 import net.alummahnow.feature.studio.content.ContentViewModel
 import net.alummahnow.feature.studio.dashboard.DashboardScreen
+import net.alummahnow.feature.studio.dashboard.DashboardUiState
 import net.alummahnow.feature.studio.dashboard.DashboardViewModel
 import net.alummahnow.feature.studio.edit.VideoEditScreen
 import net.alummahnow.feature.studio.edit.VideoEditViewModel
+import net.alummahnow.feature.studio.features.StudioFeaturesViewModel
 import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
@@ -96,6 +98,7 @@ fun StudioApp(
 
     val passkeys: PasskeyViewModel = viewModel { PasskeyViewModel(session) }
     val passkeyState by passkeys.state.collectAsStateWithLifecycle()
+    val passkeyAddHidden by passkeys.addHidden.collectAsStateWithLifecycle()
     val authenticator = rememberPasskeyAuthenticator()
 
     // A redirect may also be the re-sign-in "Add a passkey" asked for; the passkey model retries the add if so.
@@ -179,6 +182,21 @@ fun StudioApp(
             }
             val key = "${current.userId}-${selected.id}"
             val content: ContentViewModel = viewModel(key = "content-$key") { ContentViewModel(container.repository, selected.id) }
+            // Per account and channel, so a switch reads features again; re-read whenever the app is back in front.
+            val featuresModel: StudioFeaturesViewModel =
+                viewModel(key = "features-$key") { StudioFeaturesViewModel(container.repository, selected.id) }
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { featuresModel.refresh() }
+            val features by featuresModel.state.collectAsStateWithLifecycle()
+            // Made with the channel, so a "not here" answer removes the tab before anyone taps it.
+            val analytics: AnalyticsViewModel =
+                viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
+            val analyticsState by analytics.state.collectAsStateWithLifecycle()
+            val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") { DashboardViewModel(container.repository, selected.id) }
+            val dashboardState by dashboard.state.collectAsStateWithLifecycle()
+            val dashboardVisible = (dashboardState as? DashboardUiState.Content)?.nothingLeft != true
+            val tabs = studioTabs(features, analyticsState.visible, dashboardVisible)
+            // A tab that went away (or a link to one) falls back to the first one there: Content when the Dashboard is gone.
+            val shown = if (tab in tabs) tab else tabs.first()
             val openVideo = editing
             if (openVideo != null) {
                 val edit: VideoEditViewModel = viewModel(key = "edit-$key-$openVideo") {
@@ -191,8 +209,8 @@ fun StudioApp(
                 }, modifier = body)
             } else {
                 StudioHome(
-                    StudioTab.entries,
-                    tab,
+                    tabs,
+                    shown,
                     onSelect = { tab = it },
                     modifier = body,
                     railHeader = { IdentityButton(selected, onClick = { sheetOpen = true }) }
@@ -205,12 +223,7 @@ fun StudioApp(
                             }
                             UploadRoute(upload)
                         }
-                        StudioTab.ANALYTICS -> {
-                            val analytics: AnalyticsViewModel =
-                                viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
-                            val analyticsState by analytics.state.collectAsStateWithLifecycle()
-                            AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
-                        }
+                        StudioTab.ANALYTICS -> AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
                         StudioTab.EDITOR -> {
                             val appContext = LocalContext.current.applicationContext
                             val editor: EditorViewModel = viewModel(key = "editor-$key") {
@@ -224,18 +237,18 @@ fun StudioApp(
                             val upload: UploadViewModel = viewModel(key = "upload-$key") {
                                 UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
                             }
-                            EditorRoute(editor, onSendToUpload = { uri, name, size ->
-                                upload.addFiles(listOf(PickedFile(uri, name, size, "video/mp4")))
-                                tab = StudioTab.UPLOAD
-                            })
-                        }
-                        StudioTab.DASHBOARD -> {
-                            val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") {
-                                DashboardViewModel(container.repository, selected.id)
+                            // Upload this video only when the Upload tab is there for this person.
+                            val send: ((String, String, Long) -> Unit)? = if (StudioTab.UPLOAD in tabs) {
+                                { uri, name, size ->
+                                    upload.addFiles(listOf(PickedFile(uri, name, size, "video/mp4")))
+                                    tab = StudioTab.UPLOAD
+                                }
+                            } else {
+                                null
                             }
-                            val dashboardState by dashboard.state.collectAsStateWithLifecycle()
-                            DashboardScreen(dashboardState, onRetry = dashboard::load)
+                            EditorRoute(editor, onSendToUpload = send)
                         }
+                        StudioTab.DASHBOARD -> DashboardScreen(dashboardState, onRetry = dashboard::load, onOpenVideo = { editing = it })
                     }
                 }
             }
@@ -273,7 +286,7 @@ fun StudioApp(
                 channels.clearSelection()
             },
             onDismiss = { sheetOpen = false },
-            onAddPasskey = if (authenticator.isSupported) {
+            onAddPasskey = if (authenticator.isSupported && current.userId !in passkeyAddHidden) {
                 {
                     sheetOpen = false
                     passkeys.add(authenticator)
