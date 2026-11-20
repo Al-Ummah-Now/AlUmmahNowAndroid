@@ -215,5 +215,19 @@ val sampleAnalytics = ChannelAnalytics(
         VideoStat("v3", "Ramadan reminders", null, 12000, 800, 90, 360000, 30.0, mapOf("ar" to "تذكيرات رمضان")),
         VideoStat("v1", "Introduction to Tafsir", null, 1520, 150, 40, 540000, 355.0, mapOf("ar" to "مقدمة في التفسير"))
     ),
-    daily = (1..28).map { d -> DailyMetric("2026-10-%02d".format(d), (d * 37L) % 500 + 40, 5, 1, d % 3L, 3600L * (d % 5)) }
+    daily = dailyMetrics(OCTOBER_VIEWS)
 )
+
+/**
+ * A realistic 28-day views series (October 2026): a weekly rhythm (Fridays highest, Mondays lowest), day-to-day noise,
+ * two spikes (the 9th and 23rd) and a total of exactly 13,607, the views shown in the Analytics frames.
+ */
+internal val OCTOBER_VIEWS = listOf(
+    417L, 560L, 501L, 388L, 363L, 372L, 377L, 449L, 998L, 502L, 404L, 348L, 391L, 452L,
+    435L, 615L, 540L, 491L, 396L, 404L, 481L, 445L, 1037L, 527L, 442L, 377L, 413L, 482L
+)
+
+/** One [DailyMetric] per day, with likes, comments, subscribers and watch time following that day's views. */
+internal fun dailyMetrics(views: List<Long>) = views.mapIndexed { i, v ->
+    DailyMetric("2026-10-%02d".format(i + 1), v, v * 7 / 100, v / 90, v / 120, v * 240)
+}

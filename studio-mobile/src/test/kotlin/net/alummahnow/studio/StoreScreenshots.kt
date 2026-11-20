@@ -113,7 +113,11 @@ class StoreScreenshots {
                 VideoStat("v3", "Ramadan reminder", null, 12_400, 800, 90, 360_000, 180.0),
                 VideoStat("v4", "Surat Al-Kahf recitation", null, 8_020, 610, 41, 540_000, 1_355.0)
             ),
-            daily = (1..28).map { d -> DailyMetric("2026-10-%02d".format(d), (d * 37L) % 500 + 40, 5, 1, d % 3L, 3_600L * (d % 5)) }
+            // October 2026: weekly rhythm (Fridays highest), noise, two spikes; adds up to totalViews (24,674).
+            daily = listOf(
+                755L, 1015L, 908L, 704L, 659L, 674L, 684L, 814L, 1809L, 910L, 732L, 631L, 709L, 819L,
+                788L, 1114L, 979L, 891L, 718L, 733L, 872L, 806L, 1880L, 956L, 801L, 684L, 748L, 881L
+            ).mapIndexed { i, v -> DailyMetric("2026-10-%02d".format(i + 1), v, v * 7 / 100, v / 90, v / 120, v * 240) }
         )
     )
 
