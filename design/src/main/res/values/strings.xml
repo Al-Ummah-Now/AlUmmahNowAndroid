@@ -3,6 +3,12 @@
     <string name="aun_count_thousand">%1$sK</string>
     <string name="aun_count_million">%1$sM</string>
     <string name="aun_count_billion">%1$sB</string>
+    <string name="aun_count_thousand_one">%1$sK</string>
+    <string name="aun_count_million_one">%1$sM</string>
+    <string name="aun_count_billion_one">%1$sB</string>
+    <string name="aun_views_thousand_dual">%1$sK views</string>
+    <string name="aun_views_million_dual">%1$sM views</string>
+    <string name="aun_views_billion_dual">%1$sB views</string>
     <string name="aun_count_thousand_dual">%1$sK</string>
     <string name="aun_count_million_dual">%1$sM</string>
     <string name="aun_count_billion_dual">%1$sB</string>

@@ -89,8 +89,8 @@ class AunFormatTest {
 
     @Test fun `the scale word agrees with the shown number`() {
         fun form(n: Long) = AunFormat.compact(n, ar).form
-        assertEquals(ScaleForm.SINGULAR, form(1_000)) // «١ ألف»
-        assertEquals(ScaleForm.DUAL, form(2_000)) // «٢ ألفان»
+        assertEquals(ScaleForm.ONE, form(1_000)) // «ألف»
+        assertEquals(ScaleForm.DUAL, form(2_000)) // «ألفان»
         assertEquals(ScaleForm.PLURAL, form(3_000)) // «٣ آلاف»
         assertEquals(ScaleForm.PLURAL, form(8_020)) // «٨ آلاف»
         assertEquals(ScaleForm.PLURAL, form(10_000)) // «١٠ آلاف»
@@ -98,6 +98,8 @@ class AunFormatTest {
         assertEquals(ScaleForm.SINGULAR, form(1_310)) // «١٫٣ ألف»
         assertEquals(ScaleForm.SINGULAR, form(2_500)) // «٢٫٥ ألف»
         assertEquals(ScaleForm.SINGULAR, form(10_400)) // «١٠٫٤ ألف»
+        assertEquals(ScaleForm.ONE, form(1_000_000)) // «مليون»
+        assertEquals(ScaleForm.DUAL, form(2_000_000)) // «مليونان»
         assertEquals(ScaleForm.SINGULAR, form(1_200_000)) // «١٫٢ مليون»
         assertEquals(ScaleForm.PLURAL, form(3_000_000)) // «٣ ملايين»
         assertEquals(ScaleForm.SINGULAR, form(15_000_000)) // «١٥ مليون»
