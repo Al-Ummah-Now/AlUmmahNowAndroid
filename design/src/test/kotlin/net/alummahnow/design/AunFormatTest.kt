@@ -87,8 +87,10 @@ class AunFormatTest {
     }
 
     @Test fun `Arabic meta lines use a bullet, because the middle dot reads as zero`() {
-        assertEquals("عام \u2022 ١٫٥ ألف مشاهدة", AunFormat.joinMeta(listOf("عام", null, "", "١٫٥ ألف مشاهدة"), ar))
-        assertEquals("Public \u00B7 1.5K views", AunFormat.joinMeta(listOf("Public", "1.5K views"), en))
+        assertEquals("\u2068عام\u2069 \u2022 \u2068١٫٥ ألف مشاهدة\u2069", AunFormat.joinMeta(listOf("عام", null, "", "١٫٥ ألف مشاهدة"), ar))
+        assertEquals("\u2068Public\u2069 \u00B7 \u20681.5K views\u2069", AunFormat.joinMeta(listOf("Public", "1.5K views"), en))
+        // An Arabic channel name in an English line stays isolated from the number after it.
+        assertEquals("\u2068الأمة الآن\u2069 \u00B7 \u20681.5K views\u2069", AunFormat.joinMeta(listOf("الأمة الآن", "1.5K views"), en))
         assertFalse(AunFormat.separator(ar).contains('\u00B7'))
     }
 
