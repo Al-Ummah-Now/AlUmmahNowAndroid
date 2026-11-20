@@ -40,7 +40,6 @@ import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FanousCard
 import net.alummahnow.design.components.FanousChip
 import net.alummahnow.design.components.FanousChipRow
-import net.alummahnow.design.components.bleedHorizontal
 import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.compactCount
@@ -75,8 +74,8 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
                 verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)
             ) {
                 // The range as chips, the selected one gold (as Apple's).
-                // Full width (past the page padding) so the edge fade sits at the screen edge.
-                FanousChipRow(Modifier.bleedHorizontal(pad), sidePadding = pad) {
+                // The range chips wrap rather than scroll, so none is cut on a narrow phone.
+                FanousChipRow(sidePadding = 0.dp) {
                     ranges.forEach { (r, label) ->
                         FanousChip(
                             aunString(label, r.days),
