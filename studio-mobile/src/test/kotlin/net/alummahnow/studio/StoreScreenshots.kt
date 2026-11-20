@@ -110,8 +110,8 @@ class StoreScreenshots {
             avgViewsPerVideo = 1_028.1,
             engagementRate = 8.2,
             topVideos = listOf(
-                VideoStat("v3", "Ramadan reminder", null, 12_400, 800, 90, 360_000, 180.0),
-                VideoStat("v4", "Surat Al-Kahf recitation", null, 8_020, 610, 41, 540_000, 1_355.0)
+                VideoStat("v3", "Ramadan reminder", null, 12_400, 800, 90, 360_000, 180.0, mapOf("ar" to "تذكير رمضان")),
+                VideoStat("v4", "Surat Al-Kahf recitation", null, 8_020, 610, 41, 540_000, 1_355.0, mapOf("ar" to "تلاوة سورة الكهف"))
             ),
             // October 2026: weekly rhythm (Fridays highest), noise, two spikes; adds up to totalViews (24,674).
             daily = listOf(
