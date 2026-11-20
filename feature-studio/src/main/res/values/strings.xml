@@ -96,6 +96,7 @@
     <string name="studio_stat_videos">Videos</string>
     <string name="studio_chart_views">Views per day</string>
     <string name="studio_chart_cd">Views per day. Total %1$s. Highest %2$s on %3$s.</string>
+    <string name="studio_chart_empty_views">No views in this period.</string>
     <string name="studio_top_videos">Top videos</string>
     <string name="studio_analytics_empty">No data for this period yet.</string>
     <plurals name="studio_selected_count">

@@ -76,7 +76,7 @@ class StoreScreenshots {
         StudioVideo(
             "v3",
             "Ramadan reminder",
-            thumbnailUrl = "${FIXTURE_THUMBS}ramadan.jpg",
+            thumbnailUrl = "${FIXTURE_THUMBS}reminder.jpg",
             createdAt = "2026-11-04T10:00:00Z",
             titleLocalized = mapOf("ar" to "تذكير رمضان"),
             views = 12_400,

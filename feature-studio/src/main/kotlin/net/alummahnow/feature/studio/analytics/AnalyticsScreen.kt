@@ -1,12 +1,16 @@
 package net.alummahnow.feature.studio.analytics
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,16 +23,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -44,7 +56,9 @@ import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.compactCount
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.numberLabel
+import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.design.theme.LocalFanous
 import net.alummahnow.design.theme.color
@@ -116,9 +130,10 @@ private fun Content(data: ChannelAnalytics, wide: Boolean, columns: Int) {
     }
     // The chart beside the top videos on tablets, one under the other on phones.
     if (wide && data.topVideos.isNotEmpty()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)) {
-            ChartCard(data, Modifier.weight(1.6f))
-            TopVideos(data, Modifier.weight(1f))
+        // Both cards as tall as the taller one.
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)) {
+            ChartCard(data, Modifier.weight(1.6f).fillMaxHeight())
+            TopVideos(data, Modifier.weight(1f).fillMaxHeight())
         }
     } else {
         ChartCard(data, Modifier.fillMaxWidth())
@@ -177,34 +192,113 @@ private fun TopVideos(data: ChannelAnalytics, modifier: Modifier) {
     }
 }
 
-/** Views per day as bars; time runs from the start edge, so it reads right-to-left in Arabic. */
+/**
+ * Views per day as bars on a 0-based value axis with gridlines (round steps, as the web's Studio charts), the first,
+ * middle and last dates below, and a readout of the tapped (or dragged-to) day. The value axis and time start at the
+ * start edge, so in Arabic the axis is on the right and the days run right to left.
+ */
 @Composable
 private fun ViewsChart(data: ChannelAnalytics, modifier: Modifier) {
+    val f = LocalFanous.current
     // Lantern gold in both modes (Material's primary is the link colour in Light).
-    val bar = LocalFanous.current.colors.primary.color
-    val track = LocalFanous.current.colors.divider.color
+    val bar = f.colors.primary.color
+    val selectedBar = f.colors.primaryHover.color
+    val grid = f.colors.divider.color
+    val baseline = f.colors.outline.color
+    val axisText = f.colors.textSecondary.color
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val max = data.daily.maxOf { it.views }.coerceAtLeast(1)
-    val peak = data.daily.maxBy { it.views }
+    val days = data.daily
+    val ticks = countTicks(days.maxOf { it.views })
+    val top = ticks.last().coerceAtLeast(1)
+    val empty = days.all { it.views == 0L }
     val locale = currentLocale()
-    val peakDate = runCatching { AunFormat.date(LocalDate.parse(peak.date.take(DATE_CHARS)), locale) }
-        .getOrDefault(peak.date)
+    val date: (Int) -> LocalDate? = { i -> runCatching { LocalDate.parse(days[i].date.take(DATE_CHARS)) }.getOrNull() }
+    val dayLabel: (Int) -> String = { i -> date(i)?.let { AunFormat.dayMonth(it, locale) } ?: days[i].date }
+    var selected by remember(days) { mutableStateOf<Int?>(null) }
+    val peakIndex = days.indices.maxBy { days[it].views }
     val description = aunString(
         R.string.studio_chart_cd,
-        numberLabel(data.daily.sumOf { it.views }),
-        numberLabel(peak.views),
-        peakDate
+        numberLabel(days.sumOf { it.views }),
+        numberLabel(days[peakIndex].views),
+        date(peakIndex)?.let { AunFormat.date(it, locale) } ?: days[peakIndex].date
     )
-    Canvas(modifier.height(180.dp).semantics { contentDescription = description }.testTag("views-chart")) {
-        val n = data.daily.size
-        val slot = size.width / n
-        val gap = (slot * GAP_RATIO).coerceAtMost(GAP_MAX_PX)
-        data.daily.forEachIndexed { i, d ->
-            val index = if (rtl) n - 1 - i else i
-            val h = size.height * d.views / max
-            val left = index * slot + gap / 2
-            drawRoundRect(track, Offset(left, 0f), Size(slot - gap, size.height), CornerRadius(BAR_RADIUS, BAR_RADIUS))
-            drawRoundRect(bar, Offset(left, size.height - h), Size(slot - gap, h), CornerRadius(BAR_RADIUS, BAR_RADIUS))
+    val tickLabels = ticks.map { compactCount(it) }
+    val dateLabels = dateLabelIndices(days.size).map { dayLabel(it) }
+    val readout = selected?.let { i -> joinMeta(dayLabel(i), viewsLabel(days[i].views)) }
+    val pick: (Float, Float) -> Unit = { x, width ->
+        val slot = ((x / width).coerceIn(0f, PICK_MAX) * days.size).toInt()
+        selected = if (rtl) days.size - 1 - slot else slot
+    }
+
+    Column(modifier) {
+        Text(
+            readout.orEmpty(),
+            style = MaterialTheme.typography.labelLarge,
+            color = f.colors.textPrimary.color,
+            modifier = Modifier.fillMaxWidth().height(24.dp).semantics { liveRegion = LiveRegionMode.Polite }.testTag("chart-readout")
+        )
+        Row(verticalAlignment = Alignment.Top) {
+            // The value axis on the start side; labels are centred on the gridlines (the plot is inset by half a label).
+            Column(
+                Modifier.height(CHART_HEIGHT).padding(end = FanousTokens.Spacing.sm).testTag("chart-y-axis"),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End
+            ) {
+                tickLabels.asReversed().forEach { label ->
+                    Box(Modifier.height(TICK_LABEL_HEIGHT), contentAlignment = Alignment.Center) {
+                        Text(label, style = MaterialTheme.typography.labelSmall, color = axisText)
+                    }
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Box(Modifier.fillMaxWidth().height(CHART_HEIGHT)) {
+                    Canvas(
+                        Modifier.fillMaxSize()
+                            .padding(vertical = TICK_LABEL_HEIGHT / 2)
+                            .semantics { contentDescription = description }
+                            .testTag("views-chart")
+                            .pointerInput(days) { detectTapGestures { pick(it.x, size.width.toFloat()) } }
+                            .pointerInput(days) {
+                                detectHorizontalDragGestures { change, _ -> pick(change.position.x, size.width.toFloat()) }
+                            }
+                    ) {
+                        ticks.forEach { tick ->
+                            val y = size.height * (1f - tick.toFloat() / top)
+                            drawLine(
+                                if (tick == 0L) baseline else grid,
+                                Offset(0f, y),
+                                Offset(size.width, y),
+                                strokeWidth = 1.dp.toPx(),
+                                pathEffect = if (tick == 0L) null else PathEffect.dashPathEffect(floatArrayOf(DASH, DASH))
+                            )
+                        }
+                        val n = days.size
+                        val slot = size.width / n
+                        val gap = (slot * GAP_RATIO).coerceAtMost(GAP_MAX_PX)
+                        days.forEachIndexed { i, d ->
+                            val index = if (rtl) n - 1 - i else i
+                            val h = size.height * d.views / top
+                            drawRoundRect(
+                                if (selected == i) selectedBar else bar,
+                                Offset(index * slot + gap / 2, size.height - h),
+                                Size(slot - gap, h),
+                                CornerRadius(BAR_RADIUS, BAR_RADIUS)
+                            )
+                        }
+                    }
+                    if (empty) {
+                        Text(
+                            stringResource(R.string.studio_chart_empty_views),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = axisText,
+                            modifier = Modifier.align(Alignment.Center).testTag("chart-empty")
+                        )
+                    }
+                }
+                Row(Modifier.fillMaxWidth().testTag("chart-x-axis"), horizontalArrangement = Arrangement.SpaceBetween) {
+                    dateLabels.forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = axisText) }
+                }
+            }
         }
     }
 }
@@ -216,3 +310,7 @@ private const val DATE_CHARS = 10
 private const val GAP_RATIO = 0.25f
 private const val GAP_MAX_PX = 12f
 private const val BAR_RADIUS = 6f
+private val CHART_HEIGHT = 180.dp
+private val TICK_LABEL_HEIGHT = 16.dp
+private const val DASH = 6f
+private const val PICK_MAX = 0.999f

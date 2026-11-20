@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.alummahnow.design.components.ErrorState
@@ -104,16 +106,25 @@ fun StatTile(label: String, value: Number, modifier: Modifier = Modifier, alert:
             .semantics(mergeDescendants = true) {}
             .padding(FanousTokens.Spacing.lg)
     ) {
+        // Fixed line heights: the Arabic font's taller metrics otherwise make Arabic tiles taller than English ones.
         Text(
             numberLabel(value.toLong()),
             fontSize = 26.sp,
+            lineHeight = 32.sp,
+            style = LocalTextStyle.current.copy(lineHeightStyle = TIGHT),
             fontWeight = FontWeight.Bold,
             color = if (alert) f.colors.errorText.color else f.colors.textPrimary.color
         )
-        Text(label, style = MaterialTheme.typography.bodySmall, color = f.colors.textSecondary.color, maxLines = 1)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp, lineHeightStyle = TIGHT),
+            color = f.colors.textSecondary.color,
+            maxLines = 1
+        )
     }
 }
 
 private val WIDE = 840.dp
 private val MEDIUM = 520.dp
 private const val STATUSES = 5
+private val TIGHT = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)

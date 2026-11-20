@@ -22,7 +22,7 @@ import org.robolectric.annotation.GraphicsMode
 class HomeScreenshotTest {
     @get:Rule val compose = createComposeRule()
 
-    private val content = HomeUiState.Content(listOf(Rail(RailKind.TRENDING, sampleVideos), Rail(RailKind.RECENT, sampleVideos.reversed())))
+    private val content = HomeUiState.Content(listOf(Rail(RailKind.TRENDING, sampleVideos), Rail(RailKind.RECENT, recentVideos)))
 
     private fun home(state: HomeUiState = content) = @androidx.compose.runtime.Composable {
         HomeScreen(state, onVideoClick = {}, onRetry = {}, onOpenSettings = {})

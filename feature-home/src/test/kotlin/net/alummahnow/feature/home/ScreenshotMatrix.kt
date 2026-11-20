@@ -20,5 +20,5 @@ internal fun shoot(name: String, lang: Lang, mode: ThemeMode, device: Device = D
     // Infinite animations (lantern loader) never let Compose idle; reduced motion renders them static.
     Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
     val file = "src/test/screenshots/${name}_${lang.name.lowercase()}_${mode.name.lowercase()}_${device.name.lowercase()}.png"
-    captureRoboImage(file) { AunTheme(mode = mode) { content() } }
+    captureRoboImage(file) { AunTheme(mode = mode) { WithFixtureImages { content() } } }
 }

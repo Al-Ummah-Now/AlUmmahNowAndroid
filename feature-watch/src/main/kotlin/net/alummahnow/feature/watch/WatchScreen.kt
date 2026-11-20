@@ -51,6 +51,7 @@ import net.alummahnow.design.components.LanternLoader
 import net.alummahnow.design.components.SectionHeader
 import net.alummahnow.design.components.VideoCard
 import net.alummahnow.design.components.VideoCardData
+import net.alummahnow.design.components.VideoPoster
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.durationLabel
 import net.alummahnow.design.format.joinMeta
@@ -81,7 +82,14 @@ fun WatchScreen(
             is WatchUiState.Content -> {
                 if (player != null) PlayVideoEffect(player, state.video)
                 val playerBox: @Composable (Modifier) -> Unit = { m ->
-                    PlayerArea(player, isFullscreen, onToggleFullscreen, controls = !isInPictureInPicture, modifier = m)
+                    PlayerArea(
+                        player,
+                        state.video.summary.thumbnailUrl,
+                        isFullscreen,
+                        onToggleFullscreen,
+                        controls = !isInPictureInPicture,
+                        modifier = m
+                    )
                 }
                 when {
                     isInPictureInPicture || isFullscreen -> playerBox(Modifier.fillMaxSize())
@@ -110,9 +118,18 @@ private fun PlayVideoEffect(player: Player, video: VideoDetail) {
 }
 
 @Composable
-private fun PlayerArea(player: Player?, isFullscreen: Boolean, onToggleFullscreen: () -> Unit, controls: Boolean, modifier: Modifier) {
+private fun PlayerArea(
+    player: Player?,
+    poster: String?,
+    isFullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
+    controls: Boolean,
+    modifier: Modifier
+) {
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
         if (player == null) {
+            // Until the player is connected: the video's poster with the loader over it, not an empty black box.
+            VideoPoster(poster, Modifier.fillMaxSize())
             LanternLoader()
         } else {
             AunVideoPlayer(

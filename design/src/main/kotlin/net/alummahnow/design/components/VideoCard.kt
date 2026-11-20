@@ -104,6 +104,8 @@ fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifie
             .aspectRatio(16f / 9f)
             .clip(MaterialTheme.shapes.medium)
             .background(Brush.verticalGradient(listOf(f.colors.surfaceRaised.color, f.colors.surface.color)))
+            // A warm lantern tint, so the placeholder reads as a designed panel in Light too (not a blank white box).
+            .background(f.colors.primary.color.copy(alpha = PLACEHOLDER_TINT))
             .testTag("thumbnail")
     ) {
         // List-row thumbnails on narrow phones are small: a smaller duration badge keeps the picture readable.
@@ -140,6 +142,15 @@ fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifie
     }
 }
 
+/** A video's poster (its thumbnail, cropped to fill), shown before the player has a frame. Nothing when there is none. */
+@Composable
+fun VideoPoster(url: String?, modifier: Modifier = Modifier) {
+    if (url != null) {
+        AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier.testTag("video-poster"))
+    }
+}
+
 private val PLAY_GLYPH = 32.dp
+private const val PLACEHOLDER_TINT = 0.16f
 private val SMALL_THUMB = 100.dp
 private const val PLAY_ALPHA = 0.92f
