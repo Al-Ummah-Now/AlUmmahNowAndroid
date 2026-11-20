@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Al Ummah Now</string>
+    <!-- Launcher (home screen) name; the store listing and app_name keep the full name (owner, 2026-11-20). -->
+    <string name="launcher_name">Ummah Now</string>
 </resources>

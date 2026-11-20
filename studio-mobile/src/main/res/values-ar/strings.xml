@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">استوديو الأمة الآن</string>
     <string name="studio_tab_dashboard">لوحة التحكم</string>
+    <string name="launcher_name">الاستوديو</string>
 </resources>
