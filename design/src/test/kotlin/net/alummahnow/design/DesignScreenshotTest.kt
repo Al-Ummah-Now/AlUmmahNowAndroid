@@ -2,13 +2,12 @@ package net.alummahnow.design
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
-import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.VideoCardData
 import net.alummahnow.design.components.VideoRail
 import net.alummahnow.design.theme.AunTheme
@@ -23,21 +22,25 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class DesignScreenshotTest {
+    // The same videos, views and art in both languages; one card without a thumbnail shows the placeholder.
     private val enItems = listOf(
-        VideoCardData("1", "Introduction to Tafsir", null, 75, "Al Ummah Now — Seerah", 4167),
-        VideoCardData("2", "Seerah in 30 lessons: Part 1", null, 3725, "Seerah Institute", 1)
+        VideoCardData("1", "Introduction to Tafsir", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "Al Ummah Now", 1_520),
+        VideoCardData("2", "Fiqh of Prayer", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "Al Ummah Now", 2_140),
+        VideoCardData("3", "Patience in hardship", null, 980, "Al Ummah Now", 640)
     )
     private val arItems = listOf(
-        VideoCardData("1", "مقدمة في التفسير", null, 75, "الأمة الآن — السيرة", 4167),
-        VideoCardData("2", "السيرة في ٣٠ درساً: الجزء الأول", null, 3725, "معهد السيرة", 2)
+        VideoCardData("1", "مقدمة في التفسير", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_520),
+        VideoCardData("2", "فقه الصلاة", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "الأمة الآن", 2_140),
+        VideoCardData("3", "الصبر عند الشدائد", null, 980, "الأمة الآن", 640)
     )
 
     @Composable
     private fun Sample(mode: ThemeMode, items: List<VideoCardData>, title: String) {
         AunTheme(mode = mode) {
-            Column(Modifier.background(MaterialTheme.colorScheme.background)) {
-                VideoRail(title = title, items = items, onItemClick = {})
-                ErrorState(message = stringResource(R.string.aun_error_network), onRetry = {})
+            WithFixtureImages {
+                Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    VideoRail(title = title, items = items, onItemClick = {})
+                }
             }
         }
     }

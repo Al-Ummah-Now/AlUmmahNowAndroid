@@ -9,22 +9,31 @@ import net.alummahnow.core.bridge.model.RailKind
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
 
-internal fun summary(id: String, en: String, ar: String, views: Long = 4167, duration: Long = 75) = VideoSummary(
+internal fun summary(id: String, en: String, ar: String, views: Long, duration: Long, thumb: String?) = VideoSummary(
     id = id,
     title = LocalizedText(en, mapOf("ar" to ar)),
-    thumbnailUrl = null,
+    // Local title-card art for screenshots (no network); null shows the designed placeholder.
+    thumbnailUrl = thumb?.let { "${FIXTURE_THUMBS}$it.jpg" },
     durationSeconds = duration,
     views = views,
     channelId = "c1",
-    channelName = "Al Ummah Now — Seerah",
+    channelName = "الأمة الآن",
     publishedAt = null,
     category = "quran_tafsir"
 )
 
+// The same videos, durations and views as the Studio fixtures where they overlap.
 internal val sampleVideos = listOf(
-    summary("v1", "Introduction to Tafsir", "مقدمة في التفسير"),
-    summary("v2", "Seerah Overview", "نظرة عامة على السيرة", views = 1_650, duration = 65),
-    summary("v3", "Fiqh of Prayer", "فقه الصلاة", views = 2, duration = 3725)
+    summary("v1", "Introduction to Tafsir", "مقدمة في التفسير", views = 1_520, duration = 1_830, thumb = "tafsir"),
+    summary("v2", "Ramadan reminders", "تذكيرات رمضان", views = 12_000, duration = 45, thumb = "ramadan"),
+    summary("v3", "Fiqh of Prayer", "فقه الصلاة", views = 2_140, duration = 3_725, thumb = "fiqh")
+)
+
+/** The New rail: different videos from Trending; the last has no thumbnail (the placeholder, as when an image fails). */
+internal val recentVideos = listOf(
+    summary("v4", "Surat Al-Kahf recitation", "تلاوة سورة الكهف", views = 8_020, duration = 2_710, thumb = "kahf"),
+    summary("v5", "Friday khutbah: patience", "خطبة الجمعة: الصبر", views = 1_310, duration = 1_260, thumb = "khutbah"),
+    summary("v6", "Patience in hardship", "الصبر عند الشدائد", views = 640, duration = 980, thumb = null)
 )
 
 internal fun sampleDetail(ready: Boolean = true) = VideoDetail(
@@ -44,7 +53,7 @@ internal fun sampleDetail(ready: Boolean = true) = VideoDetail(
 )
 
 internal class FakeCatalog(
-    var railsResult: () -> List<Rail> = { listOf(Rail(RailKind.TRENDING, sampleVideos), Rail(RailKind.RECENT, sampleVideos.reversed())) },
+    var railsResult: () -> List<Rail> = { listOf(Rail(RailKind.TRENDING, sampleVideos), Rail(RailKind.RECENT, recentVideos)) },
     var videoResult: (String) -> VideoDetail = { sampleDetail() },
     var relatedResult: () -> List<VideoSummary> = { sampleVideos.drop(1) }
 ) : CatalogRepository {

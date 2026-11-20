@@ -59,6 +59,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Instant
 import java.time.ZoneId
@@ -431,9 +432,10 @@ private fun VideoRow(
             val narrow = LocalConfiguration.current.screenWidthDp < NARROW_DP
             Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(if (narrow) 80.dp else 120.dp))
             Column(Modifier.weight(1f)) {
+                // A tighter line height than titleSmall: a title that wraps reads as one title, not two lines apart.
                 Text(
                     title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp),
                     color = f.colors.textPrimary.color,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis

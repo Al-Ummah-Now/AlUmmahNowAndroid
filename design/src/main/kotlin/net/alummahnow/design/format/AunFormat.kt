@@ -149,6 +149,10 @@ object AunFormat {
     fun date(date: LocalDate, locale: Locale, style: FormatStyle = FormatStyle.MEDIUM): String =
         digits(date.format(dateFormatter(DateTimeFormatter.ofLocalizedDate(style), locale)), locale)
 
+    /** A short day and month for chart axes ("6 Oct" / «٦ أكتوبر»), with ٠–٩ in Arabic. */
+    fun dayMonth(date: LocalDate, locale: Locale): String =
+        digits(date.format(dateFormatter(DateTimeFormatter.ofPattern("d MMM"), locale)), locale)
+
     /** A date and time in the locale's styles, with ٠–٩ in Arabic. */
     fun dateTime(
         dateTime: ZonedDateTime,
