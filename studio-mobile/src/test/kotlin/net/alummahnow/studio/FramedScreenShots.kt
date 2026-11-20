@@ -25,7 +25,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], application = android.app.Application::class)
 class FramedScreenShots {
-    private val screens = StoreScreenshots().screens.filter { it.first in setOf("content", "upload", "analytics") }
+    private val screens = StoreScreenshots().screens.filter { it.first in setOf("dashboard", "content", "analytics") }
 
     private fun shoot(name: String, lang: StoreLocale, device: StoreDevice, mode: ThemeMode, content: @Composable () -> Unit) {
         RuntimeEnvironment.setQualifiers("${lang.qualifier}-${device.qualifiers}")

@@ -32,17 +32,18 @@ class StoreScreenshots {
         durationSeconds = duration,
         views = views,
         channelId = "c1",
-        channelName = "Al Ummah Now",
+        channelName = "الأمة الآن",
         publishedAt = null,
         category = category
     )
 
+    // The same videos, views and durations as the Studio and screen fixtures.
     private val videos = listOf(
-        video("v1", "Introduction to tafsir", "مقدمة في التفسير", 4_167, 1_830, "quran_tafsir"),
-        video("v2", "Seerah overview", "نظرة عامة على السيرة", 1_650, 1_265, "islamic_history"),
-        video("v3", "Ramadan reminder", "تذكير رمضان", 12_400, 245, "ramadan"),
+        video("v1", "Introduction to Tafsir", "مقدمة في التفسير", 1_520, 1_830, "quran_tafsir"),
+        video("v5", "Friday khutbah: patience", "خطبة الجمعة: الصبر", 1_310, 1_260, "khutbah"),
+        video("v2", "Ramadan reminders", "تذكيرات رمضان", 12_000, 45, "ramadan"),
         video("v4", "Surat Al-Kahf recitation", "تلاوة سورة الكهف", 8_020, 2_710, "quran_recitation"),
-        video("v5", "Fiqh of prayer", "فقه الصلاة", 932, 3_725, "fiqh")
+        video("v3", "Fiqh of Prayer", "فقه الصلاة", 2_140, 3_725, "fiqh")
     )
 
     private val home = HomeUiState.Content(listOf(Rail(RailKind.TRENDING, videos), Rail(RailKind.RECENT, videos.reversed())))

@@ -3,6 +3,13 @@
     <string name="aun_count_thousand">%1$s ألف</string>
     <string name="aun_count_million">%1$s مليون</string>
     <string name="aun_count_billion">%1$s مليار</string>
+    <string name="aun_count_thousand_dual">%1$s ألفان</string>
+    <string name="aun_count_million_dual">%1$s مليونان</string>
+    <string name="aun_count_billion_dual">%1$s ملياران</string>
+    <string name="aun_count_thousand_plural">%1$s آلاف</string>
+    <string name="aun_count_million_plural">%1$s ملايين</string>
+    <string name="aun_count_billion_plural">%1$s مليارات</string>
+    <string name="aun_views_compact">%1$s مشاهدة</string>
     <plurals name="aun_views">
         <item quantity="zero">لا مشاهدات</item>
         <item quantity="one">مشاهدة واحدة</item>

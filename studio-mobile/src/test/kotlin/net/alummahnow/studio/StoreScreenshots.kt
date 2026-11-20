@@ -49,70 +49,45 @@ class StoreScreenshots {
 
     private val channel = StudioChannel("c1", "Al Ummah Now", mapOf("ar" to "الأمة الآن"), handle = "alummahnow", isMain = true)
 
-    private val videos = listOf(
+    // The same five videos (titles, views, durations, art) as the viewer fixtures, so every screen agrees.
+    private fun published(id: String, en: String, ar: String, thumb: String, day: Int, views: Long, seconds: Double, category: String) =
         StudioVideo(
-            "v1",
-            "Introduction to tafsir",
-            thumbnailUrl = "${FIXTURE_THUMBS}tafsir.jpg",
-            createdAt = "2026-11-06T10:00:00Z",
-            titleLocalized = mapOf("ar" to "مقدمة في التفسير"),
-            views = 4_167,
-            durationSeconds = 1_830.0,
-            category = "quran_tafsir",
-            status = ContentStatus.PUBLISHED
-        ),
-        StudioVideo(
-            "v2",
-            "Seerah overview",
-            thumbnailUrl = "${FIXTURE_THUMBS}seerah.jpg",
-            createdAt = "2026-11-05T10:00:00Z",
-            titleLocalized = mapOf("ar" to "نظرة عامة على السيرة"),
-            isPublic = false,
-            views = 87,
-            durationSeconds = 1_265.0,
-            category = "islamic_history",
-            status = ContentStatus.SCHEDULED
-        ),
-        StudioVideo(
-            "v3",
-            "Ramadan reminder",
-            thumbnailUrl = "${FIXTURE_THUMBS}reminder.jpg",
-            createdAt = "2026-11-04T10:00:00Z",
-            titleLocalized = mapOf("ar" to "تذكير رمضان"),
-            views = 12_400,
-            durationSeconds = 245.0,
-            category = "ramadan",
-            status = ContentStatus.PUBLISHED
-        ),
-        StudioVideo(
-            "v4",
-            "Surat Al-Kahf recitation",
-            thumbnailUrl = "${FIXTURE_THUMBS}kahf.jpg",
-            createdAt = "2026-11-03T10:00:00Z",
-            titleLocalized = mapOf("ar" to "تلاوة سورة الكهف"),
-            views = 8_020,
-            durationSeconds = 2_710.0,
-            category = "quran_recitation",
+            id,
+            en,
+            thumbnailUrl = "${FIXTURE_THUMBS}$thumb.jpg",
+            createdAt = "2026-11-%02dT10:00:00Z".format(day),
+            titleLocalized = mapOf("ar" to ar),
+            views = views,
+            durationSeconds = seconds,
+            category = category,
             status = ContentStatus.PUBLISHED
         )
+
+    private val videos = listOf(
+        published("v4", "Surat Al-Kahf recitation", "تلاوة سورة الكهف", "kahf", 7, 8_020, 2_710.0, "quran_recitation"),
+        published("v1", "Introduction to Tafsir", "مقدمة في التفسير", "tafsir", 6, 1_520, 1_830.0, "quran_tafsir"),
+        published("v5", "Friday khutbah: patience", "خطبة الجمعة: الصبر", "khutbah", 5, 1_310, 1_260.0, "khutbah"),
+        published("v3", "Fiqh of Prayer", "فقه الصلاة", "fiqh", 4, 2_140, 3_725.0, "fiqh"),
+        published("v2", "Ramadan reminders", "تذكيرات رمضان", "ramadan", 2, 12_000, 45.0, "ramadan")
     )
 
-    private val dashboard = DashboardUiState.Content(CreatorAccess(true, false, null), ContentCounts(24, 2, 3, 1, 0))
+    private val dashboard = DashboardUiState.Content(CreatorAccess(true, false, null), ContentCounts(5, 1, 1, 0, 0))
 
     private val analytics = AnalyticsUiState(
         loading = false,
         data = ChannelAnalytics(
             totalViews = 24_674,
-            totalVideos = 24,
+            totalVideos = 5,
             totalSubscribers = 412,
             totalLikes = 1_980,
             totalComments = 133,
-            avgViewsPerVideo = 1_028.1,
+            avgViewsPerVideo = 4_998.0,
             engagementRate = 8.2,
             topVideos = listOf(
-                VideoStat("v3", "Ramadan reminder", null, 12_400, 800, 90, 360_000, 180.0, mapOf("ar" to "تذكير رمضان")),
+                VideoStat("v2", "Ramadan reminders", null, 12_000, 800, 90, 360_000, 40.0, mapOf("ar" to "تذكيرات رمضان")),
                 VideoStat("v4", "Surat Al-Kahf recitation", null, 8_020, 610, 41, 540_000, 1_355.0, mapOf("ar" to "تلاوة سورة الكهف"))
             ),
+            // Lifetime views of the five videos add up to 24,990; the last 28 days had 24,674 of them.
             // October 2026: weekly rhythm (Fridays highest), noise, two spikes; adds up to totalViews (24,674).
             daily = listOf(
                 755L, 1015L, 908L, 704L, 659L, 674L, 684L, 814L, 1809L, 910L, 732L, 631L, 709L, 819L,

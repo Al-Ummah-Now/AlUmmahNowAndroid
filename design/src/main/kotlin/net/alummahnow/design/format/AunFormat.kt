@@ -129,8 +129,14 @@ object AunFormat {
 
     enum class Scale { NONE, THOUSAND, MILLION, BILLION }
 
+    /**
+     * Which form of the scale word the shown number takes. Arabic: a whole 2 takes the dual («ألفان», «مليونان»), a whole
+     * 3–10 the plural («آلاف», «ملايين»), anything else (1, 11+, a decimal like ١٫٣) the singular («ألف», «مليون»).
+     */
+    enum class ScaleForm { SINGULAR, DUAL, PLURAL }
+
     /** The number part of a compact count; the scale word comes from string resources (see [compactCount]). */
-    data class Compact(val number: String, val scale: Scale)
+    data class Compact(val number: String, val scale: Scale, val form: ScaleForm = ScaleForm.SINGULAR)
 
     /** 950 → ("950", NONE), 1_250 → ("1.2", THOUSAND), 3_400_000 → ("3.4", MILLION). Truncates, never rounds up. */
     fun compact(n: Long, locale: Locale): Compact {
@@ -141,7 +147,13 @@ object AunFormat {
             else -> return Compact(number(n.coerceAtLeast(0), locale), Scale.NONE)
         }
         val truncated = kotlin.math.floor(value * 10) / 10
-        return Compact(number(truncated, locale, maxFraction = 1), scale)
+        val whole = truncated == kotlin.math.floor(truncated)
+        val form = when {
+            whole && truncated == DUAL_SCALE -> ScaleForm.DUAL
+            whole && truncated in PLURAL_SCALE_MIN..PLURAL_SCALE_MAX -> ScaleForm.PLURAL
+            else -> ScaleForm.SINGULAR
+        }
+        return Compact(number(truncated, locale, maxFraction = 1), scale, form)
     }
 
     private fun dateFormatter(base: DateTimeFormatter, locale: Locale): DateTimeFormatter {
@@ -211,4 +223,7 @@ object AunFormat {
     private const val SECONDS_PER_MINUTE = 60L
     private const val SECONDS_PER_HOUR = 3600L
     private const val MS_PER_SECOND = 1000L
+    private const val DUAL_SCALE = 2.0
+    private const val PLURAL_SCALE_MIN = 3.0
+    private const val PLURAL_SCALE_MAX = 10.0
 }

@@ -6,6 +6,7 @@ import java.time.ZonedDateTime
 import java.util.Locale
 import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.AunFormat.Scale
+import net.alummahnow.design.format.AunFormat.ScaleForm
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -80,10 +81,26 @@ class AunFormatTest {
     @Test fun `compact counts truncate and localize the decimal separator`() {
         assertEquals(AunFormat.Compact("950", Scale.NONE), AunFormat.compact(950, en))
         assertEquals(AunFormat.Compact("1.2", Scale.THOUSAND), AunFormat.compact(1_299, en))
-        assertEquals(AunFormat.Compact("4", Scale.THOUSAND), AunFormat.compact(4_000, en))
+        assertEquals(AunFormat.Compact("4", Scale.THOUSAND, ScaleForm.PLURAL), AunFormat.compact(4_000, en))
         assertEquals(AunFormat.Compact("3.4", Scale.MILLION), AunFormat.compact(3_499_999, en))
-        assertEquals(AunFormat.Compact("2", Scale.BILLION), AunFormat.compact(2_000_000_000, en))
+        assertEquals(AunFormat.Compact("2", Scale.BILLION, ScaleForm.DUAL), AunFormat.compact(2_000_000_000, en))
         assertEquals(AunFormat.Compact("١٫٢", Scale.THOUSAND), AunFormat.compact(1_250, ar))
+    }
+
+    @Test fun `the scale word agrees with the shown number`() {
+        fun form(n: Long) = AunFormat.compact(n, ar).form
+        assertEquals(ScaleForm.SINGULAR, form(1_000)) // «١ ألف»
+        assertEquals(ScaleForm.DUAL, form(2_000)) // «٢ ألفان»
+        assertEquals(ScaleForm.PLURAL, form(3_000)) // «٣ آلاف»
+        assertEquals(ScaleForm.PLURAL, form(8_020)) // «٨ آلاف»
+        assertEquals(ScaleForm.PLURAL, form(10_000)) // «١٠ آلاف»
+        assertEquals(ScaleForm.SINGULAR, form(11_000)) // «١١ ألف»
+        assertEquals(ScaleForm.SINGULAR, form(1_310)) // «١٫٣ ألف»
+        assertEquals(ScaleForm.SINGULAR, form(2_500)) // «٢٫٥ ألف»
+        assertEquals(ScaleForm.SINGULAR, form(10_400)) // «١٠٫٤ ألف»
+        assertEquals(ScaleForm.SINGULAR, form(1_200_000)) // «١٫٢ مليون»
+        assertEquals(ScaleForm.PLURAL, form(3_000_000)) // «٣ ملايين»
+        assertEquals(ScaleForm.SINGULAR, form(15_000_000)) // «١٥ مليون»
     }
 
     @Test fun `Arabic meta lines use a bullet, because the middle dot reads as zero`() {

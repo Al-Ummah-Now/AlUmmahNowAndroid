@@ -69,15 +69,37 @@ fun compactCount(n: Long): String {
     val c = AunFormat.compact(n, currentLocale())
     return when (c.scale) {
         AunFormat.Scale.NONE -> c.number
-        AunFormat.Scale.THOUSAND -> aunString(R.string.aun_count_thousand, c.number)
-        AunFormat.Scale.MILLION -> aunString(R.string.aun_count_million, c.number)
-        AunFormat.Scale.BILLION -> aunString(R.string.aun_count_billion, c.number)
+        // Arabic: «١٫٣ ألف», «٢ ألفان», «٨ آلاف», «١٢ ألف» (see [AunFormat.ScaleForm]).
+        AunFormat.Scale.THOUSAND -> aunString(
+            c.form.pick(R.string.aun_count_thousand, R.string.aun_count_thousand_dual, R.string.aun_count_thousand_plural),
+            c.number
+        )
+        AunFormat.Scale.MILLION -> aunString(
+            c.form.pick(R.string.aun_count_million, R.string.aun_count_million_dual, R.string.aun_count_million_plural),
+            c.number
+        )
+        AunFormat.Scale.BILLION -> aunString(
+            c.form.pick(R.string.aun_count_billion, R.string.aun_count_billion_dual, R.string.aun_count_billion_plural),
+            c.number
+        )
     }
 }
 
-/** "1.2K views" / "١٫٢ ألف مشاهدة", with correct Arabic plural forms for small counts. */
+private fun AunFormat.ScaleForm.pick(singular: Int, dual: Int, plural: Int): Int = when (this) {
+    AunFormat.ScaleForm.SINGULAR -> singular
+    AunFormat.ScaleForm.DUAL -> dual
+    AunFormat.ScaleForm.PLURAL -> plural
+}
+
+/**
+ * "1.2K views" / «١٫٢ ألف مشاهدة». Small counts take the Arabic plural form of the full count («٥ مشاهدات»); a compact
+ * count is counted by its scale word, so the noun stays singular («٨ آلاف مشاهدة», «٢ ألفان مشاهدة», never «مشاهدات»).
+ */
 @Composable
 fun viewsLabel(views: Long): String {
+    if (AunFormat.compact(views, currentLocale()).scale != AunFormat.Scale.NONE) {
+        return aunString(R.string.aun_views_compact, compactCount(views))
+    }
     val quantity = views.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
     return aunPlural(R.plurals.aun_views, quantity, compactCount(views))
 }
