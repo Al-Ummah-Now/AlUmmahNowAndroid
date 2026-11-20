@@ -23,10 +23,11 @@ internal fun summary(id: String, en: String, ar: String, views: Long, duration: 
 )
 
 // The same videos, durations and views as the Studio fixtures where they overlap.
+// Trending is ordered by views, most first.
 internal val sampleVideos = listOf(
-    summary("v1", "Introduction to Tafsir", "مقدمة في التفسير", views = 1_520, duration = 1_830, thumb = "tafsir"),
     summary("v2", "Ramadan reminders", "تذكيرات رمضان", views = 12_000, duration = 45, thumb = "ramadan"),
-    summary("v3", "Fiqh of Prayer", "فقه الصلاة", views = 2_140, duration = 3_725, thumb = "fiqh")
+    summary("v3", "Fiqh of Prayer", "فقه الصلاة", views = 2_140, duration = 3_725, thumb = "fiqh"),
+    summary("v1", "Introduction to Tafsir", "مقدمة في التفسير", views = 1_520, duration = 1_830, thumb = "tafsir")
 )
 
 /** The New rail: different videos from Trending; the last has no thumbnail (the placeholder, as when an image fails). */
