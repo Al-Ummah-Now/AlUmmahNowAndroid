@@ -3,6 +3,7 @@ package net.alummahnow.design.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import net.alummahnow.design.R
 import net.alummahnow.design.format.aunString
@@ -96,7 +98,7 @@ fun VideoCard(
 @Composable
 fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifier) {
     val f = LocalFanous.current
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
@@ -104,6 +106,8 @@ fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifie
             .background(Brush.verticalGradient(listOf(f.colors.surfaceRaised.color, f.colors.surface.color)))
             .testTag("thumbnail")
     ) {
+        // List-row thumbnails on narrow phones are small: a smaller duration badge keeps the picture readable.
+        val small = maxWidth < SMALL_THUMB
         Box(
             Modifier
                 .align(Alignment.Center)
@@ -122,14 +126,14 @@ fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifie
             val cd = aunString(R.string.aun_duration_cd, label)
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelSmall,
+                style = if (small) MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp) else MaterialTheme.typography.labelSmall,
                 color = Color.White,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(FanousTokens.Spacing.sm)
+                    .padding(if (small) FanousTokens.Spacing.xs else FanousTokens.Spacing.sm)
                     .clip(RoundedCornerShape(4.dp))
                     .background(Color.Black.copy(alpha = 0.72f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .padding(horizontal = if (small) 4.dp else 6.dp, vertical = if (small) 1.dp else 2.dp)
                     .semantics { contentDescription = cd }
             )
         }
@@ -137,4 +141,5 @@ fun Thumbnail(url: String?, durationSeconds: Long?, modifier: Modifier = Modifie
 }
 
 private val PLAY_GLYPH = 32.dp
+private val SMALL_THUMB = 100.dp
 private const val PLAY_ALPHA = 0.92f
