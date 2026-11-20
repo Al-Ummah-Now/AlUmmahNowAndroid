@@ -38,8 +38,14 @@ data class FanousTheme(val tokens: FanousThemeTokens, val dark: Boolean) {
     val material: FanousMaterial get() = mode.material
 }
 
-/** The window's Fanous theme, for parts Material's colour scheme has no slot for (header, card edge, glow). */
-val LocalFanous = staticCompositionLocalOf { FanousTheme(FanousThemeId.FALLBACK.tokens, dark = true) }
+/**
+ * The window's Fanous theme, for parts Material's colour scheme has no slot for (header, card edge, glow). It has no
+ * default: drawn outside [AunTheme] it would pick one mode while Material picks the other (dark cards on a light page),
+ * so reading it there fails loudly instead.
+ */
+val LocalFanous = staticCompositionLocalOf<FanousTheme> {
+    error("LocalFanous read outside AunTheme: wrap the content in AunTheme so every surface follows the active mode")
+}
 
 /** Material 3 roles from the registry, so stock components can never show a baseline (purple) colour. */
 internal fun colorScheme(theme: FanousTheme): ColorScheme {
