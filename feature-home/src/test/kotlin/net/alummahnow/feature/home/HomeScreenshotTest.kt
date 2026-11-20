@@ -49,8 +49,8 @@ class HomeScreenshotTest {
             net.alummahnow.design.theme.AunTheme { HomeScreen(content, onVideoClick = { clicked = it }, onRetry = {}, onOpenSettings = {}) }
         }
         compose.onNodeWithText("الأكثر رواجاً").assertExists()
-        // Trending and New hold different videos, each once, in Arabic.
-        compose.onAllNodes(androidx.compose.ui.test.hasText("تذكيرات رمضان")).assertCountEquals(1)
+        // Trending and New hold different videos: each rail's first video appears once, in Arabic.
+        compose.onAllNodes(androidx.compose.ui.test.hasText("مقدمة في التفسير")).assertCountEquals(1)
         compose.onAllNodes(androidx.compose.ui.test.hasText("تلاوة سورة الكهف")).assertCountEquals(1)
         compose.onAllNodesWithTextFirst("مقدمة في التفسير").performClick()
         assertEquals("v1", clicked)
