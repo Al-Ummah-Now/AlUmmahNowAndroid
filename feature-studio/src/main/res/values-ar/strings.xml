@@ -148,7 +148,5 @@
         <item quantity="other">تعديل %1$d مرئي</item>
     </plurals>
     <string name="studio_dashboard_title">لوحة القناة</string>
-    <string name="studio_dashboard_upload_ok">يمكنك رفع مرئيات إلى هذه القناة.</string>
-    <string name="studio_dashboard_upload_invite">الرفع متاح بدعوة. اطلب من فريق الأمة الآن تفعيله لحسابك.</string>
     <string name="studio_dashboard_counts">مرئياتك</string>
 </resources>

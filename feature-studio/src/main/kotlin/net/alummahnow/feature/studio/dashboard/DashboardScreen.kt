@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +25,6 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.alummahnow.design.components.ErrorState
-import net.alummahnow.design.components.FanousCard
 import net.alummahnow.design.components.FanousMaterialKind
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.components.fanousMaterial
@@ -59,17 +57,8 @@ fun DashboardScreen(state: DashboardUiState, onRetry: () -> Unit, modifier: Modi
                         .padding(if (wide) FanousTokens.Spacing.xl else FanousTokens.Spacing.lg),
                     verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)
                 ) {
-                    // Identity lives only in the navigation (the header avatar or the rail), never on the page.
-                    state.access?.let { a ->
-                        FanousCard(Modifier.fillMaxWidth()) {
-                            Text(
-                                stringResource(
-                                    if (a.canUpload) R.string.studio_dashboard_upload_ok else R.string.studio_dashboard_upload_invite
-                                ),
-                                color = LocalFanous.current.colors.textPrimary.color
-                            )
-                        }
-                    }
+                    // Identity lives only in the navigation (the header avatar or the rail), never on the page. No upload
+                    // note: the Upload tab is there when uploads are on, and gone when they are off.
                     state.counts?.let { c ->
                         Text(
                             stringResource(R.string.studio_dashboard_counts),
