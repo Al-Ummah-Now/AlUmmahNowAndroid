@@ -176,7 +176,8 @@ private fun TopVideos(data: ChannelAnalytics, modifier: Modifier) {
                 Text(
                     numberLabel(i + 1L),
                     style = MaterialTheme.typography.titleSmall,
-                    color = f.colors.primary.color,
+                    // Accent text uses link (readable in every theme), never the button gold.
+                    color = f.colors.link.color,
                     modifier = Modifier.width(32.dp)
                 )
                 Text(

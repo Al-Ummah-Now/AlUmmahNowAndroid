@@ -59,6 +59,22 @@ class ThemeConsistencyTest {
         }
     }
 
+    /**
+     * Accent-coloured text (rank numbers, a "2 comments are waiting" line) uses the theme's `link` colour, never the
+     * button gold `primary`: the gold is unreadable on cream in Light and under 4.5:1 in some dark themes.
+     */
+    @Test fun `accent text (link) is at least 4_5 to 1 on every surface in every theme and mode`() {
+        FanousThemeId.entries.forEach { id ->
+            listOf(false, true).forEach { dark ->
+                val c = id.tokens.mode(dark).colors
+                listOf("background" to c.background, "surface" to c.surface, "surfaceRaised" to c.surfaceRaised).forEach { (sn, s) ->
+                    val r = contrast(c.link, s)
+                    assertTrue("$id ${if (dark) "dark" else "light"}: link on $sn is ${"%.2f".format(r)}:1", r >= MIN_CONTRAST)
+                }
+            }
+        }
+    }
+
     private fun palette(p: FanousPalette): Set<Int> = p.javaClass.declaredFields
         .filter { it.type == FanousRgba::class.java }
         .map { field ->
