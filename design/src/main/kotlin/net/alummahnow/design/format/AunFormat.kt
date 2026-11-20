@@ -61,9 +61,13 @@ object AunFormat {
      */
     fun separator(locale: Locale): String = if (isArabic(locale)) " \u2022 " else " \u00B7 "
 
-    /** Joins the non-blank [parts] of a meta line with [separator]. */
+    /**
+     * Joins the non-blank [parts] of a meta line with [separator]. Each part is a direction isolate (U+2068 … U+2069),
+     * so an Arabic channel name in an English line (or English in an Arabic one) keeps its own order and cannot pull
+     * a neighbouring number into it ("1.5 · الأمة الآنK views").
+     */
     fun joinMeta(parts: List<String?>, locale: Locale): String =
-        parts.filterNot { it.isNullOrBlank() }.joinToString(separator(locale))
+        parts.filterNot { it.isNullOrBlank() }.joinToString(separator(locale)) { "\u2068$it\u2069" }
 
     /** ٠–٩ and ۰–۹ typed by people become 0–9, so numeric inputs and codes parse the same in every language. */
     fun normalizeDigits(text: String): String = buildString(text.length) {
