@@ -222,7 +222,8 @@ val sampleAnalytics = ChannelAnalytics(
  * A realistic 28-day views series (October 2026): a weekly rhythm (Fridays highest, Mondays lowest), day-to-day noise,
  * two spikes (the 9th and 23rd) and a total of exactly 13,607, the views shown in the Analytics frames.
  */
-internal val OCTOBER_VIEWS = listOf(
+// A getter: the analytics fixture above reads it during top-level initialisation.
+internal val OCTOBER_VIEWS: List<Long> get() = listOf(
     417L, 560L, 501L, 388L, 363L, 372L, 377L, 449L, 998L, 502L, 404L, 348L, 391L, 452L,
     435L, 615L, 540L, 491L, 396L, 404L, 481L, 445L, 1037L, 527L, 442L, 377L, 413L, 482L
 )
