@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -38,56 +39,60 @@ import net.alummahnow.feature.studio.studioText
 
 @Composable
 fun DashboardScreen(state: DashboardUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
-    when (state) {
-        DashboardUiState.Loading -> FullScreenLoading(modifier)
-        is DashboardUiState.Error -> ErrorState(studioText(state.message), onRetry, modifier)
-        is DashboardUiState.Content -> BoxWithConstraints(modifier.fillMaxSize().testTag("dashboard")) {
-            val wide = maxWidth >= WIDE
-            val columns = when {
-                maxWidth >= WIDE -> STATUSES
-                maxWidth >= MEDIUM -> 3
-                else -> 2
-            }
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(if (wide) FanousTokens.Spacing.xl else FanousTokens.Spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)
-            ) {
-                // Identity lives only in the navigation (the header avatar or the rail), never on the page.
-                state.access?.let { a ->
-                    FanousCard(Modifier.fillMaxWidth()) {
-                        Text(
-                            stringResource(
-                                if (a.canUpload) R.string.studio_dashboard_upload_ok else R.string.studio_dashboard_upload_invite
-                            ),
-                            color = LocalFanous.current.colors.textPrimary.color
-                        )
-                    }
+    // The page paints its own background (as Content and Analytics): without it the screen showed whatever was behind
+    // it (white in Dark, outside the Studio scaffold).
+    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        when (state) {
+            DashboardUiState.Loading -> FullScreenLoading()
+            is DashboardUiState.Error -> ErrorState(studioText(state.message), onRetry)
+            is DashboardUiState.Content -> BoxWithConstraints(Modifier.fillMaxSize().testTag("dashboard")) {
+                val wide = maxWidth >= WIDE
+                val columns = when {
+                    maxWidth >= WIDE -> STATUSES
+                    maxWidth >= MEDIUM -> 3
+                    else -> 2
                 }
-                state.counts?.let { c ->
-                    Text(
-                        stringResource(R.string.studio_dashboard_counts),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = LocalFanous.current.colors.textPrimary.color,
-                        modifier = Modifier.semantics { heading() }
-                    )
-                    val tiles = listOf(
-                        stringResource(R.string.studio_status_published) to c.published,
-                        stringResource(R.string.studio_status_scheduled) to c.scheduled,
-                        stringResource(R.string.studio_status_drafts) to c.drafts,
-                        stringResource(R.string.studio_status_processing) to c.processing,
-                        stringResource(R.string.studio_status_failed) to c.failed
-                    )
-                    // Equal tiles in rows that fill the width: five across on tablets, three or two on phones.
-                    tiles.chunked(columns).forEachIndexed { row, chunk ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
-                            chunk.forEachIndexed { i, (label, value) ->
-                                val failed = row * columns + i == tiles.lastIndex
-                                StatTile(label, value, Modifier.weight(1f), alert = failed && value.toLong() > 0)
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(if (wide) FanousTokens.Spacing.xl else FanousTokens.Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)
+                ) {
+                    // Identity lives only in the navigation (the header avatar or the rail), never on the page.
+                    state.access?.let { a ->
+                        FanousCard(Modifier.fillMaxWidth()) {
+                            Text(
+                                stringResource(
+                                    if (a.canUpload) R.string.studio_dashboard_upload_ok else R.string.studio_dashboard_upload_invite
+                                ),
+                                color = LocalFanous.current.colors.textPrimary.color
+                            )
+                        }
+                    }
+                    state.counts?.let { c ->
+                        Text(
+                            stringResource(R.string.studio_dashboard_counts),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = LocalFanous.current.colors.textPrimary.color,
+                            modifier = Modifier.semantics { heading() }
+                        )
+                        val tiles = listOf(
+                            stringResource(R.string.studio_status_published) to c.published,
+                            stringResource(R.string.studio_status_scheduled) to c.scheduled,
+                            stringResource(R.string.studio_status_drafts) to c.drafts,
+                            stringResource(R.string.studio_status_processing) to c.processing,
+                            stringResource(R.string.studio_status_failed) to c.failed
+                        )
+                        // Equal tiles in rows that fill the width: five across on tablets, three or two on phones.
+                        tiles.chunked(columns).forEachIndexed { row, chunk ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
+                                chunk.forEachIndexed { i, (label, value) ->
+                                    val failed = row * columns + i == tiles.lastIndex
+                                    StatTile(label, value, Modifier.weight(1f), alert = failed && value.toLong() > 0)
+                                }
+                                repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
                             }
-                            repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
