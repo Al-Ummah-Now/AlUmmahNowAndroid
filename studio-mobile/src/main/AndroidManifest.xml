@@ -26,6 +26,7 @@
              this is the app side of the same link, per env flavour (src/qa, src/prod). -->
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity
+            android:label="@string/launcher_name"
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"

@@ -201,4 +201,5 @@
     </plurals>
     <string name="model_note">ملاحظة النموذج (بالإنجليزية): %1$s</string>
     <string name="quoted">«%1$s»</string>
+    <string name="launcher_name">الإدارة</string>
 </resources>

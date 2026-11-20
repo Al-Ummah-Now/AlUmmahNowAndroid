@@ -6,4 +6,5 @@
     <string name="settings_theme_light">الرَّق (فاتح)</string>
     <string name="settings_language">اللغة</string>
     <string name="settings_language_system">مطابقة الجهاز</string>
+    <string name="launcher_name">الأمة الآن</string>
 </resources>

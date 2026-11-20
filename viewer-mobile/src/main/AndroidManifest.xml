@@ -22,6 +22,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Aun.Starting">
         <activity
+            android:label="@string/launcher_name"
             android:name=".MainActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|density|uiMode"
             android:exported="true"

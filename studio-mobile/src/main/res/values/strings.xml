@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">Al Ummah Now Studio</string>
     <string name="studio_tab_dashboard">Dashboard</string>
+    <!-- Launcher (home screen) name; the store listing and app_name keep the full name (owner, 2026-11-20). -->
+    <string name="launcher_name">Studio</string>
 </resources>
