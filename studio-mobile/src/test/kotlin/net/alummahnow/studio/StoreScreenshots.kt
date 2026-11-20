@@ -10,13 +10,10 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.ZonedDateTime
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
-import net.alummahnow.core.bridge.studio.ContentCounts
-import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.core.bridge.studio.DailyMetric
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.StudioPlaylist
-import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.UploadPhase
 import net.alummahnow.core.bridge.studio.VideoStat
@@ -49,35 +46,15 @@ class StoreScreenshots {
 
     private val channel = StudioChannel("c1", "Al Ummah Now", mapOf("ar" to "الأمة الآن"), handle = "alummahnow", isMain = true)
 
-    // The same five videos (titles, views, durations, art) as the viewer fixtures, so every screen agrees.
-    private fun published(id: String, en: String, ar: String, thumb: String, day: Int, views: Long, seconds: Double, category: String) =
-        StudioVideo(
-            id,
-            en,
-            thumbnailUrl = "${FIXTURE_THUMBS}$thumb.jpg",
-            createdAt = "2026-11-%02dT10:00:00Z".format(day),
-            titleLocalized = mapOf("ar" to ar),
-            views = views,
-            durationSeconds = seconds,
-            category = category,
-            status = ContentStatus.PUBLISHED
-        )
+    private val videos = StudioLibrary.published
 
-    private val videos = listOf(
-        published("v4", "Surat Al-Kahf recitation", "تلاوة سورة الكهف", "kahf", 7, 8_020, 2_710.0, "quran_recitation"),
-        published("v1", "Introduction to Tafsir", "مقدمة في التفسير", "tafsir", 6, 1_520, 1_830.0, "quran_tafsir"),
-        published("v5", "Friday khutbah: patience", "خطبة الجمعة: الصبر", "khutbah", 5, 1_310, 1_260.0, "khutbah"),
-        published("v3", "Fiqh of Prayer", "فقه الصلاة", "fiqh", 4, 2_140, 3_725.0, "fiqh"),
-        published("v2", "Ramadan reminders", "تذكيرات رمضان", "ramadan", 2, 12_000, 45.0, "ramadan")
-    )
-
-    private val dashboard = DashboardUiState.Content(CreatorAccess(true, false, null), ContentCounts(5, 1, 1, 0, 0))
+    private val dashboard = DashboardUiState.Content(CreatorAccess(true, false, null), StudioLibrary.counts)
 
     private val analytics = AnalyticsUiState(
         loading = false,
         data = ChannelAnalytics(
             totalViews = 24_674,
-            totalVideos = 5,
+            totalVideos = StudioLibrary.published.size.toLong(),
             totalSubscribers = 412,
             totalLikes = 1_980,
             totalComments = 133,
@@ -85,7 +62,10 @@ class StoreScreenshots {
             engagementRate = 8.2,
             topVideos = listOf(
                 VideoStat("v2", "Ramadan reminders", null, 12_000, 800, 90, 360_000, 40.0, mapOf("ar" to "تذكيرات رمضان")),
-                VideoStat("v4", "Surat Al-Kahf recitation", null, 8_020, 610, 41, 540_000, 1_355.0, mapOf("ar" to "تلاوة سورة الكهف"))
+                VideoStat("v4", "Surat Al-Kahf recitation", null, 8_020, 610, 41, 540_000, 1_355.0, mapOf("ar" to "تلاوة سورة الكهف")),
+                VideoStat("v3", "Fiqh of Prayer", null, 2_140, 160, 12, 410_000, 1_420.0, mapOf("ar" to "فقه الصلاة")),
+                VideoStat("v1", "Introduction to Tafsir", null, 1_520, 150, 40, 300_000, 640.0, mapOf("ar" to "مقدمة في التفسير")),
+                VideoStat("v5", "Friday khutbah: patience", null, 1_310, 140, 18, 280_000, 760.0, mapOf("ar" to "خطبة الجمعة: الصبر"))
             ),
             // Lifetime views of the five videos add up to 24,990; the last 28 days had 24,674 of them.
             // October 2026: weekly rhythm (Fridays highest), noise, two spikes; adds up to totalViews (24,674).
