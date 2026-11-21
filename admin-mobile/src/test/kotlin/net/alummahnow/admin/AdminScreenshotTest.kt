@@ -93,12 +93,19 @@ class AdminScreenshotTest {
         "campus" to "الجامعة",
         "swimming" to "سباحة",
         "sport" to "رياضة",
-        "Amina" to "آمنة",
-        "Fixture Senior" to "مراجع أول",
-        "Fixture Reviewer" to "مراجع"
+        "Amina" to "آمنة"
     )
 
-    private fun String.inLang(lang: Lang) = if (lang == Lang.AR) arabic[this] ?: this else this
+    /** FixtureReviewService's staff accounts as the people a frame shows: (English name, Arabic name). */
+    private val staff = mapOf(
+        "Fixture Senior" to ("Huda Karim" to "هدى كريم"),
+        "Fixture Reviewer" to ("Yusuf Haddad" to "يوسف حداد")
+    )
+
+    private fun String.inLang(lang: Lang): String {
+        staff[this]?.let { (en, ar) -> return if (lang == Lang.AR) ar else en }
+        return if (lang == Lang.AR) arabic[this] ?: this else this
+    }
 
     private fun ReviewItem.inLang(lang: Lang) = copy(
         title = title?.inLang(lang),
