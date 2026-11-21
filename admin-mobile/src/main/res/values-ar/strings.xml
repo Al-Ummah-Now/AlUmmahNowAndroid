@@ -118,10 +118,10 @@
     <string name="overall_risk">الخطورة %1$s</string>
     <string name="tags">الوسوم: %1$s</string>
     <string name="duration">المدة %1$s</string>
-    <string name="frame_at">إطار عند %1$s</string>
+    <string name="frame_at">إطار عند\u00A0%1$s</string>
     <string name="frame_flagged">مُعلَّم: %1$s</string>
     <string name="frame_blurred">مموَّه</string>
-    <string name="at_position">عند %1$s</string>
+    <string name="at_position">عند\u00A0%1$s</string>
     <string name="quran_ref">القرآن %1$s (لا يُحتسب)</string>
     <string name="review_gone">لم يعد هذا العنصر في القائمة.</string>
     <string name="conflict_approved">وافق عليه %1$s قبل %2$s</string>

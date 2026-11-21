@@ -54,4 +54,10 @@
     <string name="aun_language_en">English</string>
     <string name="aun_language_ur">Urdu</string>
     <string name="aun_language_fr">French</string>
+    <!-- File sizes: the number, a no-break space, the unit (decimal units, as Android shows them). -->
+    <string name="aun_size_bytes">%1$s\u00A0B</string>
+    <string name="aun_size_kb">%1$s\u00A0kB</string>
+    <string name="aun_size_mb">%1$s\u00A0MB</string>
+    <string name="aun_size_gb">%1$s\u00A0GB</string>
+    <string name="aun_size_tb">%1$s\u00A0TB</string>
 </resources>

@@ -3,12 +3,10 @@
 package net.alummahnow.design.format
 
 import android.content.res.Resources
-import android.text.format.Formatter
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import java.time.LocalDate
 import java.time.ZonedDateTime
@@ -60,9 +58,23 @@ fun dateLabel(date: LocalDate, style: FormatStyle = FormatStyle.MEDIUM): String 
 @Composable
 fun dateTimeLabel(dateTime: ZonedDateTime): String = AunFormat.dateTime(dateTime, currentLocale())
 
-/** A file size ("12 MB" / "١٢ م.ب"): the platform's units, with the app's digits. */
+/**
+ * A file size ("734 MB" / «٧٣٤ م.ب»): the number, a no-break space, then the unit, kept in its own direction
+ * ([isolate]), so in an Arabic line the unit stays after the number and in a mixed line the size cannot pull its
+ * neighbours into it.
+ */
 @Composable
-fun fileSizeLabel(bytes: Long): String = AunFormat.decimal(Formatter.formatShortFileSize(LocalContext.current, bytes), currentLocale())
+fun fileSizeLabel(bytes: Long): String {
+    val size = AunFormat.fileSize(bytes, currentLocale())
+    val unit = when (size.unit) {
+        AunFormat.SizeUnit.BYTE -> R.string.aun_size_bytes
+        AunFormat.SizeUnit.KILO -> R.string.aun_size_kb
+        AunFormat.SizeUnit.MEGA -> R.string.aun_size_mb
+        AunFormat.SizeUnit.GIGA -> R.string.aun_size_gb
+        AunFormat.SizeUnit.TERA -> R.string.aun_size_tb
+    }
+    return isolate(aunString(unit, size.number))
+}
 
 /**
  * A compact count on its own ("12K" / «١٢ ألفًا»). [beforeNoun] is for a count that a noun follows («١٢ ألف مشاهدة»):
@@ -154,7 +166,8 @@ fun localizedDigits(text: String): String = AunFormat.digits(text, currentLocale
 fun localizedDecimal(text: String): String = AunFormat.decimal(text, currentLocale())
 
 /**
- * Isolates user-supplied text (names, e-mails, titles) inside a localised sentence (FSI … PDI), so
- * Latin text in an Arabic sentence (and the reverse) does not reorder the punctuation around it.
+ * Isolates user-supplied text (names, e-mails, titles, times) inside a localised sentence (LRI or RLI … PDI, or
+ * right-to-left marks around Arabic with digits, see [AunFormat.isolate]), so Latin text in an Arabic sentence (and
+ * the reverse) does not reorder the punctuation around it.
  */
-fun isolate(text: String): String = "\u2068$text\u2069"
+fun isolate(text: String): String = AunFormat.isolate(text)
