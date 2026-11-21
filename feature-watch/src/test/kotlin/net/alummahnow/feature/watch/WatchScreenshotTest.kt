@@ -13,22 +13,23 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35])
 class WatchScreenshotTest {
-    private val content = WatchUiState.Content(sampleDetail(), sampleVideos.drop(1))
+    /** The brand channel is named in the frame's language. */
+    private fun content(lang: Lang) = WatchUiState.Content(sampleDetail(lang = lang), sampleVideos.inLang(lang).drop(1))
 
-    private fun watch(): @Composable () -> Unit = {
-        WatchScreen(content, player = null, isFullscreen = false, isInPictureInPicture = false, onToggleFullscreen = {
+    private fun watch(lang: Lang): @Composable () -> Unit = {
+        WatchScreen(content(lang), player = null, isFullscreen = false, isInPictureInPicture = false, onToggleFullscreen = {
         }, onVideoClick = {}, onRetry = {})
     }
 
-    @Test fun phoneEnDark() = shoot("watch", Lang.EN, ThemeMode.DARK, content = watch())
+    @Test fun phoneEnDark() = shoot("watch", Lang.EN, ThemeMode.DARK, content = watch(Lang.EN))
 
-    @Test fun phoneArDark() = shoot("watch", Lang.AR, ThemeMode.DARK, content = watch())
+    @Test fun phoneArDark() = shoot("watch", Lang.AR, ThemeMode.DARK, content = watch(Lang.AR))
 
-    @Test fun phoneArLight() = shoot("watch", Lang.AR, ThemeMode.LIGHT, content = watch())
+    @Test fun phoneArLight() = shoot("watch", Lang.AR, ThemeMode.LIGHT, content = watch(Lang.AR))
 
-    @Test fun phoneEnLight() = shoot("watch", Lang.EN, ThemeMode.LIGHT, content = watch())
+    @Test fun phoneEnLight() = shoot("watch", Lang.EN, ThemeMode.LIGHT, content = watch(Lang.EN))
 
-    @Test fun tabletTwoPaneEn() = shoot("watch", Lang.EN, ThemeMode.DARK, Device.TABLET, watch())
+    @Test fun tabletTwoPaneEn() = shoot("watch", Lang.EN, ThemeMode.DARK, Device.TABLET, watch(Lang.EN))
 
-    @Test fun tabletTwoPaneAr() = shoot("watch", Lang.AR, ThemeMode.DARK, Device.TABLET, watch())
+    @Test fun tabletTwoPaneAr() = shoot("watch", Lang.AR, ThemeMode.DARK, Device.TABLET, watch(Lang.AR))
 }

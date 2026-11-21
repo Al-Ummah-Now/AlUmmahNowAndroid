@@ -22,12 +22,12 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class DesignScreenshotTest {
-    // The same videos, views and art in both languages; one card without a thumbnail shows the placeholder. The channel
-    // has one name from the API, shown as-is in both languages (as on Home and Watch).
+    // The same videos, views and art in both languages; one card without a thumbnail shows the placeholder. The brand
+    // channel has an official name in each language, so each frame shows the one in its language (as on Home and Watch).
     private val enItems = listOf(
-        VideoCardData("1", "Introduction to Tafsir", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_520),
-        VideoCardData("2", "Fiqh of Prayer", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "الأمة الآن", 2_140),
-        VideoCardData("3", "Patience in hardship", null, 980, "الأمة الآن", 640)
+        VideoCardData("1", "Introduction to Tafsir", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "Al Ummah Now", 1_520),
+        VideoCardData("2", "Fiqh of Prayer", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "Al Ummah Now", 2_140),
+        VideoCardData("3", "Patience in hardship", null, 980, "Al Ummah Now", 640)
     )
     private val arItems = listOf(
         VideoCardData("1", "مقدمة في التفسير", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_520),
