@@ -198,8 +198,17 @@ class ManageTest {
             }
         )
     private val noop = actions(mutableListOf())
-    private val form = EditForm("Introduction to Tafsir", "Lesson one of the series.", true, "quran_tafsir", "ar", "tafsir, قرآن")
-    private val edit = VideoEditUiState(loading = false, original = form, form = form.copy(title = "Introduction to Tafsir (revised)"))
+
+    /** The video's own text (title, description, tags) in the frame's language. */
+    private fun edit(lang: Lang): VideoEditUiState {
+        val form = if (lang == Lang.AR) {
+            EditForm("مقدمة في التفسير", "المرئي الأول في السلسلة.", true, "quran_tafsir", "ar", "تفسير، قرآن")
+        } else {
+            EditForm("Introduction to Tafsir", "The first video in the series.", true, "quran_tafsir", "ar", "tafsir, quran")
+        }
+        val revised = if (lang == Lang.AR) "مقدمة في التفسير (منقّحة)" else "Introduction to Tafsir (revised)"
+        return VideoEditUiState(loading = false, original = form, form = form.copy(title = revised))
+    }
 
     @Test fun contentEnLight() = shoot("content", Lang.EN, ThemeMode.LIGHT) { ContentScreen(list, noop) }
 
@@ -213,9 +222,9 @@ class ManageTest {
 
     @Test fun contentTabletEnLight() = shoot("content", Lang.EN, ThemeMode.LIGHT, Device.TABLET) { ContentScreen(list, noop) }
 
-    @Test fun editEnLight() = shoot("edit", Lang.EN, ThemeMode.LIGHT) { VideoEditScreen(edit, {}, {}, {}, {}) }
+    @Test fun editEnLight() = shoot("edit", Lang.EN, ThemeMode.LIGHT) { VideoEditScreen(edit(Lang.EN), {}, {}, {}, {}) }
 
-    @Test fun editArDark() = shoot("edit", Lang.AR, ThemeMode.DARK) { VideoEditScreen(edit, {}, {}, {}, {}) }
+    @Test fun editArDark() = shoot("edit", Lang.AR, ThemeMode.DARK) { VideoEditScreen(edit(Lang.AR), {}, {}, {}, {}) }
 
     @Test fun analyticsEnDark() = shoot("analytics", Lang.EN, ThemeMode.DARK) {
         AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {})
