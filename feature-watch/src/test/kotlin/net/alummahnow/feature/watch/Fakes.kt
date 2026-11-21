@@ -9,6 +9,12 @@ import net.alummahnow.core.bridge.model.RailKind
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
 
+/** The brand channel's official name in each language: a frame shows the one in its language. */
+internal fun brandChannel(lang: Lang) = if (lang == Lang.AR) "الأمة الآن" else "Al Ummah Now"
+
+/** These videos as the brand channel's uploads, with the channel named in [lang]. */
+internal fun List<VideoSummary>.inLang(lang: Lang) = map { it.copy(channelName = brandChannel(lang)) }
+
 internal fun summary(id: String, en: String, ar: String, views: Long, duration: Long, thumb: String?) = VideoSummary(
     id = id,
     title = LocalizedText(en, mapOf("ar" to ar)),
@@ -17,7 +23,7 @@ internal fun summary(id: String, en: String, ar: String, views: Long, duration: 
     durationSeconds = duration,
     views = views,
     channelId = "c1",
-    channelName = "الأمة الآن",
+    channelName = brandChannel(Lang.EN),
     publishedAt = null,
     category = "quran_tafsir"
 )
@@ -36,8 +42,8 @@ internal val recentVideos = listOf(
     summary("v6", "Patience in hardship", "الصبر عند الشدائد", views = 640, duration = 980, thumb = null)
 )
 
-internal fun sampleDetail(ready: Boolean = true) = VideoDetail(
-    summary = sampleVideos[0],
+internal fun sampleDetail(ready: Boolean = true, lang: Lang = Lang.EN) = VideoDetail(
+    summary = sampleVideos.inLang(lang)[0],
     description = LocalizedText("An introduction to tafsir.", mapOf("ar" to "مقدمة في علم التفسير.")),
     playUrl = "https://cdn.example/v1/playlist.m3u8",
     availableResolutions = listOf("240p", "360p"),

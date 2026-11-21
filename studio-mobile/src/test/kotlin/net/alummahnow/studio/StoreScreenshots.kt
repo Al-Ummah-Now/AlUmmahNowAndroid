@@ -15,8 +15,10 @@ import net.alummahnow.core.bridge.studio.DailyMetric
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.UploadItem
-import net.alummahnow.core.bridge.studio.UploadPhase
+import net.alummahnow.core.bridge.studio.UploadPhase.DONE
+import net.alummahnow.core.bridge.studio.UploadPhase.UPLOADING
 import net.alummahnow.core.bridge.studio.VideoStat
+import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.analytics.AnalyticsScreen
 import net.alummahnow.feature.studio.analytics.AnalyticsUiState
@@ -77,25 +79,36 @@ class StoreScreenshots {
         )
     )
 
-    private val upload = UploadUiState(
+    /** The upload in progress, written in the frame's language (file names, title pattern, tags, playlists, queue). */
+    private fun upload(arabic: Boolean) = UploadUiState(
         files = listOf(
-            PickedFile("u1", "kahf-part-1.mp4", 734_003_200, "video/mp4"),
-            PickedFile("u2", "kahf-part-2.mp4", 512_000_000, "video/mp4")
+            PickedFile("u1", if (arabic) "الكهف-الجزء-الأول.mp4" else "kahf-part-1.mp4", 734_003_200, "video/mp4"),
+            PickedFile("u2", if (arabic) "الكهف-الجزء-الثاني.mp4" else "kahf-part-2.mp4", 512_000_000, "video/mp4")
         ),
         form = SetForAll(
-            titlePattern = "Surat Al-Kahf {n}",
+            titlePattern = if (arabic) "سورة الكهف {n}" else "Surat Al-Kahf {n}",
             padNumbers = true,
             category = "quran_recitation",
             language = "ar",
             playlistIds = setOf("p1"),
-            tagsText = "quran, قرآن"
+            tagsText = if (arabic) "قرآن، تلاوة" else "quran, recitation"
         ),
-        playlists = listOf(StudioPlaylist("p1", "Quran recitation", true), StudioPlaylist("p2", "Friday khutbahs", true)),
+        playlists = listOf(
+            StudioPlaylist("p1", if (arabic) "تلاوات القرآن" else "Quran recitation", true),
+            StudioPlaylist("p2", if (arabic) "خطب الجمعة" else "Friday khutbahs", true)
+        ),
         queue = listOf(
-            UploadItem("q1", "Ramadan reminder", UploadPhase.UPLOADING, 300_000_000, 700_000_000, null, null),
-            UploadItem("q2", "Seerah overview", UploadPhase.DONE, 400_000_000, 400_000_000, "v2", null)
+            UploadItem("q1", if (arabic) "تذكير رمضان" else "Ramadan reminder", UPLOADING, 300_000_000, 700_000_000, null, null),
+            UploadItem("q2", if (arabic) "نظرة عامة على السيرة" else "Seerah overview", DONE, 400_000_000, 400_000_000, "v2", null)
         )
     )
+
+    @Composable
+    private fun UploadInLanguage() {
+        val arabic = currentLocale().language == "ar"
+        val titles = if (arabic) listOf("سورة الكهف 01", "سورة الكهف 02") else listOf("Surat Al-Kahf 01", "Surat Al-Kahf 02")
+        UploadScreen(upload(arabic), titles, uploadActions)
+    }
 
     private val contentActions = ContentActions(
         onStatus = {}, onQuery = {}, onPickSuggestion = {}, onToggle = {}, onSelectAll = {}, onClearSelection = {}, onEdit = {},
@@ -132,7 +145,7 @@ class StoreScreenshots {
             inStudio(StudioTab.CONTENT) {
                 ContentScreen(ContentUiState(videos = videos, loading = false, softDelete = true), contentActions)
             },
-        "upload" to inStudio(StudioTab.UPLOAD) { UploadScreen(upload, listOf("Surat Al-Kahf 01", "Surat Al-Kahf 02"), uploadActions) },
+        "upload" to inStudio(StudioTab.UPLOAD) { UploadInLanguage() },
         "analytics" to inStudio(StudioTab.ANALYTICS) { AnalyticsScreen(analytics, onRange = {}, onRetry = {}) }
     )
 
