@@ -97,34 +97,45 @@ fun DashboardScreen(state: DashboardUiState, onRetry: () -> Unit, modifier: Modi
                         )
                     }
                     val comments: @Composable (Modifier) -> Unit = { CommentsSection(it, state.comments, onRetry) }
-                    // Recent uploads beside the comments on tablets (as Apple's iPad and Mac), one under the other on phones.
-                    if (wide && state.recent != DashboardSection.Hidden && state.comments != DashboardSection.Hidden) {
+                    val drafts: @Composable (Modifier) -> Unit = {
+                        VideosSection(
+                            it,
+                            R.string.studio_status_drafts,
+                            R.string.studio_dashboard_drafts_empty,
+                            state.drafts,
+                            onRetry,
+                            onOpenVideo,
+                            "drafts"
+                        )
+                    }
+                    val scheduled: @Composable (Modifier) -> Unit = {
+                        VideosSection(
+                            it,
+                            R.string.studio_status_scheduled,
+                            R.string.studio_dashboard_scheduled_empty,
+                            state.scheduled,
+                            onRetry,
+                            onOpenVideo,
+                            "scheduled"
+                        )
+                    }
+                    // Tablets: recent uploads on one side, and comments, drafts and scheduled stacked on the other, so the whole
+                    // page fits one screen in both languages (Arabic lines are taller). Phones: one card under another.
+                    if (wide && state.recent != DashboardSection.Hidden) {
                         Row(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg), verticalAlignment = Alignment.Top) {
                             recent(Modifier.weight(1f))
-                            comments(Modifier.weight(1f))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)) {
+                                comments(Modifier.fillMaxWidth())
+                                drafts(Modifier.fillMaxWidth())
+                                scheduled(Modifier.fillMaxWidth())
+                            }
                         }
                     } else {
                         recent(Modifier.fillMaxWidth())
                         comments(Modifier.fillMaxWidth())
+                        drafts(Modifier.fillMaxWidth())
+                        scheduled(Modifier.fillMaxWidth())
                     }
-                    VideosSection(
-                        Modifier.fillMaxWidth(),
-                        R.string.studio_status_drafts,
-                        R.string.studio_dashboard_drafts_empty,
-                        state.drafts,
-                        onRetry,
-                        onOpenVideo,
-                        "drafts"
-                    )
-                    VideosSection(
-                        Modifier.fillMaxWidth(),
-                        R.string.studio_status_scheduled,
-                        R.string.studio_dashboard_scheduled_empty,
-                        state.scheduled,
-                        onRetry,
-                        onOpenVideo,
-                        "scheduled"
-                    )
                 }
             }
         }

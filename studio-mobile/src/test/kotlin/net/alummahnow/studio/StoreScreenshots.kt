@@ -67,7 +67,7 @@ class StoreScreenshots {
                 VideoStat("v1", "Introduction to Tafsir", null, 1_504, 150, 40, 300_000, 640.0, mapOf("ar" to "مقدمة في التفسير")),
                 VideoStat("v5", "Friday khutbah: patience", null, 1_300, 140, 18, 280_000, 760.0, mapOf("ar" to "خطبة الجمعة: الصبر"))
             ),
-            // The five videos went up in September (StudioLibrary) with 24,990 lifetime views; these are their October views,
+            // The five videos went up in September (StudioLibrary) with 26,040 lifetime views; these are their October views,
             // each below its lifetime count, adding up to totalViews.
             // October 2026: weekly rhythm (Fridays highest), noise, two spikes; adds up to totalViews (24,674).
             daily = listOf(

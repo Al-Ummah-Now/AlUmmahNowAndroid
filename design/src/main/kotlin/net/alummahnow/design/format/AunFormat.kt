@@ -57,10 +57,10 @@ object AunFormat {
     private val DECIMAL_POINT = Regex("(?<=[0-9\u0660-\u0669])\\.(?=[0-9\u0660-\u0669])")
 
     /**
-     * The separator between values in a meta line ("Public · 1.2K views · Nov 6"). In Arabic the middle dot «·» reads as
-     * the digit zero «٠», so Arabic uses a bullet: « • ».
+     * The separator between values in a meta line ("Public · 1.2K views · Nov 6"). In Arabic a dot («·» or «•») reads as
+     * the digit zero «٠» («عام • ١٢ ألف» looks like «١٢٠ ألف»), so Arabic uses the Arabic comma: «عام، ١٢ ألف مشاهدة».
      */
-    fun separator(locale: Locale): String = if (isArabic(locale)) " \u2022 " else " \u00B7 "
+    fun separator(locale: Locale): String = if (isArabic(locale)) "\u060C " else " \u00B7 "
 
     /**
      * Joins the non-blank [parts] of a meta line with [separator]. Each part is a direction isolate (U+2068 … U+2069),
@@ -133,9 +133,11 @@ object AunFormat {
     /**
      * Which form of the scale word the shown number takes. Arabic never puts a digit before 1 or the dual: exactly 1 is
      * the word alone («ألف»), exactly 2 the dual alone («ألفان», «ألفا مشاهدة» before a noun), a whole 3–10 the plural
-     * after the digit («٣ آلاف»), and anything else (11+, any decimal) the singular after the number («١١ ألف», «١٫٣ ألف»).
+     * after the digit («٣ آلاف»). A whole number ending in 11–99 takes the accusative when it stands alone («١٢ ألفًا»,
+     * «١٢٠ ألفًا») and the singular before a noun («١٢ ألف مشاهدة»): [TAMYIZ]. Anything else (100, any decimal) is the
+     * singular after the number («١٠٠ ألف», «١٫٣ ألف»).
      */
-    enum class ScaleForm { ONE, DUAL, PLURAL, SINGULAR }
+    enum class ScaleForm { ONE, DUAL, PLURAL, TAMYIZ, SINGULAR }
 
     /** The number part of a compact count; the scale word comes from string resources (see [compactCount]). */
     data class Compact(val number: String, val scale: Scale, val form: ScaleForm = ScaleForm.SINGULAR)
@@ -156,6 +158,7 @@ object AunFormat {
             whole && truncated == ONE_SCALE -> ScaleForm.ONE
             whole && truncated == DUAL_SCALE -> ScaleForm.DUAL
             whole && truncated in PLURAL_SCALE_MIN..PLURAL_SCALE_MAX -> ScaleForm.PLURAL
+            whole && (truncated.toLong() % HUNDRED) in TAMYIZ_MIN..TAMYIZ_MAX -> ScaleForm.TAMYIZ
             else -> ScaleForm.SINGULAR
         }
         return Compact(number(truncated, locale, maxFraction = 1), scale, form)
@@ -229,6 +232,9 @@ object AunFormat {
     private const val SECONDS_PER_HOUR = 3600L
     private const val MS_PER_SECOND = 1000L
     private const val ONE_SCALE = 1.0
+    private const val HUNDRED = 100L
+    private const val TAMYIZ_MIN = 11L
+    private const val TAMYIZ_MAX = 99L
     private const val DUAL_SCALE = 2.0
     private const val PLURAL_SCALE_MIN = 3.0
     private const val PLURAL_SCALE_MAX = 10.0

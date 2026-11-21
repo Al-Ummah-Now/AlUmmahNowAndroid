@@ -15,6 +15,8 @@
     <string name="aun_count_thousand_plural">%1$s آلاف</string>
     <string name="aun_count_million_plural">%1$s م</string>
     <string name="aun_count_billion_plural">%1$s مليارات</string>
+    <string name="aun_count_thousand_tamyiz">%1$s ألفًا</string>
+    <string name="aun_count_billion_tamyiz">%1$s مليارًا</string>
     <string name="aun_views_compact">%1$s مشاهدة</string>
     <plurals name="aun_views">
         <item quantity="zero">لا مشاهدات</item>
