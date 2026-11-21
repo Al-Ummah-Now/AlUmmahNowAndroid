@@ -123,6 +123,11 @@ class AunFormatTest {
         assertFalse(AunFormat.separator(ar).contains('\u00B7'))
     }
 
+    @Test fun `lists use the app language's comma`() {
+        assertEquals("\u2067سباحة\u2069\u060C \u2067رياضة\u2069", AunFormat.joinList(listOf("سباحة", " ", "رياضة"), ar))
+        assertEquals("\u2066swimming\u2069, \u2066sport\u2069", AunFormat.joinList(listOf("swimming", "sport"), en))
+    }
+
     @Test fun `an isolate keeps its text in its own direction, ignoring nested isolates`() {
         // Re-audit 3 (#53): «عند ٠:٤٢» rendered as «٠:٤٢عند» inside a right-to-left isolate; Arabic with digits takes RLMs.
         assertEquals("\u200Fعند\u00A0\u2066٠:٤٢\u2069\u200F", AunFormat.isolate("عند\u00A0" + AunFormat.isolate("٠:٤٢")))

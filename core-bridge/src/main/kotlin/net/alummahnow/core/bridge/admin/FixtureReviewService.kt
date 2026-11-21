@@ -234,7 +234,7 @@ class FixtureReviewService(
                 listOf("travel", "old city"),
                 seconds = 468.0,
                 flaggedAtMs = 195_000,
-                manifestMs = listOf(0, 90_000, 285_000, 380_000),
+                manifestMs = listOf(0, 90_000, 285_000),
                 rationale = "Partial nudity on a poster in the crowd scored above the screen threshold."
             ),
             "fx-risk" to Case(
@@ -242,7 +242,7 @@ class FixtureReviewService(
                 listOf("charity", "winter appeal"),
                 seconds = 252.0,
                 flaggedAtMs = 128_000,
-                manifestMs = listOf(0, 60_000, 190_000, 240_000),
+                manifestMs = listOf(0, 60_000, 190_000),
                 rationale = "A personal bank account number is shown for donations.",
                 second = ReviewFinding("", source = "metadata", category = "spam", score = 0.36, text = "Donate now, limited time")
             ),
@@ -251,7 +251,7 @@ class FixtureReviewService(
                 listOf("ramadan", "recipes"),
                 seconds = 755.0,
                 flaggedAtMs = 444_000,
-                manifestMs = listOf(0, 180_000, 600_000, 720_000),
+                manifestMs = listOf(0, 180_000, 600_000),
                 rationale = "An on-screen giveaway is not mentioned anywhere in the description.",
                 second = ReviewFinding(
                     "",
@@ -266,7 +266,7 @@ class FixtureReviewService(
                 listOf("debate", "campus"),
                 seconds = 3_490.0,
                 flaggedAtMs = 1_297_000,
-                manifestMs = listOf(0, 600_000, 2_100_000, 3_000_000),
+                manifestMs = listOf(0, 600_000, 2_100_000),
                 rationale = "A speaker is shouted down and insulted by name.",
                 second = ReviewFinding(
                     "",
@@ -282,7 +282,7 @@ class FixtureReviewService(
                 listOf("swimming", "sport"),
                 seconds = 365.0,
                 flaggedAtMs = 72_000,
-                manifestMs = listOf(0, 150_000, 240_000, 330_000),
+                manifestMs = listOf(0, 150_000, 240_000),
                 rationale = "A child appears in swimwear; a senior reviewer decides."
             ),
             "fx-old" to Case(
@@ -290,7 +290,7 @@ class FixtureReviewService(
                 listOf("reminder"),
                 seconds = 300.0,
                 flaggedAtMs = 30_000,
-                manifestMs = listOf(0, 120_000, 200_000, 280_000),
+                manifestMs = listOf(0, 120_000, 200_000),
                 rationale = "Repeated text on screen looked like spam."
             )
         )

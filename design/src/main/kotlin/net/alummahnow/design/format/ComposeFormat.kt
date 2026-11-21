@@ -165,6 +165,10 @@ fun localizedDigits(text: String): String = AunFormat.digits(text, currentLocale
 @Composable
 fun localizedDecimal(text: String): String = AunFormat.decimal(text, currentLocale())
 
+/** A list of user-supplied words (tags) joined with the app language's comma; see [AunFormat.joinList]. */
+@Composable
+fun listLabel(items: List<String>): String = AunFormat.joinList(items, currentLocale())
+
 /**
  * Isolates user-supplied text (names, e-mails, titles, times) inside a localised sentence (LRI or RLI … PDI, or
  * right-to-left marks around Arabic with digits, see [AunFormat.isolate]), so Latin text in an Arabic sentence (and

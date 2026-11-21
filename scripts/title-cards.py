@@ -55,23 +55,23 @@ TITLES = {
 FRAMES = {
     "v-nsfw": ("Evening market walk", "جولة في سوق المساء", "#1d1a2e", "#6b4a2a", [
         (0, "Market gate", "بوابة السوق"), (90, "Spice stalls", "أكشاك التوابل"), (195, "Crowded lane", "زقاق مزدحم"),
-        (285, "Lantern shop", "محل الفوانيس"), (380, "Sunset prayer", "أذان المغرب"),
+        (285, "Lantern shop", "محل الفوانيس"),
     ]),
     "v-risk": ("Charity drive update", "آخر أخبار حملة التبرعات", "#10283a", "#3f5a3a", [
         (0, "This month's work", "عمل هذا الشهر"), (60, "Food parcels", "السلال الغذائية"), (128, "How to donate", "طريقة التبرع"),
-        (190, "Winter appeal", "حملة الشتاء"), (240, "Thank you", "شكرًا لكم"),
+        (190, "Winter appeal", "حملة الشتاء"),
     ]),
     "v-conflict": ("Ramadan recipes", "وصفات رمضان", "#2a1a1c", "#7a4a24", [
         (0, "Ingredients", "المكونات"), (180, "Lentil soup", "شوربة العدس"), (444, "Giveaway", "مسابقة"),
-        (600, "Stuffed dates", "تمر محشو"), (720, "Kunafa", "كنافة"),
+        (600, "Stuffed dates", "تمر محشو"),
     ]),
     "v-appeal": ("Debate night", "ليلة المناظرة", "#161c33", "#4b3a5e", [
         (0, "Opening", "الافتتاح"), (600, "First speaker", "المتحدث الأول"), (1297, "Heckling", "مقاطعة"),
-        (2100, "Questions", "الأسئلة"), (3000, "Closing", "الختام"),
+        (2100, "Questions", "الأسئلة"),
     ]),
     "v-minor": ("Swimming lesson", "تعلّم السباحة", "#0b2a3f", "#1f6070", [
         (0, "Warm-up", "الإحماء"), (72, "In the pool", "في المسبح"), (150, "Floating", "الطفو"),
-        (240, "Breathing", "التنفس"), (330, "Cool-down", "الاسترخاء"),
+        (240, "Breathing", "التنفس"),
     ]),
 }
 

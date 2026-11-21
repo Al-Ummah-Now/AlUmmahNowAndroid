@@ -76,6 +76,7 @@ import net.alummahnow.core.bridge.admin.ReviewReason
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.isolate
 import net.alummahnow.design.format.joinMeta
+import net.alummahnow.design.format.listLabel
 import net.alummahnow.design.format.percentLabel
 import net.alummahnow.design.theme.FanousTokens
 
@@ -169,7 +170,7 @@ fun ReviewScreen(
                         // Creator text in its own direction (like dir="auto"), so its punctuation sits on the right side.
                         Text(subject.description, style = LocalTextStyle.current.copy(textDirection = TextDirection.Content))
                     }
-                    if (subject.tags.isNotEmpty()) Text(aunString(R.string.tags, subject.tags.joinToString(", ")))
+                    if (subject.tags.isNotEmpty()) Text(aunString(R.string.tags, listLabel(subject.tags)))
                     subject.durationSeconds?.let { Text(aunString(R.string.duration, Labels.position((it * 1000).toLong()))) }
                 }
             }
@@ -290,7 +291,7 @@ private fun FrameStrip(frames: List<ReviewFrame>, bytes: Map<String, ByteArray>,
     }
 }
 
-private val FRAME_MIN_WIDTH = 112.dp
+private val FRAME_MIN_WIDTH = 84.dp
 
 @Composable
 private fun FrameThumb(frame: ReviewFrame, bytes: ByteArray?, blurred: Boolean, width: Dp) {
