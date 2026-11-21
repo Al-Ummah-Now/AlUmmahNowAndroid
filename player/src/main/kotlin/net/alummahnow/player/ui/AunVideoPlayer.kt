@@ -53,6 +53,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
 import kotlinx.coroutines.delay
+import net.alummahnow.design.components.VideoPoster
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.durationLabel
 import net.alummahnow.design.theme.FanousTokens
@@ -61,7 +62,8 @@ import net.alummahnow.player.SeekGestures
 
 /**
  * Phone/tablet player: video, subtitles drawn in Compose (so Arabic cues get RTL alignment), and an
- * auto-hiding chrome. Double tap on the start/end third seeks ∓10 s, mirrored in RTL (spec 13.2).
+ * auto-hiding chrome. [poster] shows until the first frame is drawn. Double tap on the start/end third seeks ∓10 s,
+ * mirrored in RTL (spec 13.2).
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -71,7 +73,8 @@ fun AunVideoPlayer(
     onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier,
     showCast: Boolean = true,
-    controlsInitiallyVisible: Boolean = true
+    controlsInitiallyVisible: Boolean = true,
+    poster: String? = null
 ) {
     val ui = rememberPlayerUiState(player)
     var controlsVisible by remember { mutableStateOf(controlsInitiallyVisible) }
@@ -98,7 +101,8 @@ fun AunVideoPlayer(
                 )
             }
     ) {
-        ContentFrame(player = player, modifier = Modifier.fillMaxSize())
+        // Until the first video frame is drawn (loading, or paused before playing), the video's poster shows, not black.
+        ContentFrame(player = player, modifier = Modifier.fillMaxSize(), shutter = { Shutter(poster) })
         CueOverlay(ui, Modifier.align(Alignment.BottomCenter).padding(bottom = if (controlsVisible) 104.dp else 16.dp))
         AnimatedVisibility(visible = controlsVisible || !ui.isPlaying, enter = fadeIn(), exit = fadeOut()) {
             Chrome(
@@ -113,6 +117,13 @@ fun AunVideoPlayer(
     }
     if (settingsOpen) {
         PlayerSettingsSheet(player = player, ui = ui, onDismiss = { settingsOpen = false })
+    }
+}
+
+@Composable
+private fun Shutter(poster: String?) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        VideoPoster(poster, Modifier.fillMaxSize())
     }
 }
 
