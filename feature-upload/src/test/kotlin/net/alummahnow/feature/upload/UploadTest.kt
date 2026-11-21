@@ -50,6 +50,10 @@ class UploadTest {
         assertEquals("clip", TitlePattern.apply("", "clip.mp4", 0, today, "C"))
         assertEquals(" ", TitlePattern.apply("{title} ", "clip.mp4", 0, today, "C"))
         assertTrue(TitlePattern.apply("{date}", "a", 0, today, "C", ar).contains("نوفمبر"))
+        // Arabic titles take the app's digits, as the pad hint shows («٠١، ٠٢ …»); English keeps 0–9.
+        assertEquals("التفسير ٠٣", TitlePattern.apply("التفسير {n}", "a.mp4", 2, today, "C", ar, pad = 2))
+        assertEquals("١٠ نوفمبر ٢٠٢٦", TitlePattern.apply("{date}", "a", 0, today, "C", ar))
+        assertEquals("Tafsir 03", TitlePattern.apply("Tafsir {n}", "a.mp4", 2, today, "C", java.util.Locale.ENGLISH, pad = 2))
         assertEquals("-1", TitlePattern.number(0, start = -1))
     }
 
