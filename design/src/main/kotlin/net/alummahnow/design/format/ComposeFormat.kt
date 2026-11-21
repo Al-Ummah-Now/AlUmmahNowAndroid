@@ -110,7 +110,7 @@ private fun AunFormat.ScaleForm.pick(one: Int, dual: Int, plural: Int, singular:
 /**
  * "1.2K views" / «١٫٢ ألف مشاهدة». Small counts take the Arabic plural form of the full count («٥ مشاهدات»); a compact
  * count is counted by its scale word, so the noun stays singular («ألف مشاهدة», «٨ آلاف مشاهدة», «١٫٣ ألف مشاهدة»),
- * and exactly 2 takes the dual's construct form before the noun («ألفا مشاهدة», «مليونا مشاهدة»).
+ * and exactly 2 takes the dual's construct form before the noun («ألفا مشاهدة»). Millions are «١٫٢ م مشاهدة».
  */
 @Composable
 fun viewsLabel(views: Long): String {

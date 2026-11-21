@@ -49,10 +49,10 @@ class ViewsLabelTest {
             "٣ آلاف مشاهدة",
             "٨ آلاف مشاهدة",
             "١١ ألف مشاهدة",
-            "مليون مشاهدة",
-            "مليونا مشاهدة",
-            "٣ ملايين مشاهدة",
-            "١٥ مليون مشاهدة"
+            "١ م مشاهدة",
+            "٢ م مشاهدة",
+            "٣ م مشاهدة",
+            "١٥ م مشاهدة"
         )
         assertEquals(want, render("ar-ldrtl", counts) { viewsLabel(it) })
     }
@@ -68,7 +68,7 @@ class ViewsLabelTest {
     @Test fun chartTicks() {
         val ticks = listOf<Long>(500, 1_000, 1_500, 2_000, 3_000, 2_000_000)
         assertEquals(
-            listOf("٥٠٠", "ألف", "١٫٥ ألف", "ألفان", "٣ آلاف", "مليونان"),
+            listOf("٥٠٠", "ألف", "١٫٥ ألف", "ألفان", "٣ آلاف", "٢ م"),
             render("ar-ldrtl", ticks) { compactCount(it) }
         )
         assertEquals(listOf("500", "1K", "1.5K", "2K", "3K", "2M"), render("en-ldltr", ticks) { compactCount(it) })
