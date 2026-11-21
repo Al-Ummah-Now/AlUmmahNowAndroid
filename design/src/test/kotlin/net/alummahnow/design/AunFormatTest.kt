@@ -46,8 +46,12 @@ class AunFormatTest {
         }
     }
 
-    @Test fun `Arabic uses the Arabic separators and percent sign`() {
-        assertEquals("١٬٢٣٤٬٥٦٧", AunFormat.number(1_234_567, ar))
+    @Test fun `Arabic uses the Arabic decimal mark and percent sign, and never groups`() {
+        // Owner 2026-11-21: «٫» is the only comma-like mark in Arabic; English keeps its grouping.
+        assertEquals("١٢٣٤٥٦٧", AunFormat.number(1_234_567, ar))
+        assertEquals("٤٨٨٧", AunFormat.number(4887, ar))
+        assertEquals("١٢٣٤٫٥", AunFormat.number(1234.5, ar))
+        assertEquals("4,887", AunFormat.number(4887, en))
         assertEquals("١٢٫٥", AunFormat.number(12.5, ar))
         assertEquals("٤٢٪", AunFormat.percent(0.42, ar))
         assertEquals("١:١٥", AunFormat.duration(75, ar))
@@ -98,11 +102,13 @@ class AunFormatTest {
         assertEquals(ScaleForm.SINGULAR, form(1_310)) // «١٫٣ ألف»
         assertEquals(ScaleForm.SINGULAR, form(2_500)) // «٢٫٥ ألف»
         assertEquals(ScaleForm.SINGULAR, form(10_400)) // «١٠٫٤ ألف»
-        assertEquals(ScaleForm.ONE, form(1_000_000)) // «مليون»
-        assertEquals(ScaleForm.DUAL, form(2_000_000)) // «مليونان»
-        assertEquals(ScaleForm.SINGULAR, form(1_200_000)) // «١٫٢ مليون»
-        assertEquals(ScaleForm.PLURAL, form(3_000_000)) // «٣ ملايين»
-        assertEquals(ScaleForm.SINGULAR, form(15_000_000)) // «١٥ مليون»
+        // Millions are always «{n} م» (owner 2026-11-21).
+        assertEquals(ScaleForm.SINGULAR, form(1_000_000)) // «١ م»
+        assertEquals(ScaleForm.SINGULAR, form(2_000_000)) // «٢ م»
+        assertEquals(ScaleForm.SINGULAR, form(1_200_000)) // «١٫٢ م»
+        assertEquals(ScaleForm.SINGULAR, form(3_000_000)) // «٣ م»
+        assertEquals(ScaleForm.SINGULAR, form(15_000_000)) // «١٥ م»
+        assertEquals(ScaleForm.DUAL, form(2_000_000_000)) // «ملياران»
     }
 
     @Test fun `Arabic meta lines use a bullet, because the middle dot reads as zero`() {

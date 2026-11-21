@@ -46,6 +46,7 @@ import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.components.Thumbnail
 import net.alummahnow.design.components.fanousMaterial
 import net.alummahnow.design.format.aunPlural
+import net.alummahnow.design.format.compactCount
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.numberLabel
 import net.alummahnow.design.theme.FanousTokens
@@ -299,9 +300,12 @@ private fun CommentsSection(modifier: Modifier, section: DashboardSection<Commen
     }
 }
 
-/** A count: the number large, the status under it, on the card material; `alert` turns the number red. */
+/**
+ * A count: the number large, the status under it, on the card material; `alert` turns the number red. A count of 1,000 or
+ * more is compact ("4.8K", «٤٫٨ ألف»; owner 2026-11-21); `exact` keeps a measure such as watch hours whole.
+ */
 @Composable
-fun StatTile(label: String, value: Number, modifier: Modifier = Modifier, alert: Boolean = false) {
+fun StatTile(label: String, value: Number, modifier: Modifier = Modifier, alert: Boolean = false, exact: Boolean = false) {
     val f = LocalFanous.current
     Column(
         modifier
@@ -311,7 +315,7 @@ fun StatTile(label: String, value: Number, modifier: Modifier = Modifier, alert:
     ) {
         // Fixed line heights: the Arabic font's taller metrics otherwise make Arabic tiles taller than English ones.
         Text(
-            numberLabel(value.toLong()),
+            if (exact || value.toLong() < COMPACT_FROM) numberLabel(value.toLong()) else compactCount(value.toLong()),
             fontSize = 26.sp,
             lineHeight = 32.sp,
             style = LocalTextStyle.current.copy(lineHeightStyle = TIGHT),
@@ -330,5 +334,6 @@ fun StatTile(label: String, value: Number, modifier: Modifier = Modifier, alert:
 private val WIDE = 840.dp
 private val MEDIUM = 520.dp
 private const val STATUSES = 5
+private const val COMPACT_FROM = 1_000L
 private const val NARROW_DP = 400
 private val TIGHT = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)

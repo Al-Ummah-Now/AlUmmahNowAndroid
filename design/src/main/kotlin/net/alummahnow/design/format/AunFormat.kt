@@ -17,7 +17,9 @@ import java.util.Locale
  * file size and amount of money that people see goes through here (a CI guard, `scripts/check-display-format.py`,
  * rejects display formatting anywhere else).
  *
- * Owner decision (2026-11-15): in Arabic the apps show Eastern Arabic (Hindi) numerals ٠–٩ everywhere. The digits do
+ * Owner decisions (2026-11-15, 2026-11-21): in Arabic the apps show Eastern Arabic (Hindi) numerals ٠–٩ everywhere, never
+ * grouped («٤٨٨٧», «١٢٣٤٫٥»): in most Arabic UI fonts a thousands mark «٬» looks like the decimal mark «٫», so «٫» is the
+ * only comma-like mark. English keeps "4,887". The digits do
  * not depend on the device region or numbering settings: Arabic formatting always uses the `arab` numbering system
  * (`ar-u-nu-arab`) with explicit symbols, and English keeps Arabic numerals 0–9. Codes, ids, URLs, version numbers
  * and text people type stay as typed; [normalizeDigits] turns ٠–٩ typed into numeric fields into 0–9.
@@ -28,7 +30,6 @@ object AunFormat {
     private const val EASTERN_ZERO = '٠'
     private const val EXTENDED_ZERO = '۰'
     private const val ARABIC_DECIMAL = '٫'
-    private const val ARABIC_GROUPING = '٬'
     private const val ARABIC_PERCENT = '٪'
 
     /** Arabic UI → Eastern Arabic (Hindi) numerals. */
@@ -88,7 +89,6 @@ object AunFormat {
                 zeroDigit = EASTERN_ZERO
                 decimalSeparator = ARABIC_DECIMAL
                 monetaryDecimalSeparator = ARABIC_DECIMAL
-                groupingSeparator = ARABIC_GROUPING
                 percent = ARABIC_PERCENT
             }
         } else {
@@ -99,9 +99,10 @@ object AunFormat {
         DecimalFormat(pattern, symbols(locale)).apply {
             minimumFractionDigits = minFraction
             maximumFractionDigits = maxFraction
+            if (isArabic(locale)) isGroupingUsed = false
         }
 
-    /** 1234 → "1,234" / "١٬٢٣٤". */
+    /** 1234 → "1,234" / "١٢٣٤". */
     fun number(value: Long, locale: Locale, grouping: Boolean = true): String =
         decimalFormat(locale, if (grouping) "#,##0" else "0", 0, 0).format(value)
 
@@ -150,6 +151,8 @@ object AunFormat {
         val truncated = kotlin.math.floor(value * 10) / 10
         val whole = truncated == kotlin.math.floor(truncated)
         val form = when {
+            // Millions are always «{n} م» («١ م», «١٫٢ م»; owner 2026-11-21): no word forms to agree with.
+            scale == Scale.MILLION -> ScaleForm.SINGULAR
             whole && truncated == ONE_SCALE -> ScaleForm.ONE
             whole && truncated == DUAL_SCALE -> ScaleForm.DUAL
             whole && truncated in PLURAL_SCALE_MIN..PLURAL_SCALE_MAX -> ScaleForm.PLURAL
