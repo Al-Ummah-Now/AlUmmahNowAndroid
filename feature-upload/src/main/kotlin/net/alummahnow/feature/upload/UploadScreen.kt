@@ -487,6 +487,8 @@ private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> U
             if (item.isActive || item.phase == UploadPhase.PAUSED) {
                 LinearProgressIndicator(
                     progress = { item.fraction },
+                    // The theme's divider colour: the default track (surfaceRaised) is white on the light card.
+                    trackColor = MaterialTheme.colorScheme.outlineVariant,
                     modifier = Modifier.fillMaxWidth().semantics { stateDescription = percentText }
                 )
             }
