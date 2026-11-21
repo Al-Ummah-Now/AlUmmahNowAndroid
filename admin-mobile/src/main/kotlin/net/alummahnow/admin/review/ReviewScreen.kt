@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -14,10 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -40,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -60,6 +59,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import java.time.Instant
@@ -247,7 +247,12 @@ private fun MediaBlock(detail: ReviewDetail, state: ReviewUiState, blurred: Bool
                 }
             }
         }
-        stream != null -> PrivateVideoPlayer(stream.url)
+        stream != null -> {
+            // The poster is the video's opening frame (sharp: this item is not blurred), until the stream draws.
+            val opening = detail.frames.minByOrNull { it.atMs }?.let { state.frames[it.key] }
+            val poster = remember(opening) { opening?.let { PrivateMedia.decode(it, blurred = false)?.asImageBitmap() } }
+            PrivateVideoPlayer(stream.url, poster = poster)
+        }
         else -> Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.no_stream), modifier = Modifier.padding(FanousTokens.Spacing.lg))
         }
@@ -269,28 +274,37 @@ private fun FrameStrip(frames: List<ReviewFrame>, bytes: Map<String, ByteArray>,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = FanousTokens.Spacing.lg).semantics { heading() }
         )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = FanousTokens.Spacing.lg),
-            modifier = Modifier.testTag("frames")
-        ) {
-            items(frames, key = { it.key }) { frame -> FrameThumb(frame, bytes[frame.key], blurred) }
+        // Every frame whole, in rows that fill the width: none is cut at the screen edge.
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = FanousTokens.Spacing.lg).testTag("frames")) {
+            val gap = FanousTokens.Spacing.sm
+            val perRow = ((maxWidth + gap) / (FRAME_MIN_WIDTH + gap)).toInt().coerceAtLeast(2)
+            val width = (maxWidth - gap * (perRow - 1)) / perRow
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(gap),
+                verticalArrangement = Arrangement.spacedBy(gap),
+                maxItemsInEachRow = perRow
+            ) {
+                frames.forEach { frame -> key(frame.key) { FrameThumb(frame, bytes[frame.key], blurred, width) } }
+            }
         }
     }
 }
 
+private val FRAME_MIN_WIDTH = 112.dp
+
 @Composable
-private fun FrameThumb(frame: ReviewFrame, bytes: ByteArray?, blurred: Boolean) {
+private fun FrameThumb(frame: ReviewFrame, bytes: ByteArray?, blurred: Boolean, width: Dp) {
     val label = buildString {
-        append(aunString(R.string.frame_at, Labels.position(frame.atMs)))
+        append(aunString(R.string.frame_at, isolate(Labels.position(frame.atMs))))
         if (frame.flagged) append(", ").append(aunString(R.string.frame_flagged, frame.category?.let { Labels.category(it) } ?: ""))
         if (blurred) append(", ").append(stringResource(R.string.frame_blurred))
     }
     val bitmap = remember(bytes, blurred) { bytes?.let { PrivateMedia.decode(it, blurred)?.asImageBitmap() } }
-    Column(Modifier.width(128.dp).semantics(mergeDescendants = true) { contentDescription = label }) {
+    Column(Modifier.width(width).semantics(mergeDescendants = true) { contentDescription = label }) {
         Box(
             Modifier
-                .size(128.dp, 72.dp)
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
                 .background(Color.Black)
                 .let { if (frame.flagged) it.border(BorderStroke(3.dp, MaterialTheme.colorScheme.error)) else it }
         ) {
@@ -316,7 +330,8 @@ private fun FindingRow(finding: ReviewFinding, blurred: Boolean) {
                 Labels.category(finding.category),
                 percentLabel(finding.score),
                 Labels.source(finding.source),
-                finding.atMs?.let { aunString(R.string.at_position, Labels.position(it)) }
+                // The time is an isolate after a no-break space: «عند ٠:٤٢» keeps its order, "at 0:42" never wraps apart.
+                finding.atMs?.let { aunString(R.string.at_position, isolate(Labels.position(it))) }
             ),
             style = MaterialTheme.typography.bodyMedium
         )

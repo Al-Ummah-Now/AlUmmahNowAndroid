@@ -1,6 +1,8 @@
 package net.alummahnow.admin.media
 
+import android.content.Context
 import androidx.annotation.OptIn
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,9 +29,12 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.media3.common.MediaItem
@@ -45,15 +50,23 @@ import net.alummahnow.player.SeekGestures
 private val SPEEDS = listOf(1f, 1.5f, 2f, 3f)
 
 /**
+ * Makes the review player: [PrivateMedia.newPlayer] in the app. Screenshot tests provide a paused player instead, as
+ * Robolectric cannot stream.
+ */
+val LocalReviewPlayerFactory = staticCompositionLocalOf<(Context) -> Player> { { PrivateMedia.newPlayer(it) } }
+
+/**
  * The review player: streams [url] (short-lived, signed, held only by this composable) through [PrivateMedia]. The
- * player is released when the item closes; nothing is cached or downloaded.
+ * player is released when the item closes; nothing is cached or downloaded. [poster] (the first frame, decoded in
+ * memory) shows until the video draws its first frame.
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun PrivateVideoPlayer(url: String, modifier: Modifier = Modifier) {
+fun PrivateVideoPlayer(url: String, modifier: Modifier = Modifier, poster: ImageBitmap? = null) {
     val context = LocalContext.current
+    val factory = LocalReviewPlayerFactory.current
     val player = remember(url) {
-        PrivateMedia.newPlayer(context).apply {
+        factory(context).apply {
             setMediaItem(MediaItem.fromUri(url))
             prepare()
         }
@@ -73,7 +86,13 @@ fun PrivateVideoPlayer(url: String, modifier: Modifier = Modifier) {
     LaunchedEffect(speed) { player.setPlaybackSpeed(speed) }
     Column(modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
-            ContentFrame(player = player, modifier = Modifier.fillMaxSize())
+            ContentFrame(player = player, modifier = Modifier.fillMaxSize(), shutter = {
+                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                    if (poster != null) {
+                        Image(poster, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
+                }
+            })
         }
         Row(
             Modifier.fillMaxWidth(),

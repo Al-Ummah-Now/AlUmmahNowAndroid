@@ -13,8 +13,13 @@ bottom-left in Arabic). Long titles shrink, then wrap to two lines; they never r
 Titles and colours come from TITLES below; keep them in step with the test fakes (StudioLibrary.kt, feature-home,
 feature-watch and feature-studio Fakes.kt, DesignScreenshotTest.kt).
 
+The Admin review frames ("frames, flagged first") use the same card style: FRAMES below gives each fixture review video
+(FixtureReviewService) a card per frame time, its title with the scene under it, written to
+admin-mobile/src/test/resources/frames/<subject>-<second>.jpg and .en.jpg. The glow moves from frame to frame.
+
 Needs macOS: headless Google Chrome draws each card and `sips` encodes the JPEG.
-Usage: scripts/title-cards.py [repo root]
+Usage: scripts/title-cards.py [repo root]           (every card)
+       scripts/title-cards.py --frames [repo root]  (only the Admin review frames)
 """
 import html
 import pathlib
@@ -23,7 +28,8 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parent.parent)
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+ROOT = pathlib.Path(ARGS[0] if ARGS else pathlib.Path(__file__).resolve().parent.parent)
 MODULES = ["design", "feature-home", "feature-watch", "feature-studio", "studio-mobile"]
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
@@ -45,6 +51,30 @@ TITLES = {
     "tafsir": ("Introduction to Tafsir", "مقدمة في التفسير", "#0b2a3c", "#26403d"),
 }
 
+# subject: (English title, Arabic title, top-start colour, bottom-end colour, [(second, English scene, Arabic scene)])
+FRAMES = {
+    "v-nsfw": ("Evening market walk", "جولة في سوق المساء", "#1d1a2e", "#6b4a2a", [
+        (0, "Market gate", "بوابة السوق"), (90, "Spice stalls", "أكشاك التوابل"), (195, "Crowded lane", "زقاق مزدحم"),
+        (285, "Lantern shop", "محل الفوانيس"), (380, "Sunset prayer", "أذان المغرب"),
+    ]),
+    "v-risk": ("Charity drive update", "آخر أخبار حملة التبرعات", "#10283a", "#3f5a3a", [
+        (0, "This month's work", "عمل هذا الشهر"), (60, "Food parcels", "السلال الغذائية"), (128, "How to donate", "طريقة التبرع"),
+        (190, "Winter appeal", "حملة الشتاء"), (240, "Thank you", "شكرًا لكم"),
+    ]),
+    "v-conflict": ("Ramadan recipes", "وصفات رمضان", "#2a1a1c", "#7a4a24", [
+        (0, "Ingredients", "المكونات"), (180, "Lentil soup", "شوربة العدس"), (444, "Giveaway", "مسابقة"),
+        (600, "Stuffed dates", "تمر محشو"), (720, "Kunafa", "كنافة"),
+    ]),
+    "v-appeal": ("Debate night", "ليلة المناظرة", "#161c33", "#4b3a5e", [
+        (0, "Opening", "الافتتاح"), (600, "First speaker", "المتحدث الأول"), (1297, "Heckling", "مقاطعة"),
+        (2100, "Questions", "الأسئلة"), (3000, "Closing", "الختام"),
+    ]),
+    "v-minor": ("Swimming lesson", "تعلّم السباحة", "#0b2a3f", "#1f6070", [
+        (0, "Warm-up", "الإحماء"), (72, "In the pool", "في المسبح"), (150, "Floating", "الطفو"),
+        (240, "Breathing", "التنفس"), (330, "Cool-down", "الاسترخاء"),
+    ]),
+}
+
 PAGE = """<!doctype html>
 <html lang="{lang}" dir="{dir}"><head><meta charset="utf-8"><style>
   html, body {{ margin: 0; overflow: hidden; background: #000; }}
@@ -61,8 +91,9 @@ PAGE = """<!doctype html>
     white-space: nowrap;
   }}
   .rule {{ display: block; width: 56px; height: 3px; margin-top: 12px; background: #e6a744; border-radius: 1.5px; }}
+  .scene {{ display: block; margin-top: 14px; font-size: 20px; font-weight: 600; color: #f2dcae; }}
 </style></head>
-<body><div class="card"><div class="title"><span id="t">{title}</span><span class="rule"></span></div></div>
+<body><div class="card"><div class="title"><span id="t">{title}</span><span class="rule"></span>{scene}</div></div>
 <script>
   // Shrink a long title to fit one line; below MIN it wraps to two lines instead.
   const box = document.querySelector('.title'), t = document.getElementById('t'), MAX = 29, MIN = 22, WRAP = 25;
@@ -79,7 +110,7 @@ FONTS = {
 }
 
 
-def page(lang: str, title: str, c0: str, c1: str) -> str:
+def page(lang: str, title: str, c0: str, c1: str, scene: str = "", glow: int | None = None) -> str:
     arabic = lang == "ar"
     return PAGE.format(
         lang=lang,
@@ -88,12 +119,13 @@ def page(lang: str, title: str, c0: str, c1: str) -> str:
         h=HEIGHT,
         scale=SCALE,
         # The glow sits behind the title's start edge: right in Arabic, left in English.
-        glow_x=72 if arabic else 28,
+        glow_x=glow if glow is not None else (72 if arabic else 28),
         angle=135 if arabic else 225,
         c0=c0,
         c1=c1,
         font=FONTS[lang],
         title=html.escape(title),
+        scene=f'<span class="scene">{html.escape(scene)}</span>' if scene else "",
     )
 
 
@@ -128,7 +160,34 @@ def main() -> None:
         for jpg in sorted(out.glob("*.jpg")):
             shutil.copyfile(jpg, dest / jpg.name)
     print(f"{len(TITLES) * 2} cards in {len(MODULES)} modules")
+    frames()
+
+
+def frames() -> None:
+    out = ROOT / "admin-mobile/src/test/resources/frames"
+    out.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        work = pathlib.Path(tmp)
+        for subject, (en, ar, c0, c1, scenes) in FRAMES.items():
+            for i, (second, scene_en, scene_ar) in enumerate(scenes):
+                for lang, title, scene, suffix in (("ar", ar, scene_ar, ".jpg"), ("en", en, scene_en, ".en.jpg")):
+                    # The glow drifts across the frames of one video, so no two frames look the same.
+                    glow = (80 - i * 15) if lang == "ar" else (20 + i * 15)
+                    src, png = work / f"{subject}-{second}-{lang}.html", work / f"{subject}-{second}-{lang}.png"
+                    src.write_text(page(lang, title, c0, c1, scene, glow), encoding="utf-8")
+                    render(src, png)
+                    subprocess.run(
+                        ["sips", "-s", "format", "jpeg", "-s", "formatOptions", str(JPEG_QUALITY), str(png),
+                         "--out", str(out / f"{subject}-{second}{suffix}")],
+                        check=True, stdout=subprocess.DEVNULL,
+                    )
+                    count += 1
+    print(f"{count} review frames in admin-mobile")
 
 
 if __name__ == "__main__":
-    main()
+    if "--frames" in sys.argv:
+        frames()
+    else:
+        main()
