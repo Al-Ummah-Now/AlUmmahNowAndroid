@@ -8,16 +8,14 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.time.LocalDate
 import java.time.ZonedDateTime
-import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.core.bridge.studio.CreatorAccess
-import net.alummahnow.core.bridge.studio.DailyMetric
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.UploadPhase.DONE
 import net.alummahnow.core.bridge.studio.UploadPhase.UPLOADING
-import net.alummahnow.core.bridge.studio.VideoStat
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.analytics.AnalyticsScreen
@@ -29,6 +27,7 @@ import net.alummahnow.feature.studio.dashboard.DashboardScreen
 import net.alummahnow.feature.studio.dashboard.DashboardUiState
 import net.alummahnow.feature.upload.PickedFile
 import net.alummahnow.feature.upload.SetForAll
+import net.alummahnow.feature.upload.TitlePattern
 import net.alummahnow.feature.upload.UploadActions
 import net.alummahnow.feature.upload.UploadScreen
 import net.alummahnow.feature.upload.UploadUiState
@@ -52,32 +51,8 @@ class StoreScreenshots {
 
     private val dashboard = DashboardUiState.Content(CreatorAccess(true, false, null), StudioLibrary.counts)
 
-    private val analytics = AnalyticsUiState(
-        loading = false,
-        data = ChannelAnalytics(
-            totalViews = 24_674,
-            totalVideos = StudioLibrary.published.size.toLong(),
-            totalSubscribers = 412,
-            totalLikes = 1_980,
-            totalComments = 133,
-            avgViewsPerVideo = 4_998.0,
-            engagementRate = 8.2,
-            topVideos = listOf(
-                VideoStat("v2", "Ramadan reminders", null, 11_820, 800, 90, 360_000, 40.0, mapOf("ar" to "تذكيرات رمضان")),
-                VideoStat("v4", "Surat Al-Kahf recitation", null, 7_930, 610, 41, 540_000, 1_355.0, mapOf("ar" to "تلاوة سورة الكهف")),
-                VideoStat("v3", "Fiqh of Prayer", null, 2_120, 160, 12, 410_000, 1_420.0, mapOf("ar" to "فقه الصلاة")),
-                VideoStat("v1", "Introduction to Tafsir", null, 1_504, 150, 40, 300_000, 640.0, mapOf("ar" to "مقدمة في التفسير")),
-                VideoStat("v5", "Friday khutbah: patience", null, 1_300, 140, 18, 280_000, 760.0, mapOf("ar" to "خطبة الجمعة: الصبر"))
-            ),
-            // The five videos went up in September (StudioLibrary) with 26,040 lifetime views; these are their October views,
-            // each below its lifetime count, adding up to totalViews.
-            // October 2026: weekly rhythm (Fridays highest), noise, two spikes; adds up to totalViews (24,674).
-            daily = listOf(
-                755L, 1015L, 908L, 704L, 659L, 674L, 684L, 814L, 1809L, 910L, 732L, 631L, 709L, 819L,
-                788L, 1114L, 979L, 891L, 718L, 733L, 872L, 806L, 1880L, 956L, 801L, 684L, 748L, 881L
-            ).mapIndexed { i, v -> DailyMetric("2026-10-%02d".format(i + 1), v, v * 7 / 100, v / 90, v / 120, v * 240) }
-        )
-    )
+    // October analytics of the same videos (BrandChannel): each video's October views are below its lifetime views.
+    private val analytics = AnalyticsUiState(loading = false, data = StudioLibrary.analytics)
 
     /** The upload in progress, written in the frame's language (file names, title pattern, tags, playlists, queue). */
     private fun upload(arabic: Boolean) = UploadUiState(
@@ -106,8 +81,12 @@ class StoreScreenshots {
     @Composable
     private fun UploadInLanguage() {
         val arabic = currentLocale().language == "ar"
-        val titles = if (arabic) listOf("سورة الكهف 01", "سورة الكهف 02") else listOf("Surat Al-Kahf 01", "Surat Al-Kahf 02")
-        UploadScreen(upload(arabic), titles, uploadActions)
+        val state = upload(arabic)
+        // Titles from the pattern, with the frame language's digits («سورة الكهف ٠١», "Surat Al-Kahf 01").
+        val titles = state.files.indices.map { i ->
+            TitlePattern.apply(state.form.titlePattern, state.files[i].name, i, LocalDate.of(2026, 11, 21), "", currentLocale(), pad = 2)
+        }
+        UploadScreen(state, titles, uploadActions)
     }
 
     private val contentActions = ContentActions(
