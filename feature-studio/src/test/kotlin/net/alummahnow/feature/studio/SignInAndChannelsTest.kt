@@ -137,7 +137,7 @@ class SignInAndChannelsTest {
         DashboardScreen(
             DashboardUiState.Content(
                 net.alummahnow.core.bridge.studio.CreatorAccess(true, false, null),
-                net.alummahnow.core.bridge.studio.ContentCounts(12, 2, 3, 1, 1)
+                net.alummahnow.fixtures.BrandChannel.counts
             ),
             {}
         )

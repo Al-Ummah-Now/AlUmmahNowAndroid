@@ -16,6 +16,8 @@ android {
         System.getenv("QA_SEED_PASSWORD")?.takeIf { it.isNotBlank() }?.let { testInstrumentationRunnerArguments["qaPassword"] = it }
     }
     androidResources { generateLocaleConfig = true }
+    // The brand channel's screenshot fixtures: one source of videos, views and dates for every module that draws them.
+    sourceSets.getByName("test").kotlin.directories.add("../core-bridge/src/test/fixtures")
     // Public native OAuth clients ("Studio (iOS / Android)", PKCE required). Client ids are not secrets.
     productFlavors {
         getByName("qa") {

@@ -18,7 +18,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.alummahnow.core.bridge.CoreError
-import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.core.bridge.studio.StudioError
@@ -34,6 +33,7 @@ import net.alummahnow.feature.studio.content.ContentViewModel
 import net.alummahnow.feature.studio.dashboard.DashboardScreen
 import net.alummahnow.feature.studio.dashboard.DashboardUiState
 import net.alummahnow.feature.studio.features.StudioFeaturesViewModel
+import net.alummahnow.fixtures.BrandChannel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -238,34 +238,14 @@ class HiddenFeaturesTest {
         compose.onAllNodesWithTag("dashboard-upload-ok").assertCountEquals(0)
     }
 
-    // The tiles and the lists agree: one draft and one scheduled video, each listed in its section.
-    private val draft = net.alummahnow.core.bridge.studio.StudioVideo(
-        "d1",
-        "Patience in hardship",
-        titleLocalized = mapOf("ar" to "الصبر عند الشدائد"),
-        thumbnailUrl = "${FIXTURE_THUMBS}patience.jpg",
-        durationSeconds = 980.0,
-        status = ContentStatus.DRAFTS,
-        isDraft = true,
-        createdAt = "2026-11-03T10:00:00Z"
-    )
-    private val scheduledVideo = net.alummahnow.core.bridge.studio.StudioVideo(
-        "s1",
-        "Tafsir of Surah Al-Kahf, part 2",
-        titleLocalized = mapOf("ar" to "تفسير سورة الكهف، الجزء الثاني"),
-        thumbnailUrl = "${FIXTURE_THUMBS}kahf2.jpg",
-        durationSeconds = 2_340.0,
-        status = ContentStatus.SCHEDULED,
-        createdAt = "2026-11-07T10:00:00Z"
-    )
-
+    // The brand channel (BrandChannel): the tiles count the lists the cards show, one draft and one scheduled video.
     private fun dashboard(canUpload: Boolean) = DashboardUiState.Content(
         CreatorAccess(canUpload, false, null),
-        ContentCounts(published = 12, scheduled = 1, drafts = 1),
-        recent = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(sampleVideos.take(2)),
-        comments = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(net.alummahnow.core.bridge.studio.CommentsSummary(0, 4)),
-        drafts = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(listOf(draft)),
-        scheduled = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(listOf(scheduledVideo))
+        BrandChannel.counts,
+        recent = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(libraryVideos.take(3)),
+        comments = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(BrandChannel.comments),
+        drafts = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(listOf(BrandChannel.studioDraft)),
+        scheduled = net.alummahnow.feature.studio.dashboard.DashboardSection.Ready(listOf(BrandChannel.studioScheduled))
     )
 
     private val noop = ContentActions(
@@ -275,7 +255,7 @@ class HiddenFeaturesTest {
 
     // --- Screenshots: the real screens without the hidden parts ---
 
-    private val contentOff = ContentUiState(videos = sampleVideos, loading = false, softDelete = false)
+    private val contentOff = ContentUiState(videos = libraryVideos, loading = false, softDelete = false)
     private val dashboardOff = @androidx.compose.runtime.Composable { DashboardScreen(dashboard(false), {}) }
 
     @Test fun contentNoDeletedEnLight() = shoot("content_no_deleted", Lang.EN, ThemeMode.LIGHT) { ContentScreen(contentOff, noop) }

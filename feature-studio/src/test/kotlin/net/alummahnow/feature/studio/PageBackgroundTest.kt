@@ -6,7 +6,6 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.FanousTheme
@@ -19,6 +18,7 @@ import net.alummahnow.feature.studio.content.ContentScreen
 import net.alummahnow.feature.studio.content.ContentUiState
 import net.alummahnow.feature.studio.dashboard.DashboardScreen
 import net.alummahnow.feature.studio.dashboard.DashboardUiState
+import net.alummahnow.fixtures.BrandChannel
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -54,9 +54,9 @@ class PageBackgroundTest {
     }
 
     private val dashboard = @Composable {
-        DashboardScreen(DashboardUiState.Content(CreatorAccess(true, false, null), ContentCounts(12, 1, 1, 0, 0)), {})
+        DashboardScreen(DashboardUiState.Content(CreatorAccess(true, false, null), BrandChannel.counts), {})
     }
-    private val content = @Composable { ContentScreen(ContentUiState(videos = sampleVideos, loading = false), noop) }
+    private val content = @Composable { ContentScreen(ContentUiState(videos = libraryVideos, loading = false), noop) }
     private val analytics = @Composable { AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {}) }
 
     @Test fun dashboardDark() = check(ThemeMode.DARK, dashboard)
