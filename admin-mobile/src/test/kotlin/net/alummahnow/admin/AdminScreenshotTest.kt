@@ -2,10 +2,12 @@ package net.alummahnow.admin
 
 import android.provider.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
+import net.alummahnow.admin.media.LocalReviewPlayerFactory
 import net.alummahnow.admin.push.PushState
 import net.alummahnow.admin.queue.QueueScreen
 import net.alummahnow.admin.queue.QueueUiState
@@ -20,9 +22,11 @@ import net.alummahnow.admin.ui.SignInState
 import net.alummahnow.core.bridge.admin.FixtureReviewService
 import net.alummahnow.core.bridge.admin.ReviewDetail
 import net.alummahnow.core.bridge.admin.ReviewItem
+import net.alummahnow.core.bridge.admin.ReviewStream
 import net.alummahnow.core.bridge.admin.ReviewTab
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
+import net.alummahnow.fixtures.PausedPlayer
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
@@ -66,9 +70,29 @@ class AdminScreenshotTest {
         "Swimming lesson" to "تعلّم السباحة",
         "Sports Club" to "النادي الرياضي",
         "Morning reminder" to "تذكير الصباح",
-        "A short description from the creator." to "وصف قصير من صاحب المرئي.",
+        "A slow walk through the old city's evening market: spice stalls, lanterns and the call to prayer at sunset." to
+            "جولة هادئة في سوق المساء بالمدينة القديمة: أكشاك التوابل والفوانيس وأذان المغرب.",
+        "Where your donations went this month, and how to join the winter appeal." to
+            "أين ذهبت تبرعاتكم هذا الشهر، وكيف تشاركون في حملة الشتاء.",
+        "Three quick iftar dishes from our family kitchen: lentil soup, stuffed dates and kunafa." to
+            "ثلاثة أطباق سريعة للإفطار من مطبخ العائلة: شوربة العدس والتمر المحشو والكنافة.",
+        "The student union's open debate on free speech, recorded live in the main hall." to
+            "مناظرة اتحاد الطلبة المفتوحة عن حرية التعبير، مسجّلة مباشرة في القاعة الكبرى.",
+        "Week three of the beginners' swimming class: floating and breathing." to
+            "الأسبوع الثالث من دروس السباحة للمبتدئين: الطفو والتنفس.",
         "Donate now, limited time" to "تبرّع الآن، لفترة محدودة",
-        "community" to "المجتمع",
+        "Free iftar box for every viewer" to "سلة إفطار مجانية لكل مشاهد",
+        "Sit down, nobody wants to hear you" to "اجلس، لا أحد يريد سماعك",
+        "travel" to "سفر",
+        "old city" to "المدينة القديمة",
+        "charity" to "تبرعات",
+        "winter appeal" to "حملة الشتاء",
+        "ramadan" to "رمضان",
+        "recipes" to "وصفات",
+        "debate" to "مناظرة",
+        "campus" to "الجامعة",
+        "swimming" to "سباحة",
+        "sport" to "رياضة",
         "Amina" to "آمنة",
         "Fixture Senior" to "مراجع أول",
         "Fixture Reviewer" to "مراجع"
@@ -111,18 +135,34 @@ class AdminScreenshotTest {
         )
     }
 
+    /**
+     * A review as the reviewer sees it once the stream has loaded: the frames are title-card art of the video in the
+     * frame's language (scripts/title-cards.py), and the player is ready and paused on the opening frame.
+     */
     private fun review(id: String, lang: Lang, message: ReviewMessage? = null) = @Composable {
-        val detail = runBlocking { fixture.detail(id) }.inLang(lang)
-        val frames = detail.frames.associate { it.key to runBlocking { fixture.media(id, it.key) } }
-        ReviewScreen(
-            ReviewUiState(loading = false, detail = detail, frames = frames, message = message),
-            now = now,
-            online = true,
-            onShow = {},
-            onDecide = {},
-            onDismissMessage = {},
-            onRetry = {}
-        )
+        val fixed = runBlocking { fixture.detail(id) }
+        val detail = fixed.inLang(lang).copy(stream = ReviewStream("https://stream.fixture.invalid/${fixed.item.subjectId}/master.m3u8"))
+        val frames = detail.frames.associate { it.key to frameArt(it.key, lang) }
+        val durationMs = ((detail.subject?.durationSeconds ?: 0.0) * MS_PER_S).toLong()
+        CompositionLocalProvider(LocalReviewPlayerFactory provides { PausedPlayer(id, durationMs) }) {
+            ReviewScreen(
+                ReviewUiState(loading = false, detail = detail, frames = frames, message = message),
+                now = now,
+                online = true,
+                onShow = {},
+                onDecide = {},
+                onDismissMessage = {},
+                onRetry = {}
+            )
+        }
+    }
+
+    /** "review/v-risk/r1/frame-128.jpg" → the frames/v-risk-128 card in [lang], as bytes (frames load into memory). */
+    private fun frameArt(key: String, lang: Lang): ByteArray {
+        val (subject, second) = requireNotNull(FRAME_KEY.matchEntire(key)) { "Unexpected frame key $key" }.destructured
+        val name = "/frames/$subject-$second${if (lang == Lang.AR) "" else ".en"}.jpg"
+        return requireNotNull(javaClass.getResourceAsStream(name)) { "No frame art $name: run scripts/title-cards.py --frames" }
+            .use { it.readBytes() }
     }
 
     private fun settings(lang: Lang) = @Composable {
@@ -195,4 +235,9 @@ class AdminScreenshotTest {
     @Test fun settingsEn() = shoot("settings", Lang.EN, ThemeMode.LIGHT, content = settings(Lang.EN))
 
     @Test fun settingsAr() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR))
+
+    private companion object {
+        val FRAME_KEY = Regex("""review/([^/]+)/r1/frame-(\d+)\.jpg""")
+        const val MS_PER_S = 1_000.0
+    }
 }

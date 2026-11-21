@@ -13,6 +13,8 @@ if (firebaseConfigured) apply(plugin = "com.google.gms.google-services")
 
 android {
     namespace = "net.alummahnow.admin"
+    // A paused player for the screenshot tests (the review player in its settled state).
+    sourceSets.getByName("test").kotlin.directories.add("../player/src/test/fixtures")
     defaultConfig {
         // Internal app (AUN-ADMIN-NATIVE AD10): Play internal testing only. No GitHub Releases, no public APK.
         applicationId = "net.alummahnow.admin"
