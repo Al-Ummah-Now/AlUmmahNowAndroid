@@ -22,23 +22,28 @@ import org.robolectric.annotation.GraphicsMode
 class HomeScreenshotTest {
     @get:Rule val compose = createComposeRule()
 
-    private val content = HomeUiState.Content(listOf(Rail(RailKind.TRENDING, sampleVideos), Rail(RailKind.RECENT, recentVideos)))
+    /** The brand channel is named in the frame's language. */
+    private fun content(lang: Lang) = HomeUiState.Content(
+        listOf(Rail(RailKind.TRENDING, sampleVideos.inLang(lang)), Rail(RailKind.RECENT, recentVideos.inLang(lang)))
+    )
 
-    private fun home(state: HomeUiState = content) = @androidx.compose.runtime.Composable {
+    private fun home(state: HomeUiState) = @androidx.compose.runtime.Composable {
         HomeScreen(state, onVideoClick = {}, onRetry = {}, onOpenSettings = {})
     }
 
-    @Test fun phoneEnDark() = shoot("home", Lang.EN, ThemeMode.DARK, content = home())
+    private fun home(lang: Lang) = home(content(lang))
 
-    @Test fun phoneEnLight() = shoot("home", Lang.EN, ThemeMode.LIGHT, content = home())
+    @Test fun phoneEnDark() = shoot("home", Lang.EN, ThemeMode.DARK, content = home(Lang.EN))
 
-    @Test fun phoneArDark() = shoot("home", Lang.AR, ThemeMode.DARK, content = home())
+    @Test fun phoneEnLight() = shoot("home", Lang.EN, ThemeMode.LIGHT, content = home(Lang.EN))
 
-    @Test fun phoneArLight() = shoot("home", Lang.AR, ThemeMode.LIGHT, content = home())
+    @Test fun phoneArDark() = shoot("home", Lang.AR, ThemeMode.DARK, content = home(Lang.AR))
 
-    @Test fun tabletEnDark() = shoot("home", Lang.EN, ThemeMode.DARK, Device.TABLET, home())
+    @Test fun phoneArLight() = shoot("home", Lang.AR, ThemeMode.LIGHT, content = home(Lang.AR))
 
-    @Test fun tabletArLight() = shoot("home", Lang.AR, ThemeMode.LIGHT, Device.TABLET, home())
+    @Test fun tabletEnDark() = shoot("home", Lang.EN, ThemeMode.DARK, Device.TABLET, home(Lang.EN))
+
+    @Test fun tabletArLight() = shoot("home", Lang.AR, ThemeMode.LIGHT, Device.TABLET, home(Lang.AR))
 
     @Test fun errorAr() = shoot("home_error", Lang.AR, ThemeMode.DARK, content = home(HomeUiState.Error(ErrorKind.NETWORK)))
 
@@ -46,7 +51,9 @@ class HomeScreenshotTest {
         org.robolectric.RuntimeEnvironment.setQualifiers("ar-ldrtl")
         var clicked: String? = null
         compose.setContent {
-            net.alummahnow.design.theme.AunTheme { HomeScreen(content, onVideoClick = { clicked = it }, onRetry = {}, onOpenSettings = {}) }
+            net.alummahnow.design.theme.AunTheme {
+                HomeScreen(content(Lang.AR), onVideoClick = { clicked = it }, onRetry = {}, onOpenSettings = {})
+            }
         }
         compose.onNodeWithText("الأكثر رواجاً").assertExists()
         // Trending and New hold different videos: each rail's first video appears once, in Arabic.
