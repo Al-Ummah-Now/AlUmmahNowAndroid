@@ -61,13 +61,14 @@ class StoreScreenshots {
             avgViewsPerVideo = 4_998.0,
             engagementRate = 8.2,
             topVideos = listOf(
-                VideoStat("v2", "Ramadan reminders", null, 12_000, 800, 90, 360_000, 40.0, mapOf("ar" to "تذكيرات رمضان")),
-                VideoStat("v4", "Surat Al-Kahf recitation", null, 8_020, 610, 41, 540_000, 1_355.0, mapOf("ar" to "تلاوة سورة الكهف")),
-                VideoStat("v3", "Fiqh of Prayer", null, 2_140, 160, 12, 410_000, 1_420.0, mapOf("ar" to "فقه الصلاة")),
-                VideoStat("v1", "Introduction to Tafsir", null, 1_520, 150, 40, 300_000, 640.0, mapOf("ar" to "مقدمة في التفسير")),
-                VideoStat("v5", "Friday khutbah: patience", null, 1_310, 140, 18, 280_000, 760.0, mapOf("ar" to "خطبة الجمعة: الصبر"))
+                VideoStat("v2", "Ramadan reminders", null, 11_820, 800, 90, 360_000, 40.0, mapOf("ar" to "تذكيرات رمضان")),
+                VideoStat("v4", "Surat Al-Kahf recitation", null, 7_930, 610, 41, 540_000, 1_355.0, mapOf("ar" to "تلاوة سورة الكهف")),
+                VideoStat("v3", "Fiqh of Prayer", null, 2_120, 160, 12, 410_000, 1_420.0, mapOf("ar" to "فقه الصلاة")),
+                VideoStat("v1", "Introduction to Tafsir", null, 1_504, 150, 40, 300_000, 640.0, mapOf("ar" to "مقدمة في التفسير")),
+                VideoStat("v5", "Friday khutbah: patience", null, 1_300, 140, 18, 280_000, 760.0, mapOf("ar" to "خطبة الجمعة: الصبر"))
             ),
-            // Lifetime views of the five videos add up to 24,990; the last 28 days had 24,674 of them.
+            // The five videos went up in September (StudioLibrary) with 24,990 lifetime views; these are their October views,
+            // each below its lifetime count, adding up to totalViews.
             // October 2026: weekly rhythm (Fridays highest), noise, two spikes; adds up to totalViews (24,674).
             daily = listOf(
                 755L, 1015L, 908L, 704L, 659L, 674L, 684L, 814L, 1809L, 910L, 732L, 631L, 709L, 819L,
