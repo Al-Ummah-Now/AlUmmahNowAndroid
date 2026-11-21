@@ -35,19 +35,20 @@ class FixtureReviewService(
         val start = now()
         fun due(minutes: Long): Instant = start.plus(Duration.ofMinutes(minutes))
         open += listOf(
+            // Creators' own titles and channel names, as posted (never translated): an Arabic and English mix, as on the site.
             ReviewItem(
                 id = "fx-nsfw", subjectId = "v-nsfw", title = "Evening market walk", channelId = "c-1",
                 channelName = "Old City Walks", channelTrust = "new", risk = 0.82, nsfw = true, holdCause = HoldCause.NSFW,
                 topCategory = "sexual", slaDueAt = due(3), version = 1
             ),
             ReviewItem(
-                id = "fx-risk", subjectId = "v-risk", title = "Charity drive update", channelId = "c-2",
-                channelName = "Hope Relief", channelTrust = "trusted", risk = 0.41, holdCause = HoldCause.RISK,
+                id = "fx-risk", subjectId = "v-risk", title = "تحديث حملة التبرعات", channelId = "c-2",
+                channelName = "جمعية الأمل", channelTrust = "trusted", risk = 0.41, holdCause = HoldCause.RISK,
                 topCategory = "charity_scam", slaDueAt = due(12), version = 1
             ),
             ReviewItem(
-                id = "fx-conflict", subjectId = "v-conflict", title = "Ramadan recipes", channelId = "c-3",
-                channelName = "Family Kitchen", channelTrust = "trusted", risk = 0.33, holdCause = HoldCause.RISK,
+                id = "fx-conflict", subjectId = "v-conflict", title = "وصفات رمضان", channelId = "c-3",
+                channelName = "مطبخ العائلة", channelTrust = "trusted", risk = 0.33, holdCause = HoldCause.RISK,
                 topCategory = "misleading_metadata", slaDueAt = due(12), version = 1
             ),
             ReviewItem(
@@ -67,8 +68,8 @@ class FixtureReviewService(
             )
         }
         decided += ReviewItem(
-            id = "fx-old", subjectId = "v-old", status = "approved", title = "Morning reminder", channelId = "c-2",
-            channelName = "Hope Relief", risk = 0.2, holdCause = HoldCause.RISK, topCategory = "spam", slaDueAt = due(-60),
+            id = "fx-old", subjectId = "v-old", status = "approved", title = "تذكير الصباح", channelId = "c-2",
+            channelName = "جمعية الأمل", risk = 0.2, holdCause = HoldCause.RISK, topCategory = "spam", slaDueAt = due(-60),
             decision = "approve", decidedAt = due(-50), decidedByName = "Fixture Reviewer", version = 2
         )
     }
