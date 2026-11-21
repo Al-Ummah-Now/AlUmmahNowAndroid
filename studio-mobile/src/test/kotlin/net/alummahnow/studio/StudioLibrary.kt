@@ -23,7 +23,7 @@ internal object StudioLibrary {
         id,
         en,
         thumbnailUrl = "${FIXTURE_THUMBS}$thumb.jpg",
-        createdAt = "2026-11-%02dT10:00:00Z".format(day),
+        createdAt = "2026-09-%02dT10:00:00Z".format(day),
         titleLocalized = mapOf("ar" to ar),
         views = views,
         durationSeconds = seconds,
