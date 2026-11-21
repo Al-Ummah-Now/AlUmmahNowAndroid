@@ -98,7 +98,11 @@ class AunFormatTest {
         assertEquals(ScaleForm.PLURAL, form(3_000)) // «٣ آلاف»
         assertEquals(ScaleForm.PLURAL, form(8_020)) // «٨ آلاف»
         assertEquals(ScaleForm.PLURAL, form(10_000)) // «١٠ آلاف»
-        assertEquals(ScaleForm.SINGULAR, form(11_000)) // «١١ ألف»
+        assertEquals(ScaleForm.TAMYIZ, form(11_000)) // «١١ ألفًا» alone, «١١ ألف مشاهدة» before a noun
+        assertEquals(ScaleForm.TAMYIZ, form(12_040)) // «١٢ ألفًا»
+        assertEquals(ScaleForm.TAMYIZ, form(120_000)) // «١٢٠ ألفًا»
+        assertEquals(ScaleForm.SINGULAR, form(100_000)) // «١٠٠ ألف»
+        assertEquals(ScaleForm.SINGULAR, form(11_500)) // «١١٫٥ ألف»
         assertEquals(ScaleForm.SINGULAR, form(1_310)) // «١٫٣ ألف»
         assertEquals(ScaleForm.SINGULAR, form(2_500)) // «٢٫٥ ألف»
         assertEquals(ScaleForm.SINGULAR, form(10_400)) // «١٠٫٤ ألف»
@@ -111,8 +115,8 @@ class AunFormatTest {
         assertEquals(ScaleForm.DUAL, form(2_000_000_000)) // «ملياران»
     }
 
-    @Test fun `Arabic meta lines use a bullet, because the middle dot reads as zero`() {
-        assertEquals("\u2068عام\u2069 \u2022 \u2068١٫٥ ألف مشاهدة\u2069", AunFormat.joinMeta(listOf("عام", null, "", "١٫٥ ألف مشاهدة"), ar))
+    @Test fun `Arabic meta lines use the Arabic comma, because a dot reads as zero`() {
+        assertEquals("\u2068عام\u2069\u060C \u2068١٫٥ ألف مشاهدة\u2069", AunFormat.joinMeta(listOf("عام", null, "", "١٫٥ ألف مشاهدة"), ar))
         assertEquals("\u2068Public\u2069 \u00B7 \u20681.5K views\u2069", AunFormat.joinMeta(listOf("Public", "1.5K views"), en))
         // An Arabic channel name in an English line stays isolated from the number after it.
         assertEquals("\u2068الأمة الآن\u2069 \u00B7 \u20681.5K views\u2069", AunFormat.joinMeta(listOf("الأمة الآن", "1.5K views"), en))
