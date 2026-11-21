@@ -63,6 +63,13 @@ object AunFormat {
     fun separator(locale: Locale): String = if (isArabic(locale)) "\u060C " else " \u00B7 "
 
     /**
+     * A list of user-supplied words (tags, keywords) in a sentence: «سباحة، رياضة» in Arabic, "swimming, sport" in
+     * English. Each item keeps its own direction ([isolate]), so a Latin tag in an Arabic list cannot reorder the commas.
+     */
+    fun joinList(items: List<String>, locale: Locale): String =
+        items.filter { it.isNotBlank() }.joinToString(if (isArabic(locale)) "\u060C " else ", ") { isolate(it) }
+
+    /**
      * Joins the non-blank [parts] of a meta line with [separator]. Each part is a direction [isolate], so an Arabic
      * channel name in an English line (or English in an Arabic one) keeps its own order and cannot pull a neighbouring
      * number into it ("1.5 · الأمة الآنK views").
