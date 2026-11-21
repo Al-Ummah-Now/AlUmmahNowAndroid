@@ -1,14 +1,19 @@
 package net.alummahnow.feature.watch
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.alummahnow.design.theme.ThemeMode
+import net.alummahnow.fixtures.PausedPlayer
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Player is null here (no service in Robolectric), so the player area shows the lantern placeholder. */
+/**
+ * The player is loaded and paused at the start (a [PausedPlayer]: Robolectric has no playback service), so the frames
+ * show the settled player: the video's poster with the play button, seek bar and times.
+ */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35])
@@ -17,7 +22,9 @@ class WatchScreenshotTest {
     private fun content(lang: Lang) = WatchUiState.Content(sampleDetail(lang = lang), sampleVideos.inLang(lang).drop(1))
 
     private fun watch(lang: Lang): @Composable () -> Unit = {
-        WatchScreen(content(lang), player = null, isFullscreen = false, isInPictureInPicture = false, onToggleFullscreen = {
+        val video = sampleDetail(lang = lang)
+        val player = remember { PausedPlayer(video.id, (video.summary.durationSeconds ?: 0) * MS_PER_S) }
+        WatchScreen(content(lang), player = player, isFullscreen = false, isInPictureInPicture = false, onToggleFullscreen = {
         }, onVideoClick = {}, onRetry = {})
     }
 
@@ -32,4 +39,8 @@ class WatchScreenshotTest {
     @Test fun tabletTwoPaneEn() = shoot("watch", Lang.EN, ThemeMode.DARK, Device.TABLET, watch(Lang.EN))
 
     @Test fun tabletTwoPaneAr() = shoot("watch", Lang.AR, ThemeMode.DARK, Device.TABLET, watch(Lang.AR))
+
+    private companion object {
+        const val MS_PER_S = 1_000L
+    }
 }

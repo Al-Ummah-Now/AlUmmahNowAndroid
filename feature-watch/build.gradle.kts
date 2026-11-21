@@ -4,7 +4,13 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
-android { namespace = "net.alummahnow.feature.watch" }
+android {
+    namespace = "net.alummahnow.feature.watch"
+    // The brand channel's screenshot fixtures: one source of videos, views and dates for every module that draws them.
+    sourceSets.getByName("test").kotlin.directories.add("../core-bridge/src/test/fixtures")
+    // A paused player for the screenshot tests (the player UI in its settled state).
+    sourceSets.getByName("test").kotlin.directories.add("../player/src/test/fixtures")
+}
 
 dependencies {
     implementation(project(":core-bridge"))
