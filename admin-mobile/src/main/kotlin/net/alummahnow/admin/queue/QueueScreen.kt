@@ -150,7 +150,9 @@ fun QueueScreen(
 
 @Composable
 fun OfflineBanner(lastUpdated: Instant?, now: Instant) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+    // A tinted band in both modes: the theme's divider tone (sand on the light page, blue on the dark one). The raised
+    // surface it used before is white on the light page.
+    Surface(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.fillMaxWidth()) {
         Text(
             if (lastUpdated !=
                 null
@@ -159,8 +161,9 @@ fun OfflineBanner(lastUpdated: Instant?, now: Instant) {
             } else {
                 stringResource(R.string.error_offline)
             },
+            // The same start edge as the rows' text below.
             modifier = Modifier
-                .padding(FanousTokens.Spacing.md)
+                .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.md)
                 .semantics { liveRegion = LiveRegionMode.Polite }
                 .testTag("offline-banner")
         )

@@ -205,7 +205,11 @@ fun FanousCard(
         Column(modifier.fanousMaterial(FanousMaterialKind.Card, FanousCardShape)) {
             Column(Modifier.fillMaxWidth().padding(FanousTokens.Spacing.lg), content = content)
             if (status != null || actions != null) {
-                Box(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(theme.colors.divider.color) })
+                // Inset to the content's padding, so the divider stops inside the card's border instead of painting over it.
+                Box(
+                    Modifier.padding(horizontal = FanousTokens.Spacing.lg).fillMaxWidth().height(1.dp)
+                        .drawBehind { drawRect(theme.colors.divider.color) }
+                )
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = FanousTokens.Spacing.md, vertical = FanousTokens.Spacing.sm),
                     verticalAlignment = Alignment.CenterVertically

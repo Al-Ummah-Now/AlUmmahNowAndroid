@@ -330,9 +330,10 @@ private fun FindingRow(finding: ReviewFinding, blurred: Boolean) {
             joinMeta(
                 Labels.category(finding.category),
                 percentLabel(finding.score),
-                Labels.source(finding.source),
-                // The time is an isolate after a no-break space: «عند ٠:٤٢» keeps its order, "at 0:42" never wraps apart.
-                finding.atMs?.let { aunString(R.string.at_position, isolate(Labels.position(it))) }
+                // Where it was found, one part: «إطار عند ٣:١٥» / "Frame at 3:15". The time is an isolate after a no-break
+                // space, so «عند ٣:١٥» keeps its order and "at 3:15" never wraps apart.
+                finding.atMs?.let { aunString(R.string.source_at, Labels.source(finding.source), isolate(Labels.position(it))) }
+                    ?: Labels.source(finding.source)
             ),
             style = MaterialTheme.typography.bodyMedium
         )
