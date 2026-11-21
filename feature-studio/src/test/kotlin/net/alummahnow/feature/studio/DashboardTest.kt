@@ -18,7 +18,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.studio.CommentsSummary
-import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.core.bridge.studio.StudioError
@@ -31,6 +30,7 @@ import net.alummahnow.feature.studio.dashboard.DashboardScreen
 import net.alummahnow.feature.studio.dashboard.DashboardSection
 import net.alummahnow.feature.studio.dashboard.DashboardUiState
 import net.alummahnow.feature.studio.dashboard.DashboardViewModel
+import net.alummahnow.fixtures.BrandChannel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -191,55 +191,14 @@ class DashboardTest {
 
     // --- UI ---
 
-    private val recent = listOf(
-        StudioVideo(
-            "p1",
-            "Friday khutbah: patience",
-            titleLocalized = mapOf("ar" to "خطبة الجمعة: الصبر"),
-            thumbnailUrl = "${FIXTURE_THUMBS}khutbah.jpg",
-            durationSeconds = 1_260.0,
-            status = ContentStatus.PROCESSING,
-            createdAt = "2026-11-15T10:00:00Z"
-        ),
-        StudioVideo(
-            "v1",
-            "Introduction to Tafsir",
-            titleLocalized = mapOf("ar" to "مقدمة في التفسير"),
-            thumbnailUrl = "${FIXTURE_THUMBS}tafsir.jpg",
-            durationSeconds = 1_830.0,
-            status = ContentStatus.PUBLISHED,
-            createdAt = "2026-11-12T10:00:00Z"
-        ),
-        StudioVideo(
-            "v2",
-            "Seerah overview",
-            titleLocalized = mapOf("ar" to "نظرة عامة على السيرة"),
-            thumbnailUrl = "${FIXTURE_THUMBS}seerah.jpg",
-            durationSeconds = 600.0,
-            status = ContentStatus.PUBLISHED,
-            createdAt = "2026-11-09T10:00:00Z"
-        )
-    )
-    private val drafts =
-        listOf(
-            StudioVideo(
-                "d1",
-                "Patience in hardship",
-                titleLocalized = mapOf("ar" to "الصبر عند الشدائد"),
-                thumbnailUrl = "${FIXTURE_THUMBS}patience.jpg",
-                durationSeconds = 980.0,
-                status = ContentStatus.DRAFTS,
-                isDraft = true
-            )
-        )
-
+    // The brand channel (BrandChannel, shared with the Content list and the viewer): the tiles count what the cards show.
     private fun full(canUpload: Boolean) = DashboardUiState.Content(
         access = CreatorAccess(canUpload, false, null),
-        counts = ContentCounts(24, 2, 3, 1, 0),
-        recent = DashboardSection.Ready(recent),
-        comments = DashboardSection.Ready(CommentsSummary(3, 41)),
-        drafts = DashboardSection.Ready(drafts),
-        scheduled = DashboardSection.Ready(emptyList())
+        counts = BrandChannel.counts,
+        recent = DashboardSection.Ready(libraryVideos.take(3)),
+        comments = DashboardSection.Ready(BrandChannel.comments),
+        drafts = DashboardSection.Ready(listOf(BrandChannel.studioDraft)),
+        scheduled = DashboardSection.Ready(listOf(BrandChannel.studioScheduled))
     )
 
     @Test
@@ -251,9 +210,9 @@ class DashboardTest {
         compose.onNodeWithTag("dashboard-recent").assertExists()
         compose.onNodeWithTag("dashboard-comments").performScrollTo()
         compose.onNodeWithTag("dashboard-drafts").performScrollTo()
-        compose.onNodeWithTag("dashboard-scheduled-empty").performScrollTo()
-        compose.onNodeWithTag("dashboard-video-p1").performScrollTo().performClick()
-        assertEquals("p1", opened)
+        compose.onNodeWithTag("dashboard-scheduled").performScrollTo()
+        compose.onNodeWithTag("dashboard-video-${BrandChannel.kahf.id}").performScrollTo().performClick()
+        assertEquals(BrandChannel.kahf.id, opened)
     }
 
     @Test

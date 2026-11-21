@@ -139,7 +139,7 @@ class ManageTest {
     fun `analytics reloads on range change`() = runTest(dispatcher) {
         val vm = AnalyticsViewModel(FakeRepository(), "c1")
         advanceUntilIdle()
-        assertEquals(13607L, vm.state.value.data?.totalViews)
+        assertEquals(sampleAnalytics.totalViews, vm.state.value.data?.totalViews)
         vm.setRange(AnalyticsRange.LAST_90)
         assertTrue(vm.state.value.loading)
         advanceUntilIdle()
@@ -186,14 +186,14 @@ class ManageTest {
 
     // --- Screenshots ---
 
-    private val list = ContentUiState(videos = sampleVideos, loading = false, softDelete = true)
+    private val list = ContentUiState(videos = libraryVideos, loading = false, softDelete = true)
     private val selecting = list.copy(selected = setOf("v1", "v3"))
     private val deletedTab =
         ContentUiState(
             status = ContentStatus.DELETED,
             loading = false,
             softDelete = true,
-            videos = sampleVideos.take(2).map {
+            videos = libraryVideos.take(2).map {
                 it.copy(status = ContentStatus.DELETED, restorableUntil = "2026-12-10T09:00:00Z")
             }
         )

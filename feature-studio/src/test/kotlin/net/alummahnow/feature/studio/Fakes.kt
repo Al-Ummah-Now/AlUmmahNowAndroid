@@ -15,7 +15,6 @@ import net.alummahnow.core.bridge.studio.ContentPage
 import net.alummahnow.core.bridge.studio.ContentQuery
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
-import net.alummahnow.core.bridge.studio.DailyMetric
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
@@ -25,7 +24,7 @@ import net.alummahnow.core.bridge.studio.StudioSuggestion
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.UserFeatures
 import net.alummahnow.core.bridge.studio.VideoEdit
-import net.alummahnow.core.bridge.studio.VideoStat
+import net.alummahnow.fixtures.BrandChannel
 
 val sampleAccount = StudioAccount("u1", "Amina Yusuf", "amina.yusuf@example.org", null, null, false)
 
@@ -34,18 +33,19 @@ val sampleChannels = listOf(
     StudioChannel("c2", "Nasheeds", mapOf("ar" to "أناشيد"), role = ChannelRole.EDITOR, capabilities = setOf("video.upload", "video.edit"))
 )
 
+/** Videos for the view-model tests (selection, search, bulk edit); the frames show [libraryVideos]. */
 val sampleVideos = listOf(
     StudioVideo(
         "v1",
         "Introduction to Tafsir",
         thumbnailUrl = "${FIXTURE_THUMBS}tafsir.jpg",
         titleLocalized = mapOf("ar" to "مقدمة في التفسير"),
-        views = 1520,
+        views = 1870,
         durationSeconds = 1830.0,
         category = "quran_tafsir",
         status = ContentStatus.PUBLISHED,
         tags = listOf("tafsir"),
-        createdAt = "2026-11-06T10:00:00Z"
+        createdAt = "2026-09-06T10:00:00Z"
     ),
     StudioVideo(
         "v2",
@@ -56,7 +56,7 @@ val sampleVideos = listOf(
         views = 87,
         durationSeconds = 600.0,
         status = ContentStatus.PUBLISHED,
-        createdAt = "2026-11-05T10:00:00Z"
+        createdAt = "2026-09-03T10:00:00Z"
     ),
     StudioVideo(
         "v3",
@@ -67,7 +67,7 @@ val sampleVideos = listOf(
         durationSeconds = 45.0,
         category = "ramadan",
         status = ContentStatus.PUBLISHED,
-        createdAt = "2026-11-04T10:00:00Z"
+        createdAt = "2026-09-02T10:00:00Z"
     )
 )
 
@@ -242,32 +242,12 @@ class FakeRepository : StudioRepository {
     }
 }
 
-val sampleAnalytics = ChannelAnalytics(
-    totalViews = 13607,
-    totalVideos = 3,
-    totalSubscribers = 412,
-    totalLikes = 980,
-    totalComments = 133,
-    avgViewsPerVideo = 4535.7,
-    engagementRate = 8.2,
-    topVideos = listOf(
-        VideoStat("v3", "Ramadan reminders", null, 12000, 800, 90, 360000, 30.0, mapOf("ar" to "تذكيرات رمضان")),
-        VideoStat("v1", "Introduction to Tafsir", null, 1520, 150, 40, 540000, 355.0, mapOf("ar" to "مقدمة في التفسير"))
-    ),
-    daily = dailyMetrics(OCTOBER_VIEWS)
-)
-
 /**
- * A realistic 28-day views series (October 2026): a weekly rhythm (Fridays highest, Mondays lowest), day-to-day noise,
- * two spikes (the 9th and 23rd) and a total of exactly 13,607, the views shown in the Analytics frames.
+ * Every Studio frame shows the brand channel ([BrandChannel], shared with Home, Watch and the Studio app): its videos
+ * went up in September, its analytics cover 1–28 October, its scheduled video goes out in December, and the dashboard
+ * tiles count the same lists the cards show.
  */
-// A getter: the analytics fixture above reads it during top-level initialisation.
-internal val OCTOBER_VIEWS: List<Long> get() = listOf(
-    417L, 560L, 501L, 388L, 363L, 372L, 377L, 449L, 998L, 502L, 404L, 348L, 391L, 452L,
-    435L, 615L, 540L, 491L, 396L, 404L, 481L, 445L, 1037L, 527L, 442L, 377L, 413L, 482L
-)
+val libraryVideos = BrandChannel.studioPublished
 
-/** One [DailyMetric] per day, with likes, comments, subscribers and watch time following that day's views. */
-internal fun dailyMetrics(views: List<Long>) = views.mapIndexed { i, v ->
-    DailyMetric("2026-10-%02d".format(i + 1), v, v * 7 / 100, v / 90, v / 120, v * 240)
-}
+/** The channel's October analytics; the fake repository answers them too. */
+val sampleAnalytics = BrandChannel.analytics
