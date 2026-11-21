@@ -120,10 +120,10 @@
     <string name="overall_risk">Risk %1$s</string>
     <string name="tags">Tags: %1$s</string>
     <string name="duration">Length %1$s</string>
-    <string name="frame_at">Frame at %1$s</string>
+    <string name="frame_at">Frame at\u00A0%1$s</string>
     <string name="frame_flagged">flagged: %1$s</string>
     <string name="frame_blurred">blurred</string>
-    <string name="at_position">at %1$s</string>
+    <string name="at_position">at\u00A0%1$s</string>
     <string name="quran_ref">Quran %1$s (not scored)</string>
     <string name="review_gone">This item is no longer in the queue.</string>
     <string name="conflict_approved">Already approved by %1$s %2$s ago</string>

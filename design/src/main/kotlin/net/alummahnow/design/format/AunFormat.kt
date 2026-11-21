@@ -63,12 +63,49 @@ object AunFormat {
     fun separator(locale: Locale): String = if (isArabic(locale)) "\u060C " else " \u00B7 "
 
     /**
-     * Joins the non-blank [parts] of a meta line with [separator]. Each part is a direction isolate (U+2068 … U+2069),
-     * so an Arabic channel name in an English line (or English in an Arabic one) keeps its own order and cannot pull
-     * a neighbouring number into it ("1.5 · الأمة الآنK views").
+     * Joins the non-blank [parts] of a meta line with [separator]. Each part is a direction [isolate], so an Arabic
+     * channel name in an English line (or English in an Arabic one) keeps its own order and cannot pull a neighbouring
+     * number into it ("1.5 · الأمة الآنK views").
      */
     fun joinMeta(parts: List<String?>, locale: Locale): String =
-        parts.filterNot { it.isNullOrBlank() }.joinToString(separator(locale)) { "\u2068$it\u2069" }
+        parts.filterNot { it.isNullOrBlank() }.joinToString(separator(locale)) { isolate(it!!) }
+
+    /**
+     * Keeps [text] in its own direction inside a line. Left-to-right text, or text with no letters (a time, «٨٢٪»), is
+     * wrapped in LRI (U+2066) … PDI (U+2069). Arabic text without digits is wrapped in RLI (U+2067) … PDI, which keeps
+     * an Arabic channel name from pulling the number after it in an English line. Arabic text holding digits is
+     * bracketed by right-to-left marks (U+200F) instead: Android text layout reorders digits inside a right-to-left
+     * isolate or embedding, so «عند ٠:٤٢» drew as «٠:٤٢عند» and «٧٣٤ م.ب» as «م.ب٧٣٤» (#53). Letters inside nested
+     * isolates do not count.
+     */
+    fun isolate(text: String): String = when {
+        !firstStrongIsRtl(text) -> LRI + text + PDI
+        text.any(Char::isDigit) -> RLM + text + RLM
+        else -> RLI + text + PDI
+    }
+
+    private fun firstStrongIsRtl(text: String): Boolean {
+        var depth = 0
+        for (c in text) {
+            when (c) {
+                LRI, RLI, FSI -> depth++
+                PDI -> if (depth > 0) depth--
+                else -> if (depth == 0) {
+                    when (Character.getDirectionality(c)) {
+                        Character.DIRECTIONALITY_LEFT_TO_RIGHT -> return false
+                        Character.DIRECTIONALITY_RIGHT_TO_LEFT, Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC -> return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    private const val LRI = '\u2066'
+    private const val RLI = '\u2067'
+    private const val FSI = '\u2068'
+    private const val PDI = '\u2069'
+    private const val RLM = '\u200F'
 
     /** ٠–٩ and ۰–۹ typed by people become 0–9, so numeric inputs and codes parse the same in every language. */
     fun normalizeDigits(text: String): String = buildString(text.length) {
@@ -164,6 +201,31 @@ object AunFormat {
         return Compact(number(truncated, locale, maxFraction = 1), scale, form)
     }
 
+    enum class SizeUnit { BYTE, KILO, MEGA, GIGA, TERA }
+
+    /** The number part of a file size; the unit comes from string resources (see `fileSizeLabel`). */
+    data class FileSize(val number: String, val unit: SizeUnit)
+
+    /**
+     * A file size in decimal units (1 kB = 1000 bytes, as Android and the web show sizes): 734_003_200 → ("734", MEGA),
+     * 1_534_000 → ("1.5", MEGA), 512 → ("512", BYTE). One decimal below 10, none above; cut, never rounded up, like
+     * counts. Arabic gets ٠–٩ and «٫», never grouped.
+     */
+    fun fileSize(bytes: Long, locale: Locale): FileSize {
+        var value = bytes.coerceAtLeast(0).toDouble()
+        var unit = SizeUnit.BYTE
+        while (value >= SIZE_STEP && unit != SizeUnit.TERA) {
+            value /= SIZE_STEP
+            unit = SizeUnit.entries[unit.ordinal + 1]
+        }
+        val shown = if (unit != SizeUnit.BYTE && value < ONE_DECIMAL_BELOW) {
+            kotlin.math.floor(value * 10) / 10
+        } else {
+            kotlin.math.floor(value)
+        }
+        return FileSize(number(shown, locale, maxFraction = 1), unit)
+    }
+
     private fun dateFormatter(base: DateTimeFormatter, locale: Locale): DateTimeFormatter {
         val style = if (isArabic(locale)) DecimalStyle.STANDARD.withZeroDigit(EASTERN_ZERO) else DecimalStyle.STANDARD
         return base.withLocale(numberingLocale(locale)).withDecimalStyle(style)
@@ -228,6 +290,8 @@ object AunFormat {
         "EGP" to "جنيه مصري"
     )
 
+    private const val SIZE_STEP = 1000.0
+    private const val ONE_DECIMAL_BELOW = 10.0
     private const val SECONDS_PER_MINUTE = 60L
     private const val SECONDS_PER_HOUR = 3600L
     private const val MS_PER_SECOND = 1000L

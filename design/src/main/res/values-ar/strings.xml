@@ -58,4 +58,10 @@
     <string name="aun_language_en">الإنجليزية</string>
     <string name="aun_language_ur">الأردية</string>
     <string name="aun_language_fr">الفرنسية</string>
+    <!-- أحجام الملفات: الرقم ثم مسافة غير فاصلة ثم الوحدة. -->
+    <string name="aun_size_bytes">%1$s\u00A0بايت</string>
+    <string name="aun_size_kb">%1$s\u00A0ك.ب</string>
+    <string name="aun_size_mb">%1$s\u00A0م.ب</string>
+    <string name="aun_size_gb">%1$s\u00A0ج.ب</string>
+    <string name="aun_size_tb">%1$s\u00A0ت.ب</string>
 </resources>
