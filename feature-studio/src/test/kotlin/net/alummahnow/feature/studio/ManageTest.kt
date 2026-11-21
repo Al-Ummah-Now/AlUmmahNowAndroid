@@ -198,6 +198,7 @@ class ManageTest {
             }
         )
     private val noop = actions(mutableListOf())
+
     /** The video's own text (title, description, tags) in the frame's language. */
     private fun edit(lang: Lang): VideoEditUiState {
         val form = if (lang == Lang.AR) {
