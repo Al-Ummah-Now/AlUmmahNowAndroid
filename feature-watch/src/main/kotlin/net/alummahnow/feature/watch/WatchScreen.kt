@@ -137,7 +137,8 @@ private fun PlayerArea(
                 isFullscreen = isFullscreen,
                 onToggleFullscreen = onToggleFullscreen,
                 controlsInitiallyVisible = controls,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                poster = poster
             )
         }
     }

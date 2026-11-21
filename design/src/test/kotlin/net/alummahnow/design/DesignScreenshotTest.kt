@@ -22,17 +22,18 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class DesignScreenshotTest {
-    // The same videos, views and art in both languages; one card without a thumbnail shows the placeholder. The channel
-    // has one name from the API, shown as-is in both languages (as on Home and Watch).
+    // The brand channel's videos with the same lifetime views and art as Home, Watch and Studio (BrandChannel in
+    // core-bridge/src/test/fixtures; :design does not see core-bridge), ordered by views as Trending is. The brand
+    // channel has an official name in each language, so each frame shows the one in its language.
     private val enItems = listOf(
-        VideoCardData("1", "Introduction to Tafsir", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_520),
-        VideoCardData("2", "Fiqh of Prayer", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "الأمة الآن", 2_140),
-        VideoCardData("3", "Patience in hardship", null, 980, "الأمة الآن", 640)
+        VideoCardData("3", "Fiqh of Prayer", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "Al Ummah Now", 2_460),
+        VideoCardData("1", "Introduction to Tafsir", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "Al Ummah Now", 1_870),
+        VideoCardData("8", "Patience in hardship", "${FIXTURE_THUMBS}patience.jpg", 980, "Al Ummah Now", 640)
     )
     private val arItems = listOf(
-        VideoCardData("1", "مقدمة في التفسير", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_520),
-        VideoCardData("2", "فقه الصلاة", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "الأمة الآن", 2_140),
-        VideoCardData("3", "الصبر عند الشدائد", null, 980, "الأمة الآن", 640)
+        VideoCardData("3", "فقه الصلاة", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "الأمة الآن", 2_460),
+        VideoCardData("1", "مقدمة في التفسير", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_870),
+        VideoCardData("8", "الصبر عند الشدائد", "${FIXTURE_THUMBS}patience.jpg", 980, "الأمة الآن", 640)
     )
 
     @Composable

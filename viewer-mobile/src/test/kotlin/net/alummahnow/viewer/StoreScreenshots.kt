@@ -25,6 +25,9 @@ import org.robolectric.annotation.GraphicsMode
 class StoreScreenshots {
     @Before fun enabled() = StoreShots.assumeEnabled()
 
+    /** The brand channel's official name in each language: a frame shows the one in its language. */
+    private fun channel(locale: StoreLocale) = if (locale == StoreLocale.AR) "الأمة الآن" else "Al Ummah Now"
+
     private fun video(id: String, en: String, ar: String, views: Long, duration: Long, category: String) = VideoSummary(
         id = id,
         title = LocalizedText(en, mapOf("ar" to ar)),
@@ -32,7 +35,7 @@ class StoreScreenshots {
         durationSeconds = duration,
         views = views,
         channelId = "c1",
-        channelName = "الأمة الآن",
+        channelName = channel(StoreLocale.EN),
         publishedAt = null,
         category = category
     )
@@ -46,11 +49,14 @@ class StoreScreenshots {
         video("v3", "Fiqh of Prayer", "فقه الصلاة", 2_140, 3_725, "fiqh")
     )
 
-    private val home = HomeUiState.Content(listOf(Rail(RailKind.TRENDING, videos), Rail(RailKind.RECENT, videos.reversed())))
+    private fun videos(locale: StoreLocale) = videos.map { it.copy(channelName = channel(locale)) }
 
-    private val watch = WatchUiState.Content(
+    private fun home(locale: StoreLocale) =
+        HomeUiState.Content(listOf(Rail(RailKind.TRENDING, videos(locale)), Rail(RailKind.RECENT, videos(locale).reversed())))
+
+    private fun watch(locale: StoreLocale) = WatchUiState.Content(
         VideoDetail(
-            summary = videos[0],
+            summary = videos(locale)[0],
             description = LocalizedText(
                 "An introduction to tafsir, uploaded to the Al Ummah Now channel.",
                 mapOf("ar" to "مقدمة في التفسير، مرفوعة على قناة الأمة الآن.")
@@ -67,7 +73,7 @@ class StoreScreenshots {
             isLive = false,
             isReady = true
         ),
-        videos.drop(1)
+        videos(locale).drop(1)
     )
 
     private fun set(locale: StoreLocale, device: StoreDevice, modes: List<ThemeMode>) {
@@ -75,10 +81,10 @@ class StoreScreenshots {
         modes.forEach { mode ->
             val m = mode.name.lowercase()
             StoreShots.shoot("%02d-home-$m".format(n++), locale, device, mode) {
-                HomeScreen(home, onVideoClick = {}, onRetry = {}, onOpenSettings = {})
+                HomeScreen(home(locale), onVideoClick = {}, onRetry = {}, onOpenSettings = {})
             }
             StoreShots.shoot("%02d-watch-$m".format(n++), locale, device, mode) {
-                WatchScreen(watch, player = null, isFullscreen = false, isInPictureInPicture = false, onToggleFullscreen = {
+                WatchScreen(watch(locale), player = null, isFullscreen = false, isInPictureInPicture = false, onToggleFullscreen = {
                 }, onVideoClick = {}, onRetry = {})
             }
         }

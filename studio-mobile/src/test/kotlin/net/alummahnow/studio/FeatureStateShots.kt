@@ -51,7 +51,7 @@ class FeatureStateShots {
 
     private fun dashboard(
         canUpload: Boolean,
-        comments: DashboardSection<CommentsSummary> = DashboardSection.Ready(CommentsSummary(2, 5))
+        comments: DashboardSection<CommentsSummary> = DashboardSection.Ready(StudioLibrary.comments)
     ) = DashboardUiState.Content(
         CreatorAccess(canUpload, false, null),
         counts,

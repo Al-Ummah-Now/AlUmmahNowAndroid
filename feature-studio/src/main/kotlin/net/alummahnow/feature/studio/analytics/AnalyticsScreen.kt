@@ -114,9 +114,10 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
 
 @Composable
 private fun Content(data: ChannelAnalytics, wide: Boolean, columns: Int) {
+    val watchHours = stringResource(R.string.studio_stat_watch_hours)
     val tiles = listOf(
         stringResource(R.string.studio_stat_views) to data.totalViews,
-        stringResource(R.string.studio_stat_watch_hours) to data.watchTimeSeconds / SECONDS_PER_HOUR,
+        watchHours to data.watchTimeSeconds / SECONDS_PER_HOUR,
         stringResource(R.string.studio_stat_subscribers) to data.totalSubscribers,
         stringResource(R.string.studio_stat_likes) to data.totalLikes,
         stringResource(R.string.studio_stat_comments) to data.totalComments,
@@ -124,7 +125,7 @@ private fun Content(data: ChannelAnalytics, wide: Boolean, columns: Int) {
     )
     tiles.chunked(columns).forEach { chunk ->
         Row(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
-            chunk.forEach { (label, value) -> StatTile(label, value, Modifier.weight(1f)) }
+            chunk.forEach { (label, value) -> StatTile(label, value, Modifier.weight(1f), exact = label == watchHours) }
             repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
         }
     }

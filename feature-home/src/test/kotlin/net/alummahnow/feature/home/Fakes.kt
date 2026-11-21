@@ -8,37 +8,26 @@ import net.alummahnow.core.bridge.model.Rail
 import net.alummahnow.core.bridge.model.RailKind
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
+import net.alummahnow.fixtures.BrandChannel
 
-internal fun summary(id: String, en: String, ar: String, views: Long, duration: Long, thumb: String?) = VideoSummary(
-    id = id,
-    title = LocalizedText(en, mapOf("ar" to ar)),
-    // Local title-card art for screenshots (no network); null shows the designed placeholder.
-    thumbnailUrl = thumb?.let { "${FIXTURE_THUMBS}$it.jpg" },
-    durationSeconds = duration,
-    views = views,
-    channelId = "c1",
-    channelName = "الأمة الآن",
-    publishedAt = null,
-    category = "quran_tafsir"
-)
+/** The brand channel's official name in each language: a frame shows the one in its language. */
+internal fun brandChannel(lang: Lang) = BrandChannel.name(lang == Lang.AR)
 
-// The same videos, durations and views as the Studio fixtures where they overlap.
+/** These videos as the brand channel's uploads, with the channel named in [lang]. */
+internal fun List<VideoSummary>.inLang(lang: Lang) = map { it.copy(channelName = brandChannel(lang)) }
+
+private fun brandVideos(vararg videos: BrandChannel.ChannelVideo) = videos.map { BrandChannel.summary(it, arabic = false) }
+
+// The brand channel's videos (BrandChannel, shared with the Studio fixtures): the same titles, art, durations and
+// lifetime views as the Studio Content list.
 // Trending is ordered by views, most first.
-internal val sampleVideos = listOf(
-    summary("v2", "Ramadan reminders", "تذكيرات رمضان", views = 12_000, duration = 45, thumb = "ramadan"),
-    summary("v3", "Fiqh of Prayer", "فقه الصلاة", views = 2_140, duration = 3_725, thumb = "fiqh"),
-    summary("v1", "Introduction to Tafsir", "مقدمة في التفسير", views = 1_520, duration = 1_830, thumb = "tafsir")
-)
+internal val sampleVideos = brandVideos(BrandChannel.ramadan, BrandChannel.fiqh, BrandChannel.tafsir)
 
-/** The New rail: different videos from Trending; the last has no thumbnail (the placeholder, as when an image fails). */
-internal val recentVideos = listOf(
-    summary("v4", "Surat Al-Kahf recitation", "تلاوة سورة الكهف", views = 8_020, duration = 2_710, thumb = "kahf"),
-    summary("v5", "Friday khutbah: patience", "خطبة الجمعة: الصبر", views = 1_310, duration = 1_260, thumb = "khutbah"),
-    summary("v6", "Patience in hardship", "الصبر عند الشدائد", views = 640, duration = 980, thumb = null)
-)
+/** The New rail: different videos from Trending, newest first. */
+internal val recentVideos = brandVideos(BrandChannel.kahf, BrandChannel.khutbah, BrandChannel.patience)
 
-internal fun sampleDetail(ready: Boolean = true) = VideoDetail(
-    summary = sampleVideos[0],
+internal fun sampleDetail(ready: Boolean = true, lang: Lang = Lang.EN) = VideoDetail(
+    summary = sampleVideos.inLang(lang)[0],
     description = LocalizedText("An introduction to tafsir.", mapOf("ar" to "مقدمة في علم التفسير.")),
     playUrl = "https://cdn.example/v1/playlist.m3u8",
     availableResolutions = listOf("240p", "360p"),

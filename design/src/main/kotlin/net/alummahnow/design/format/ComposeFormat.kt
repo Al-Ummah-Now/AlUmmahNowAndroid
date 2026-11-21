@@ -3,12 +3,10 @@
 package net.alummahnow.design.format
 
 import android.content.res.Resources
-import android.text.format.Formatter
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import java.time.LocalDate
 import java.time.ZonedDateTime
@@ -41,7 +39,7 @@ fun Resources.aunString(@StringRes id: Int, vararg args: Any?): String = AunForm
 fun Resources.aunPlural(@PluralsRes id: Int, count: Int, vararg args: Any?): String =
     AunFormat.format(getQuantityString(id, count), displayLocale(), *args)
 
-/** A meta line ("Public · 1.2K views"); Arabic uses « • » because «·» reads as «٠». */
+/** A meta line ("Public · 1.2K views"); Arabic uses «،» because a dot reads as «٠» (see [AunFormat.separator]). */
 @Composable
 fun joinMeta(vararg parts: String?): String = AunFormat.joinMeta(parts.toList(), currentLocale())
 
@@ -60,39 +58,63 @@ fun dateLabel(date: LocalDate, style: FormatStyle = FormatStyle.MEDIUM): String 
 @Composable
 fun dateTimeLabel(dateTime: ZonedDateTime): String = AunFormat.dateTime(dateTime, currentLocale())
 
-/** A file size ("12 MB" / "١٢ م.ب"): the platform's units, with the app's digits. */
+/**
+ * A file size ("734 MB" / «٧٣٤ م.ب»): the number, a no-break space, then the unit, kept in its own direction
+ * ([isolate]), so in an Arabic line the unit stays after the number and in a mixed line the size cannot pull its
+ * neighbours into it.
+ */
 @Composable
-fun fileSizeLabel(bytes: Long): String = AunFormat.decimal(Formatter.formatShortFileSize(LocalContext.current, bytes), currentLocale())
+fun fileSizeLabel(bytes: Long): String {
+    val size = AunFormat.fileSize(bytes, currentLocale())
+    val unit = when (size.unit) {
+        AunFormat.SizeUnit.BYTE -> R.string.aun_size_bytes
+        AunFormat.SizeUnit.KILO -> R.string.aun_size_kb
+        AunFormat.SizeUnit.MEGA -> R.string.aun_size_mb
+        AunFormat.SizeUnit.GIGA -> R.string.aun_size_gb
+        AunFormat.SizeUnit.TERA -> R.string.aun_size_tb
+    }
+    return isolate(aunString(unit, size.number))
+}
 
+/**
+ * A compact count on its own ("12K" / «١٢ ألفًا»). [beforeNoun] is for a count that a noun follows («١٢ ألف مشاهدة»):
+ * a whole 11–99 then takes the singular instead of the standalone accusative.
+ */
 @Composable
-fun compactCount(n: Long): String {
+fun compactCount(n: Long, beforeNoun: Boolean = false): String {
     val c = AunFormat.compact(n, currentLocale())
     return when (c.scale) {
         AunFormat.Scale.NONE -> c.number
-        // Arabic: «ألف», «ألفان», «٣ آلاف», «١١ ألف», «١٫٣ ألف» (see [AunFormat.ScaleForm]); no digit before 1 or the dual.
+        // Arabic: «ألف», «ألفان», «٣ آلاف», «١١ ألفًا», «١٫٣ ألف» (see [AunFormat.ScaleForm]); no digit before 1 or the dual.
         AunFormat.Scale.THOUSAND -> aunString(
             c.form.pick(
+                beforeNoun,
                 R.string.aun_count_thousand_one,
                 R.string.aun_count_thousand_dual,
                 R.string.aun_count_thousand_plural,
+                R.string.aun_count_thousand_tamyiz,
                 R.string.aun_count_thousand
             ),
             c.number
         )
         AunFormat.Scale.MILLION -> aunString(
             c.form.pick(
+                beforeNoun,
                 R.string.aun_count_million_one,
                 R.string.aun_count_million_dual,
                 R.string.aun_count_million_plural,
+                R.string.aun_count_million,
                 R.string.aun_count_million
             ),
             c.number
         )
         AunFormat.Scale.BILLION -> aunString(
             c.form.pick(
+                beforeNoun,
                 R.string.aun_count_billion_one,
                 R.string.aun_count_billion_dual,
                 R.string.aun_count_billion_plural,
+                R.string.aun_count_billion_tamyiz,
                 R.string.aun_count_billion
             ),
             c.number
@@ -100,17 +122,19 @@ fun compactCount(n: Long): String {
     }
 }
 
-private fun AunFormat.ScaleForm.pick(one: Int, dual: Int, plural: Int, singular: Int): Int = when (this) {
-    AunFormat.ScaleForm.ONE -> one
-    AunFormat.ScaleForm.DUAL -> dual
-    AunFormat.ScaleForm.PLURAL -> plural
-    AunFormat.ScaleForm.SINGULAR -> singular
-}
+private fun AunFormat.ScaleForm.pick(beforeNoun: Boolean, one: Int, dual: Int, plural: Int, tamyiz: Int, singular: Int): Int =
+    when (this) {
+        AunFormat.ScaleForm.ONE -> one
+        AunFormat.ScaleForm.DUAL -> dual
+        AunFormat.ScaleForm.PLURAL -> plural
+        AunFormat.ScaleForm.TAMYIZ -> if (beforeNoun) singular else tamyiz
+        AunFormat.ScaleForm.SINGULAR -> singular
+    }
 
 /**
  * "1.2K views" / «١٫٢ ألف مشاهدة». Small counts take the Arabic plural form of the full count («٥ مشاهدات»); a compact
  * count is counted by its scale word, so the noun stays singular («ألف مشاهدة», «٨ آلاف مشاهدة», «١٫٣ ألف مشاهدة»),
- * and exactly 2 takes the dual's construct form before the noun («ألفا مشاهدة», «مليونا مشاهدة»).
+ * and exactly 2 takes the dual's construct form before the noun («ألفا مشاهدة»). Millions are «١٫٢ م مشاهدة».
  */
 @Composable
 fun viewsLabel(views: Long): String {
@@ -127,7 +151,7 @@ fun viewsLabel(views: Long): String {
         }
         return aunString(id, c.number)
     }
-    return aunString(R.string.aun_views_compact, compactCount(views))
+    return aunString(R.string.aun_views_compact, compactCount(views, beforeNoun = true))
 }
 
 @Composable
@@ -142,7 +166,8 @@ fun localizedDigits(text: String): String = AunFormat.digits(text, currentLocale
 fun localizedDecimal(text: String): String = AunFormat.decimal(text, currentLocale())
 
 /**
- * Isolates user-supplied text (names, e-mails, titles) inside a localised sentence (FSI … PDI), so
- * Latin text in an Arabic sentence (and the reverse) does not reorder the punctuation around it.
+ * Isolates user-supplied text (names, e-mails, titles, times) inside a localised sentence (LRI or RLI … PDI, or
+ * right-to-left marks around Arabic with digits, see [AunFormat.isolate]), so Latin text in an Arabic sentence (and
+ * the reverse) does not reorder the punctuation around it.
  */
-fun isolate(text: String): String = "\u2068$text\u2069"
+fun isolate(text: String): String = AunFormat.isolate(text)

@@ -46,8 +46,12 @@ class AunFormatTest {
         }
     }
 
-    @Test fun `Arabic uses the Arabic separators and percent sign`() {
-        assertEquals("١٬٢٣٤٬٥٦٧", AunFormat.number(1_234_567, ar))
+    @Test fun `Arabic uses the Arabic decimal mark and percent sign, and never groups`() {
+        // Owner 2026-11-21: «٫» is the only comma-like mark in Arabic; English keeps its grouping.
+        assertEquals("١٢٣٤٥٦٧", AunFormat.number(1_234_567, ar))
+        assertEquals("٤٨٨٧", AunFormat.number(4887, ar))
+        assertEquals("١٢٣٤٫٥", AunFormat.number(1234.5, ar))
+        assertEquals("4,887", AunFormat.number(4887, en))
         assertEquals("١٢٫٥", AunFormat.number(12.5, ar))
         assertEquals("٤٢٪", AunFormat.percent(0.42, ar))
         assertEquals("١:١٥", AunFormat.duration(75, ar))
@@ -94,23 +98,50 @@ class AunFormatTest {
         assertEquals(ScaleForm.PLURAL, form(3_000)) // «٣ آلاف»
         assertEquals(ScaleForm.PLURAL, form(8_020)) // «٨ آلاف»
         assertEquals(ScaleForm.PLURAL, form(10_000)) // «١٠ آلاف»
-        assertEquals(ScaleForm.SINGULAR, form(11_000)) // «١١ ألف»
+        assertEquals(ScaleForm.TAMYIZ, form(11_000)) // «١١ ألفًا» alone, «١١ ألف مشاهدة» before a noun
+        assertEquals(ScaleForm.TAMYIZ, form(12_040)) // «١٢ ألفًا»
+        assertEquals(ScaleForm.TAMYIZ, form(120_000)) // «١٢٠ ألفًا»
+        assertEquals(ScaleForm.SINGULAR, form(100_000)) // «١٠٠ ألف»
+        assertEquals(ScaleForm.SINGULAR, form(11_500)) // «١١٫٥ ألف»
         assertEquals(ScaleForm.SINGULAR, form(1_310)) // «١٫٣ ألف»
         assertEquals(ScaleForm.SINGULAR, form(2_500)) // «٢٫٥ ألف»
         assertEquals(ScaleForm.SINGULAR, form(10_400)) // «١٠٫٤ ألف»
-        assertEquals(ScaleForm.ONE, form(1_000_000)) // «مليون»
-        assertEquals(ScaleForm.DUAL, form(2_000_000)) // «مليونان»
-        assertEquals(ScaleForm.SINGULAR, form(1_200_000)) // «١٫٢ مليون»
-        assertEquals(ScaleForm.PLURAL, form(3_000_000)) // «٣ ملايين»
-        assertEquals(ScaleForm.SINGULAR, form(15_000_000)) // «١٥ مليون»
+        // Millions are always «{n} م» (owner 2026-11-21).
+        assertEquals(ScaleForm.SINGULAR, form(1_000_000)) // «١ م»
+        assertEquals(ScaleForm.SINGULAR, form(2_000_000)) // «٢ م»
+        assertEquals(ScaleForm.SINGULAR, form(1_200_000)) // «١٫٢ م»
+        assertEquals(ScaleForm.SINGULAR, form(3_000_000)) // «٣ م»
+        assertEquals(ScaleForm.SINGULAR, form(15_000_000)) // «١٥ م»
+        assertEquals(ScaleForm.DUAL, form(2_000_000_000)) // «ملياران»
     }
 
-    @Test fun `Arabic meta lines use a bullet, because the middle dot reads as zero`() {
-        assertEquals("\u2068عام\u2069 \u2022 \u2068١٫٥ ألف مشاهدة\u2069", AunFormat.joinMeta(listOf("عام", null, "", "١٫٥ ألف مشاهدة"), ar))
-        assertEquals("\u2068Public\u2069 \u00B7 \u20681.5K views\u2069", AunFormat.joinMeta(listOf("Public", "1.5K views"), en))
+    @Test fun `Arabic meta lines use the Arabic comma, because a dot reads as zero`() {
+        assertEquals("\u2067عام\u2069\u060C \u200F١٫٥ ألف مشاهدة\u200F", AunFormat.joinMeta(listOf("عام", null, "", "١٫٥ ألف مشاهدة"), ar))
+        assertEquals("\u2066Public\u2069 \u00B7 \u20661.5K views\u2069", AunFormat.joinMeta(listOf("Public", "1.5K views"), en))
         // An Arabic channel name in an English line stays isolated from the number after it.
-        assertEquals("\u2068الأمة الآن\u2069 \u00B7 \u20681.5K views\u2069", AunFormat.joinMeta(listOf("الأمة الآن", "1.5K views"), en))
+        assertEquals("\u2067الأمة الآن\u2069 \u00B7 \u20661.5K views\u2069", AunFormat.joinMeta(listOf("الأمة الآن", "1.5K views"), en))
         assertFalse(AunFormat.separator(ar).contains('\u00B7'))
+    }
+
+    @Test fun `an isolate keeps its text in its own direction, ignoring nested isolates`() {
+        // Re-audit 3 (#53): «عند ٠:٤٢» rendered as «٠:٤٢عند» inside a right-to-left isolate; Arabic with digits takes RLMs.
+        assertEquals("\u200Fعند\u00A0\u2066٠:٤٢\u2069\u200F", AunFormat.isolate("عند\u00A0" + AunFormat.isolate("٠:٤٢")))
+        assertEquals("\u2066at\u00A0\u20660:42\u2069\u2069", AunFormat.isolate("at\u00A0" + AunFormat.isolate("0:42")))
+        assertEquals("\u200F٧٣٤\u00A0م.ب\u200F", AunFormat.isolate("٧٣٤\u00A0م.ب"))
+        // Only the nested isolate has letters: the outer one is left-to-right, as FSI would be.
+        assertEquals("\u2066\u2067سورة الكهف\u2069.mp4\u2069", AunFormat.isolate(AunFormat.isolate("سورة الكهف") + ".mp4"))
+        assertEquals("\u2066٨٢٪\u2069", AunFormat.isolate("٨٢٪"))
+    }
+
+    @Test fun `file sizes use decimal units, one decimal below ten, cut and never grouped in Arabic`() {
+        assertEquals(AunFormat.FileSize("٧٣٤", AunFormat.SizeUnit.MEGA), AunFormat.fileSize(734_003_200, ar))
+        assertEquals(AunFormat.FileSize("734", AunFormat.SizeUnit.MEGA), AunFormat.fileSize(734_003_200, en))
+        assertEquals(AunFormat.FileSize("٥١٢", AunFormat.SizeUnit.MEGA), AunFormat.fileSize(512_000_000, ar))
+        assertEquals(AunFormat.FileSize("١٫٥", AunFormat.SizeUnit.MEGA), AunFormat.fileSize(1_599_999, ar))
+        assertEquals(AunFormat.FileSize("1.5", AunFormat.SizeUnit.GIGA), AunFormat.fileSize(1_590_000_000, en))
+        assertEquals(AunFormat.FileSize("٩٩٩", AunFormat.SizeUnit.BYTE), AunFormat.fileSize(999, ar))
+        assertEquals(AunFormat.FileSize("١٢", AunFormat.SizeUnit.KILO), AunFormat.fileSize(12_900, ar))
+        assertEquals(AunFormat.FileSize("١٢٠٠", AunFormat.SizeUnit.TERA), AunFormat.fileSize(1_200_000_000_000_000, ar))
     }
 
     @Test fun `only a decimal point between digits becomes the Arabic decimal separator`() {

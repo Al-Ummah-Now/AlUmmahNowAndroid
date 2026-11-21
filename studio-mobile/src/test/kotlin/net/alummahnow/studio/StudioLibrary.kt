@@ -1,59 +1,25 @@
 package net.alummahnow.studio
 
-import net.alummahnow.core.bridge.studio.ContentCounts
-import net.alummahnow.core.bridge.studio.ContentStatus
-import net.alummahnow.core.bridge.studio.StudioVideo
+import net.alummahnow.fixtures.BrandChannel
 
 /**
- * The one channel library every Studio frame shows (store, framed and feature-state frames): the same five published
- * videos as the viewer fixtures (titles, views, durations, art), plus one draft and one scheduled video. Counts agree.
+ * The one channel library every Studio frame shows (store, framed and feature-state frames): the brand channel's
+ * published videos, one draft and one scheduled video, from the fixture every viewer and Studio module shares
+ * ([BrandChannel]), so titles, views, dates and art agree with Home and Watch. Counts agree with the lists.
  */
 internal object StudioLibrary {
-    private fun video(
-        id: String,
-        en: String,
-        ar: String,
-        thumb: String,
-        day: Int,
-        views: Long,
-        seconds: Double,
-        category: String,
-        status: ContentStatus = ContentStatus.PUBLISHED
-    ) = StudioVideo(
-        id,
-        en,
-        thumbnailUrl = "${FIXTURE_THUMBS}$thumb.jpg",
-        createdAt = "2026-11-%02dT10:00:00Z".format(day),
-        titleLocalized = mapOf("ar" to ar),
-        views = views,
-        durationSeconds = seconds,
-        category = category,
-        status = status
-    )
+    /** Newest first, all uploaded in September (before the October analytics). */
+    val published = BrandChannel.studioPublished
 
-    /** Newest first. */
-    val published = listOf(
-        video("v4", "Surat Al-Kahf recitation", "تلاوة سورة الكهف", "kahf", 7, 8_020, 2_710.0, "quran_recitation"),
-        video("v1", "Introduction to Tafsir", "مقدمة في التفسير", "tafsir", 6, 1_520, 1_830.0, "quran_tafsir"),
-        video("v5", "Friday khutbah: patience", "خطبة الجمعة: الصبر", "khutbah", 5, 1_310, 1_260.0, "khutbah"),
-        video("v3", "Fiqh of Prayer", "فقه الصلاة", "fiqh", 4, 2_140, 3_725.0, "fiqh"),
-        video("v2", "Ramadan reminders", "تذكيرات رمضان", "ramadan", 2, 12_000, 45.0, "ramadan")
-    )
+    val draft = BrandChannel.studioDraft
 
-    val draft = video("v6", "Seerah overview", "نظرة عامة على السيرة", "seerah", 3, 0, 1_265.0, "islamic_history", ContentStatus.DRAFTS)
-
-    val scheduled = video(
-        "v7",
-        "Tafsir of Surah Al-Kahf, part 2",
-        "تفسير سورة الكهف، الجزء الثاني",
-        "kahf2",
-        9,
-        0,
-        2_340.0,
-        "quran_tafsir",
-        ContentStatus.SCHEDULED
-    )
+    /** Goes out in December, after the October analytics window and after the frames' own date. */
+    val scheduled = BrandChannel.studioScheduled
 
     /** Published, scheduled, drafts, processing, failed. */
-    val counts = ContentCounts(published.size, 1, 1, 0, 0)
+    val counts = BrandChannel.counts
+
+    val comments = BrandChannel.comments
+
+    val analytics = BrandChannel.analytics
 }

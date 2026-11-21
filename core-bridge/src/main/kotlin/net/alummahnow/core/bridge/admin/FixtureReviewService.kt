@@ -106,30 +106,28 @@ class FixtureReviewService(
     override suspend fun detail(id: String): ReviewDetail = lock.withLock {
         online()
         val item = (open + decided).firstOrNull { it.id == id } ?: throw CoreError.NotFound("review")
-        val findings = listOf(
-            ReviewFinding(
-                id = "$id-f1",
-                source = "frame",
-                category = item.topCategory ?: "other",
-                score = item.risk ?: 0.5,
-                atMs = 42_000,
-                mediaKey = "review/${item.subjectId}/r1/frame-042.jpg",
-                rationale = "A frame scored above the screen threshold."
-            ),
-            ReviewFinding(id = "$id-f2", source = "metadata", category = "spam", score = 0.21, text = "Donate now, limited time")
-        )
-        val manifest = (0 until 4).map { ReviewFrame("review/${item.subjectId}/r1/frame-0${it}0.jpg", it * 10_000L, false) }
+        val case = CASES.getValue(item.id)
+        val frameKey = { ms: Long -> "review/${item.subjectId}/r1/frame-${ms / MS_PER_S}.jpg" }
+        val findings = buildList {
+            add(
+                ReviewFinding(
+                    id = "$id-f1",
+                    source = "frame",
+                    category = item.topCategory ?: "other",
+                    score = item.risk ?: case.frameScore,
+                    atMs = case.flaggedAtMs,
+                    mediaKey = frameKey(case.flaggedAtMs),
+                    rationale = case.rationale
+                )
+            )
+            case.second?.let { add(it.copy(id = "$id-f2")) }
+        }
+        val manifest = case.manifestMs.map { ReviewFrame(frameKey(it), it, false) }
         ReviewDetail(
             item = item,
             findings = findings,
             history = listOf(ReviewHistoryEntry("$id-h1", "approved", "approve", decidedAt = now().minus(Duration.ofDays(7)))),
-            subject = ReviewSubject(
-                item.subjectId,
-                item.title.orEmpty(),
-                "A short description from the creator.",
-                listOf("community"),
-                durationSeconds = 312.0
-            ),
+            subject = ReviewSubject(item.subjectId, item.title.orEmpty(), case.description, case.tags, durationSeconds = case.seconds),
             frames = ReviewDetail.frames(findings, manifest)
         )
     }
@@ -214,7 +212,89 @@ class FixtureReviewService(
         registeredInstalls.remove(installId)
     }
 
+    /** What a fixture item's review shows: its creator text, length, frames and the model's findings. */
+    private class Case(
+        val description: String,
+        val tags: List<String>,
+        val seconds: Double,
+        val flaggedAtMs: Long,
+        val manifestMs: List<Long>,
+        val rationale: String,
+        val frameScore: Double = 0.5,
+        val second: ReviewFinding? = null
+    )
+
     companion object {
+        private const val MS_PER_S = 1_000L
+
+        // Each item has its own story: a realistic creator description, its own frame times and its own scores.
+        private val CASES = mapOf(
+            "fx-nsfw" to Case(
+                "A slow walk through the old city's evening market: spice stalls, lanterns and the call to prayer at sunset.",
+                listOf("travel", "old city"),
+                seconds = 468.0,
+                flaggedAtMs = 195_000,
+                manifestMs = listOf(0, 90_000, 285_000, 380_000),
+                rationale = "Partial nudity on a poster in the crowd scored above the screen threshold."
+            ),
+            "fx-risk" to Case(
+                "Where your donations went this month, and how to join the winter appeal.",
+                listOf("charity", "winter appeal"),
+                seconds = 252.0,
+                flaggedAtMs = 128_000,
+                manifestMs = listOf(0, 60_000, 190_000, 240_000),
+                rationale = "A personal bank account number is shown for donations.",
+                second = ReviewFinding("", source = "metadata", category = "spam", score = 0.36, text = "Donate now, limited time")
+            ),
+            "fx-conflict" to Case(
+                "Three quick iftar dishes from our family kitchen: lentil soup, stuffed dates and kunafa.",
+                listOf("ramadan", "recipes"),
+                seconds = 755.0,
+                flaggedAtMs = 444_000,
+                manifestMs = listOf(0, 180_000, 600_000, 720_000),
+                rationale = "An on-screen giveaway is not mentioned anywhere in the description.",
+                second = ReviewFinding(
+                    "",
+                    source = "metadata",
+                    category = "misleading_metadata",
+                    score = 0.27,
+                    text = "Free iftar box for every viewer"
+                )
+            ),
+            "fx-appeal" to Case(
+                "The student union's open debate on free speech, recorded live in the main hall.",
+                listOf("debate", "campus"),
+                seconds = 3_490.0,
+                flaggedAtMs = 1_297_000,
+                manifestMs = listOf(0, 600_000, 2_100_000, 3_000_000),
+                rationale = "A speaker is shouted down and insulted by name.",
+                second = ReviewFinding(
+                    "",
+                    source = "transcript",
+                    category = "harassment",
+                    score = 0.48,
+                    atMs = 1_301_000,
+                    text = "Sit down, nobody wants to hear you"
+                )
+            ),
+            "fx-minor" to Case(
+                "Week three of the beginners' swimming class: floating and breathing.",
+                listOf("swimming", "sport"),
+                seconds = 365.0,
+                flaggedAtMs = 72_000,
+                manifestMs = listOf(0, 150_000, 240_000, 330_000),
+                rationale = "A child appears in swimwear; a senior reviewer decides."
+            ),
+            "fx-old" to Case(
+                "A short morning reminder to start the day with gratitude.",
+                listOf("reminder"),
+                seconds = 300.0,
+                flaggedAtMs = 30_000,
+                manifestMs = listOf(0, 120_000, 200_000, 280_000),
+                rationale = "Repeated text on screen looked like spam."
+            )
+        )
+
         /** A 2×2 grey PNG: decoded in memory like a real frame. */
         const val FRAME_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAAAAABX3VL4AAAADklEQVR4nGNoaGBoaAAABgYCASzBUNcAAAAASUVORK5CYII="
         private const val CONFLICT_AGO_S = 20L
