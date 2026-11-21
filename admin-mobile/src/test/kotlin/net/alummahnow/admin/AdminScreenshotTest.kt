@@ -165,9 +165,17 @@ class AdminScreenshotTest {
             .use { it.readBytes() }
     }
 
-    private fun settings(lang: Lang) = @Composable {
-        SettingsContent("Fixture Senior".inLang(lang), dark = false, language = "en", push = PushState.NOT_CONFIGURED, onDark = {
-        }, onLanguage = {}, onSignOut = {})
+    /** Settings as the frame shows them: its own theme and language selected, alerts on (a release build with push set up). */
+    private fun settings(lang: Lang, mode: ThemeMode) = @Composable {
+        SettingsContent(
+            "Fixture Senior".inLang(lang),
+            dark = mode == ThemeMode.DARK,
+            language = if (lang == Lang.AR) "ar" else "en",
+            push = PushState.ON,
+            onDark = {},
+            onLanguage = {},
+            onSignOut = {}
+        )
     }
 
     @Test fun queueEnLight() = shoot("queue", Lang.EN, ThemeMode.LIGHT, content = queue(Lang.EN))
@@ -232,9 +240,9 @@ class AdminScreenshotTest {
 
     @Test fun notStaffAr() = shoot("not_staff", Lang.AR, ThemeMode.DARK) { NotStaffScreen(onSignOut = {}) }
 
-    @Test fun settingsEn() = shoot("settings", Lang.EN, ThemeMode.LIGHT, content = settings(Lang.EN))
+    @Test fun settingsEn() = shoot("settings", Lang.EN, ThemeMode.LIGHT, content = settings(Lang.EN, ThemeMode.LIGHT))
 
-    @Test fun settingsAr() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR))
+    @Test fun settingsAr() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK))
 
     private companion object {
         val FRAME_KEY = Regex("""review/([^/]+)/r1/frame-(\d+)\.jpg""")
