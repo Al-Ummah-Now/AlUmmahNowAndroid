@@ -27,7 +27,7 @@ enum class OfflineDownloadQuality(val wireName: String) {
 
     companion object {
         fun fromWire(value: String): OfflineDownloadQuality =
-            entries.firstOrNull { it.wireName == value } ?: AUDIO
+            entries.firstOrNull { it.wireName == value } ?: Q480P
     }
 }
 
@@ -59,13 +59,11 @@ data class OfflineDownloadRecord(
 data class OfflineDownloadSettings(
     val wifiOnly: Boolean = true,
     val maxStorageBytes: Long = DEFAULT_MAX_STORAGE_BYTES,
-    val maxVideos: Int = DEFAULT_MAX_VIDEOS,
-    val defaultQuality: OfflineDownloadQuality = OfflineDownloadQuality.AUDIO,
+    val defaultQuality: OfflineDownloadQuality = OfflineDownloadQuality.Q480P,
     val autoDownloadEnabled: Boolean = false
 ) {
     companion object {
         const val DEFAULT_MAX_STORAGE_BYTES: Long = 2L * 1024L * 1024L * 1024L
-        const val DEFAULT_MAX_VIDEOS: Int = 50
     }
 }
 
@@ -81,11 +79,6 @@ class StorageBudgetExceededException(
     val incomingBytes: Long,
     val maxStorageBytes: Long
 ) : IOException("storage_budget_exceeded: used=$usedBytes incoming=$incomingBytes cap=$maxStorageBytes")
-
-class MaxVideosExceededException(
-    val currentCount: Int,
-    val maxVideos: Int
-) : IOException("max_videos_exceeded: current=$currentCount cap=$maxVideos")
 
 enum class NetworkTransferAllowance { ALLOWED, BLOCKED_FEATURE_OFF, BLOCKED_WIFI_ONLY, BLOCKED_OFFLINE }
 
@@ -104,12 +97,12 @@ object OfflineDownloadPolicy {
 }
 
 /**
- * Device-local plain offline download store (E14-S8, updated for owner decision E14-D1):
- * - Plain progressive `.m4a` / `.mp4` files live under `noBackupFilesDir/aun_downloads` (excluded
+ * Device-local plain offline download store (E14-S8, updated for E14-D1 & E14-D5):
+ * - Plain progressive R2 `.mp4` (or existing audio rendition) files live under `noBackupFilesDir/aun_downloads` (excluded
  *   from Android Auto Backup) and play directly with Media3 via `file://` URIs.
  * - Records are keyed by `(userId, videoId)` so multiple accounts on one device never clobber files.
  * - Never persists signed URLs (thumbnails are local files only).
- * - Enforces tier video count (`maxVideos`) and storage budget (`maxStorageBytes`) without ever
+ * - Enforces the user's local storage budget (`maxStorageBytes`) without ever
  *   silently evicting active user-chosen downloads.
  * - Removes local copies on sync when a video goes private, is deleted, or creator disables downloads.
  */
@@ -131,15 +124,9 @@ class OfflineDownloadStore(
     private fun recordKey(userId: String, videoId: String): String = "$userId\u001F$videoId"
 
     private fun checkCapsBeforeWriteLocked(
-        userId: String,
-        replacingExisting: Boolean,
         usedBytes: Long,
         expectedBytes: Long
     ) {
-        val userCount = records.values.count { it.userId == userId }
-        if (!replacingExisting && settings.maxVideos > 0 && userCount >= settings.maxVideos) {
-            throw MaxVideosExceededException(userCount, settings.maxVideos)
-        }
         val cap = settings.maxStorageBytes
         if (cap > 0L && expectedBytes > 0L && usedBytes + expectedBytes > cap) {
             throw StorageBudgetExceededException(usedBytes, expectedBytes, cap)
@@ -174,7 +161,7 @@ class OfflineDownloadStore(
         val existing = records[key]
         val existingBytes = existing?.bytes ?: 0L
         val used = records.values.sumOf { it.bytes } - existingBytes
-        checkCapsBeforeWriteLocked(userId, existing != null, used, expectedBytes)
+        checkCapsBeforeWriteLocked(used, expectedBytes)
 
         val safeBase = "${userId}_$videoId".replace(Regex("[^A-Za-z0-9_-]"), "_")
         val safeName = "$safeBase.${quality.fileExtension()}"

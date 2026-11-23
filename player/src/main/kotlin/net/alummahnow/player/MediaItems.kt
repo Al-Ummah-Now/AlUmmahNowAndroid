@@ -38,7 +38,7 @@ object MediaItems {
             .build()
     }
 
-    /** Audio-only playable item for Listen mode & Android Auto (prefers `audio.m4a` / audio HLS rendition). */
+    /** Audio-only playable item for Listen mode & Android Auto (uses existing HLS audio rendition). */
     fun playableAudio(
         video: VideoDetail,
         audioUrl: String? = null,

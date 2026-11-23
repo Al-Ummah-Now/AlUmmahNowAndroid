@@ -101,9 +101,8 @@ class ListenModeController(
             val targetUrl = if (audioOnly) entry?.audioUrl else entry?.playUrl
             if (!targetUrl.isNullOrBlank()) {
                 swapMediaUrlPreservingPlayback(player, entry!!.videoId, targetUrl)
-            } else {
-                applyAudioOnlyTrackSelection(player, audioOnly)
             }
+            applyAudioOnlyTrackSelection(player, audioOnly)
         }
     }
 
@@ -227,7 +226,7 @@ class ListenModeController(
     }
 
     companion object {
-        /** Swaps to the audio-only rendition (`audio.m4a` / `a/orig/index.m3u8`) while keeping position, speed and play state. */
+        /** Swaps to the existing HLS audio rendition (`a/orig/index.m3u8` / `master.m3u8`) preserving position, speed and play state. */
         fun swapMediaUrlPreservingPlayback(player: Player, videoId: String, url: String) {
             val pos = player.currentPosition
             val speed = player.playbackParameters

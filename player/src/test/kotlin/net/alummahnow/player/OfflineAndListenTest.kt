@@ -13,7 +13,6 @@ import net.alummahnow.core.bridge.model.RailKind
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
 import net.alummahnow.player.offline.AvailabilitySyncDecision
-import net.alummahnow.player.offline.MaxVideosExceededException
 import net.alummahnow.player.offline.NetworkTransferAllowance
 import net.alummahnow.player.offline.OfflineDownloadPolicy
 import net.alummahnow.player.offline.OfflineDownloadQuality
@@ -79,7 +78,7 @@ class OfflineAndListenTest {
         )
 
         override suspend fun audioUrl(videoId: String): String =
-            "https://media.alummahnow.net/pub/$videoId/rev1/audio.m4a"
+            "https://media.alummahnow.net/pub/$videoId/rev1/a/orig/index.m3u8"
 
         override suspend fun related(video: VideoDetail, limit: Int): List<VideoSummary> = emptyList()
         override suspend fun search(query: String, limit: Int): List<VideoSummary> =
@@ -92,7 +91,7 @@ class OfflineAndListenTest {
         videoId: String,
         title: String,
         bytes: ByteArray,
-        quality: OfflineDownloadQuality = OfflineDownloadQuality.AUDIO,
+        quality: OfflineDownloadQuality = OfflineDownloadQuality.Q480P,
         thumbnailPath: String? = null
     ) = store.saveFromStream(
         userId = userId,
@@ -125,7 +124,7 @@ class OfflineAndListenTest {
         val payload2 = "plain-audio-u2".toByteArray()
         val rec1 = saveItem(store, "u1", "v1", "User 1", payload1)
         saveItem(store, "u2", "v1", "User 2", payload2)
-        assertTrue(rec1.fileName.endsWith(".m4a"))
+        assertTrue(rec1.fileName.endsWith(".mp4"))
         assertEquals(1, store.playableDownloads("u1").size)
         assertEquals(1, store.playableDownloads("u2").size)
 
@@ -136,14 +135,14 @@ class OfflineAndListenTest {
     }
 
     @Test
-    fun storeEnforcesStorageAndVideoCountCapsWithoutSilentEviction() {
+    fun storeEnforcesLocalStorageBudgetWithoutSilentEviction() {
         val dir = Files.createTempDirectory("aun-dl-caps").toFile()
         val store = OfflineDownloadStore(
             rootDir = dir,
             offlineDownloadsEnabled = true,
             wallClockMs = { 1_000L }
         )
-        store.updateSettings(OfflineDownloadSettings(maxStorageBytes = 500L, maxVideos = 2))
+        store.updateSettings(OfflineDownloadSettings(maxStorageBytes = 500L))
         saveItem(store, "u1", "v1", "Keep me", ByteArray(300) { 1 })
         assertThrows(StorageBudgetExceededException::class.java) {
             saveItem(store, "u1", "v2", "Too big", ByteArray(300) { 2 })
@@ -151,9 +150,6 @@ class OfflineAndListenTest {
         assertNotNull(store.findPlayableByVideoId("u1", "v1"))
 
         saveItem(store, "u1", "v2", "Fits", ByteArray(100) { 2 })
-        assertThrows(MaxVideosExceededException::class.java) {
-            saveItem(store, "u1", "v3", "Third", ByteArray(50) { 3 })
-        }
         assertEquals(2, store.playableDownloads("u1").size)
         assertTrue(store.remove("u1", "v1"))
         assertEquals(1, store.playableDownloads("u1").size)
@@ -211,9 +207,12 @@ class OfflineAndListenTest {
         assertEquals(4, carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH).size)
         val offlineItem = carTree.resolvePlayable("v-offline", audioOnly = true, locale = Locale.ENGLISH)
         assertEquals("file", offlineItem.localConfiguration?.uri?.scheme)
-        assertTrue(offlineItem.localConfiguration?.uri?.path?.endsWith(".m4a") == true)
+        assertTrue(offlineItem.localConfiguration?.uri?.path?.endsWith(".mp4") == true)
         val onlineAudio = carTree.resolvePlayable("v-quran-1", audioOnly = true, locale = Locale.ENGLISH)
-        assertEquals("https://media.alummahnow.net/pub/v-quran-1/rev1/audio.m4a", onlineAudio.localConfiguration?.uri.toString())
+        assertEquals(
+            "https://media.alummahnow.net/pub/v-quran-1/rev1/a/orig/index.m3u8",
+            onlineAudio.localConfiguration?.uri.toString()
+        )
     }
 
     @Test
