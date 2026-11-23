@@ -40,21 +40,23 @@ class OfflineAndListenTest {
         private val sample = VideoSummary(
             id = "v-quran-1",
             title = LocalizedText("Surah Al-Kahf Recitation", mapOf("ar" to "تلاوة سورة الكهف")),
-            channelId = "ch-1",
-            channelName = "Al-Huda",
             thumbnailUrl = null,
             durationSeconds = 1800,
             views = 1200,
+            channelId = "ch-1",
+            channelName = "Al-Huda",
+            publishedAt = "2026-11-23T00:00:00Z",
             category = "Quran"
         )
         private val lecture = VideoSummary(
             id = "v-lecture-2",
             title = LocalizedText("Seerah Lesson 1"),
-            channelId = "ch-2",
-            channelName = "Seerah Series",
             thumbnailUrl = null,
             durationSeconds = 2400,
             views = 500,
+            channelId = "ch-2",
+            channelName = "Seerah Series",
+            publishedAt = "2026-11-23T00:00:00Z",
             category = "Lectures"
         )
 
@@ -68,8 +70,13 @@ class OfflineAndListenTest {
             summary = if (id == sample.id) sample else lecture,
             description = LocalizedText("desc"),
             playUrl = "https://cdn.example/$id/master.m3u8",
+            availableResolutions = listOf("480p"),
+            chapters = emptyList(),
             subtitles = emptyList(),
-            chapters = emptyList()
+            likes = 0,
+            tags = emptyList(),
+            isLive = false,
+            isReady = true
         )
 
         override suspend fun audioUrl(videoId: String): String =
@@ -79,6 +86,28 @@ class OfflineAndListenTest {
         override suspend fun search(query: String, limit: Int): List<VideoSummary> =
             listOf(sample, lecture).filter { it.title.fallback.contains(query, ignoreCase = true) }
     }
+
+    private fun saveItem(
+        store: OfflineDownloadStore,
+        userId: String,
+        licenseId: String,
+        videoId: String,
+        title: String,
+        bytes: ByteArray,
+        serverTimeMs: Long = 10_000L,
+        expiresAtMs: Long = 90_000L,
+        thumbnailPath: String? = null
+    ) = store.saveFromStream(
+        userId = userId,
+        licenseId = licenseId,
+        videoId = videoId,
+        title = title,
+        thumbnailPath = thumbnailPath,
+        quality = OfflineDownloadQuality.AUDIO,
+        serverTimeMs = serverTimeMs,
+        expiresAtMs = expiresAtMs,
+        input = ByteArrayInputStream(bytes)
+    )
 
     @Test
     fun aundl01StreamingEncryptRandomAccessAndTruncationRejection() {
@@ -93,14 +122,12 @@ class OfflineAndListenTest {
             val slice = reader.readRange((AunDl01Format.CHUNK_SIZE - 100).toLong(), 250)
             assertArrayEquals(payload.copyOfRange(AunDl01Format.CHUNK_SIZE - 100, AunDl01Format.CHUNK_SIZE + 150), slice)
         }
-        // Cross-video and cross-license file swapping fails on open.
         assertThrows(IOException::class.java) {
             AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-other", "lic-1")
         }
         assertThrows(IOException::class.java) {
             AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-1", "lic-other")
         }
-        // Truncating at exact chunk boundary fails final-chunk AAD on open.
         val raw = enc.readBytes()
         val hdrLen = 16 + 2 + "vid-1".length + 2 + "lic-1".length
         val truncated = File(dir, "trunc.aun").apply { writeBytes(raw.copyOfRange(0, hdrLen + AunDl01Format.CHUNK_STRIDE)) }
@@ -121,32 +148,24 @@ class OfflineAndListenTest {
             wallClockMs = { wall },
             monotonicClockMs = { mono }
         )
-        // Signed HTTP URLs are strictly forbidden in thumbnailPath.
         assertThrows(IllegalArgumentException::class.java) {
-            store.saveFromStream(
-                userId = "u1", licenseId = "lic-bad", videoId = "v1", title = "Bad",
-                thumbnailPath = "https://media.alummahnow.net/priv/token/thumb.jpg",
-                quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 10_000L, expiresAtMs = 50_000L,
-                input = ByteArrayInputStream("ok".toByteArray())
+            saveItem(
+                store = store,
+                userId = "u1",
+                licenseId = "lic-bad",
+                videoId = "v1",
+                title = "Bad",
+                bytes = "ok".toByteArray(),
+                thumbnailPath = "https://media.alummahnow.net/priv/token/thumb.jpg"
             )
         }
-        // Two users downloading the same video stay isolated.
-        store.saveFromStream(
-            userId = "u1", licenseId = "lic-u1", videoId = "v1", title = "User 1",
-            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 10_000L, expiresAtMs = 20_000L,
-            input = ByteArrayInputStream("user1".toByteArray())
-        )
-        store.saveFromStream(
-            userId = "u2", licenseId = "lic-u2", videoId = "v1", title = "User 2",
-            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 10_000L, expiresAtMs = 90_000L,
-            input = ByteArrayInputStream("user2".toByteArray())
-        )
+        saveItem(store, "u1", "lic-u1", "v1", "User 1", "user1".toByteArray(), expiresAtMs = 20_000L)
+        saveItem(store, "u2", "lic-u2", "v1", "User 2", "user2".toByteArray(), expiresAtMs = 90_000L)
         assertEquals(1, store.playableDownloads("u1").size)
         assertEquals(1, store.playableDownloads("u2").size)
 
-        // Roll wall clock backward while monotonic advances past u1's expiry: u1 MUST NOT be playable!
         wall = 1_000L
-        mono = 15_000L // server anchor 10_000 + 14_000 = 24_000 > 20_000
+        mono = 15_000L
         assertNull(store.findPlayableByVideoId("u1", "v1"))
         assertNotNull(store.findPlayableByVideoId("u2", "v1"))
     }
@@ -170,21 +189,11 @@ class OfflineAndListenTest {
             slotReleaser = releaser
         )
         store.updateSettings(OfflineDownloadSettings(maxStorageBytes = 500L))
-        store.saveFromStream(
-            userId = "u1", licenseId = "lic-1", videoId = "v1", title = "Keep me",
-            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
-            input = ByteArrayInputStream(ByteArray(300) { 1 })
-        )
-        // Adding a second download over budget must throw instead of silently deleting v1!
+        saveItem(store, "u1", "lic-1", "v1", "Keep me", ByteArray(300) { 1 }, serverTimeMs = 1_000L)
         assertThrows(StorageBudgetExceededException::class.java) {
-            store.saveFromStream(
-                userId = "u1", licenseId = "lic-2", videoId = "v2", title = "Too big",
-                quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
-                input = ByteArrayInputStream(ByteArray(300) { 2 })
-            )
+            saveItem(store, "u1", "lic-2", "v2", "Too big", ByteArray(300) { 2 }, serverTimeMs = 1_000L)
         }
         assertNotNull(store.findPlayableByVideoId("u1", "v1"))
-
         assertTrue(store.remove("u1", "v1"))
         assertEquals(listOf("lic-1"), released)
     }
@@ -206,11 +215,7 @@ class OfflineAndListenTest {
                 }
             }
         )
-        store.saveFromStream(
-            userId = "u1", licenseId = "lic-rev", videoId = "v-rev", title = "Revoke",
-            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
-            input = ByteArrayInputStream("abc".toByteArray())
-        )
+        saveItem(store, "u1", "lic-rev", "v-rev", "Revoke", "abc".toByteArray(), serverTimeMs = 1_000L)
         assertEquals(1, store.applyLicenseRefresh(listOf(LicenseRefreshDecision("lic-rev", "revoked")), 2_000L))
         assertEquals(listOf("lic-rev"), released)
         assertTrue(store.allDownloads("u1").isEmpty())
@@ -226,11 +231,7 @@ class OfflineAndListenTest {
             wallClockMs = { 1_000L },
             monotonicClockMs = { 100L }
         )
-        store.saveFromStream(
-            userId = "u1", licenseId = "lic-off", videoId = "v-offline", title = "Offline Tafsir",
-            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
-            input = ByteArrayInputStream("offline audio bytes".toByteArray())
-        )
+        saveItem(store, "u1", "lic-off", "v-offline", "Offline Tafsir", "offline audio".toByteArray(), serverTimeMs = 1_000L)
 
         var listenOn = false
         val carTree = CarBrowseTree(
@@ -241,19 +242,13 @@ class OfflineAndListenTest {
             rootTitle = "Al Ummah Now",
             tabTitle = { it.name }
         )
-        // Gate: Android Auto is completely empty while listenMode is off!
         assertTrue(carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH).isEmpty())
         assertTrue(carTree.search("Tafsir", Locale.ENGLISH).isEmpty())
 
         listenOn = true
-        val tabs = carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH)
-        assertEquals(4, tabs.size)
-
-        // Car Downloads tab plays offline via aun-offline:// without calling catalog.video()!
+        assertEquals(4, carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH).size)
         val offlineItem = carTree.resolvePlayable("v-offline", audioOnly = true, locale = Locale.ENGLISH)
         assertEquals("aun-offline://v-offline", offlineItem.localConfiguration?.uri.toString())
-
-        // Car online playback uses the audio.m4a rendition, NOT the muxed master.m3u8!
         val onlineAudio = carTree.resolvePlayable("v-quran-1", audioOnly = true, locale = Locale.ENGLISH)
         assertEquals("https://media.alummahnow.net/pub/v-quran-1/rev1/audio.m4a", onlineAudio.localConfiguration?.uri.toString())
     }

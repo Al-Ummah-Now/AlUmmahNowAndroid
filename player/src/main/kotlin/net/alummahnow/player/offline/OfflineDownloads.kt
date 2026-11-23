@@ -24,6 +24,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
+import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -159,7 +160,7 @@ class AndroidKeystoreDownloadKeyVault(
  * immediately so truncation or file swapping fails before playback begins.
  */
 object AunDl01Format {
-    val MAGIC: ByteArray = byteArrayOf('A'.code.toByte(), 'U'.code.toByte(), 'N'.code.toByte(), 'D'.code.toByte(), 'L'.code.toByte(), '0'.code.toByte(), '1'.code.toByte(), 0)
+    val MAGIC: ByteArray = "AUNDL01\u0000".toByteArray(Charsets.US_ASCII)
     const val CHUNK_SIZE: Int = 64 * 1024
     const val TAG_LEN: Int = 16
     const val CHUNK_STRIDE: Int = CHUNK_SIZE + TAG_LEN
@@ -273,8 +274,14 @@ class AunDl01StreamWriter(
             remaining -= take
             if (pendingLen > AunDl01Format.CHUNK_SIZE) {
                 val frame = AunDl01Format.sealChunk(
-                    key, prefix, videoId, licenseId, chunkIndex, isFinal = false,
-                    plain = pending, len = AunDl01Format.CHUNK_SIZE
+                    key = key,
+                    prefix = prefix,
+                    videoId = videoId,
+                    licenseId = licenseId,
+                    index = chunkIndex,
+                    isFinal = false,
+                    plain = pending,
+                    len = AunDl01Format.CHUNK_SIZE
                 )
                 out.write(frame)
                 chunkIndex += 1
@@ -288,8 +295,14 @@ class AunDl01StreamWriter(
     fun finish(): Long {
         check(!finished) { "writer already finished" }
         val finalFrame = AunDl01Format.sealChunk(
-            key, prefix, videoId, licenseId, chunkIndex, isFinal = true,
-            plain = pending, len = pendingLen
+            key = key,
+            prefix = prefix,
+            videoId = videoId,
+            licenseId = licenseId,
+            index = chunkIndex,
+            isFinal = true,
+            plain = pending,
+            len = pendingLen
         )
         out.write(finalFrame)
         out.flush()
@@ -396,6 +409,10 @@ class AunDl01RandomAccessReader private constructor(
     }
 
     companion object {
+        private fun ensureFormat(condition: Boolean, message: String) {
+            if (!condition) throw IOException(message)
+        }
+
         fun open(
             key: SecretKey,
             source: File,
@@ -406,12 +423,10 @@ class AunDl01RandomAccessReader private constructor(
             val raf = RandomAccessFile(source, "r")
             try {
                 val fileLen = raf.length()
-                if (fileLen < 16) throw IOException("truncated header")
+                ensureFormat(fileLen >= 16, "truncated header")
                 val fixed = ByteArray(16)
                 raf.readFully(fixed)
-                if (!fixed.copyOfRange(0, 8).contentEquals(AunDl01Format.MAGIC)) {
-                    throw IOException("invalid envelope magic")
-                }
+                ensureFormat(fixed.copyOfRange(0, 8).contentEquals(AunDl01Format.MAGIC), "invalid envelope magic")
                 val prefix = fixed.copyOfRange(8, 16)
                 val vidLen = raf.readUnsignedShort()
                 val vidBytes = ByteArray(vidLen)
@@ -421,21 +436,24 @@ class AunDl01RandomAccessReader private constructor(
                 val licBytes = ByteArray(licLen)
                 raf.readFully(licBytes)
                 val headerLicenseId = String(licBytes, Charsets.UTF_8)
-                if (headerVideoId != expectedVideoId || headerLicenseId != expectedLicenseId) {
-                    throw IOException("file binding does not match expected videoId/licenseId")
-                }
+                ensureFormat(
+                    headerVideoId == expectedVideoId && headerLicenseId == expectedLicenseId,
+                    "file binding does not match expected videoId/licenseId"
+                )
                 val dataOffset = raf.filePointer
-                if (fileLen < dataOffset + AunDl01Format.TAG_LEN) throw IOException("truncated payload")
+                ensureFormat(fileLen >= dataOffset + AunDl01Format.TAG_LEN, "truncated payload")
                 val payloadLen = fileLen - dataOffset
                 val stride = AunDl01Format.CHUNK_STRIDE.toLong()
                 val numChunksLong = ((payloadLen - 1L) / stride) + 1L
                 val lastFrameLen = payloadLen - (numChunksLong - 1L) * stride
-                if (lastFrameLen < AunDl01Format.TAG_LEN || lastFrameLen > stride) {
-                    throw IOException("truncated final chunk")
-                }
-                if (numChunksLong > 1L && lastFrameLen == AunDl01Format.TAG_LEN.toLong()) {
-                    throw IOException("invalid empty trailing chunk")
-                }
+                ensureFormat(
+                    lastFrameLen >= AunDl01Format.TAG_LEN && lastFrameLen <= stride,
+                    "truncated final chunk"
+                )
+                ensureFormat(
+                    !(numChunksLong > 1L && lastFrameLen == AunDl01Format.TAG_LEN.toLong()),
+                    "invalid empty trailing chunk"
+                )
                 val plainLen = (numChunksLong - 1L) * AunDl01Format.CHUNK_SIZE + (lastFrameLen - AunDl01Format.TAG_LEN)
                 val reader = AunDl01RandomAccessReader(
                     key = key,
@@ -447,13 +465,14 @@ class AunDl01RandomAccessReader private constructor(
                     plainLen = plainLen,
                     numChunks = numChunksLong.toInt()
                 )
-                // Immediately authenticate final chunk to detect truncation or wrong key on open.
                 reader.loadChunk(reader.numChunks - 1)
                 return reader
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 runCatching { raf.close() }
-                if (e is IOException) throw e
-                throw IOException("failed to open encrypted download: ${e.message}", e)
+                throw e
+            } catch (e: GeneralSecurityException) {
+                runCatching { raf.close() }
+                throw IOException("authentication failed: ${e.message}", e)
             }
         }
     }
@@ -467,19 +486,23 @@ class AunDl01RandomAccessReader private constructor(
 class EncryptedOfflineDataSource(
     private val store: OfflineDownloadStore,
     private val activeUserId: () -> String
-) : BaseDataSource(/* isNetwork = */ false) {
+) : BaseDataSource(false) {
     private var currentUri: Uri? = null
     private var reader: AunDl01RandomAccessReader? = null
     private var position: Long = 0L
     private var bytesRemaining: Long = 0L
 
+    private fun requireValid(condition: Boolean, message: String) {
+        if (!condition) throw IOException(message)
+    }
+
     override fun open(dataSpec: DataSpec): Long {
         val uri = dataSpec.uri
-        if (uri.scheme != SCHEME) throw IOException("unsupported scheme: ${uri.scheme}")
+        requireValid(uri.scheme == SCHEME, "unsupported scheme: ${uri.scheme}")
         val videoId = uri.host ?: uri.path?.trimStart('/')
-            ?: throw IOException("missing videoId in offline uri")
+        requireValid(!videoId.isNullOrEmpty(), "missing videoId in offline uri")
         transferInitializing(dataSpec)
-        val r = store.openReader(activeUserId(), videoId)
+        val r = store.openReader(activeUserId(), videoId!!)
         val start = dataSpec.position
         if (start < 0 || start > r.plainLen) {
             r.close()
@@ -649,7 +672,7 @@ class OfflineDownloadStore(
             throw StorageBudgetExceededException(used, expectedBytes, cap)
         }
 
-        val safeName = "${"${userId}_${licenseId}".replace(Regex("[^A-Za-z0-9_-]"), "_")}.aun"
+        val safeName = "${userId}_$licenseId".replace(Regex("[^A-Za-z0-9_-]"), "_") + ".aun"
         val dest = File(rootDir, safeName)
         val encryptedSize = AunDl01StreamWriter.encryptStream(
             key = keyVault.secretKey(),
