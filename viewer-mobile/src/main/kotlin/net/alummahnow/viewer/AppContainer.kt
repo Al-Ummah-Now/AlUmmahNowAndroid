@@ -18,6 +18,10 @@ class AppContainer(context: Context) {
     val catalog: CatalogRepository = TemporaryCatalogRepository(BuildConfig.API_BASE_URL)
     val auth: AuthBridge = GuestOnlyAuthBridge()
     val displayPrefs = DisplayPrefsStore(appContext)
-    val downloads: OfflineDownloadStore = OfflineDownloadStore.createDefault(appContext, offlineDownloadsEnabled = false)
-    val resumeStore: PlaybackResumeStore = PlaybackResumeStore(File(appContext.noBackupFilesDir, "aun_playback_resume.json"))
+    val downloads: OfflineDownloadStore by lazy {
+        OfflineDownloadStore.createDefault(appContext, offlineDownloadsEnabled = false)
+    }
+    val resumeStore: PlaybackResumeStore by lazy {
+        PlaybackResumeStore(File(appContext.noBackupFilesDir, "aun_playback_resume.json"))
+    }
 }
