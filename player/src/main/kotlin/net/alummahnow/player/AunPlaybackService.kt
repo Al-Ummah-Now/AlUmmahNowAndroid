@@ -46,13 +46,30 @@ class AunPlaybackService : MediaLibraryService() {
             exo
         }
         player.addListener(PlaybackLogger)
+        deps.resumeStore?.let { store ->
+            player.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    val id = player.currentMediaItem?.mediaId ?: return
+                    if (!isPlaying) store.save(id, player.currentPosition)
+                }
+
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val id = mediaItem?.mediaId ?: return
+                    store.save(id, player.currentPosition)
+                }
+            })
+        }
         val openApp = PendingIntent.getActivity(
             this,
             0,
             Intent(this, deps.sessionActivityClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        session = MediaLibrarySession.Builder(this, player, LibraryCallback(this, deps.catalog, scope))
+        session = MediaLibrarySession.Builder(
+            this,
+            player,
+            LibraryCallback(this, deps.catalog, scope, deps.downloadStore, deps.resumeStore)
+        )
             .setSessionActivity(openApp)
             .build()
     }

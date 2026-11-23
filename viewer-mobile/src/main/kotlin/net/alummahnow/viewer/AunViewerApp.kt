@@ -7,6 +7,8 @@ import androidx.media3.common.util.UnstableApi
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.catalog.CatalogRepository
 import net.alummahnow.player.PlayerDependencies
+import net.alummahnow.player.offline.OfflineDownloadStore
+import net.alummahnow.player.offline.PlaybackResumeStore
 
 class AunViewerApp : Application(), PlayerDependencies {
     lateinit var container: AppContainer
@@ -14,6 +16,8 @@ class AunViewerApp : Application(), PlayerDependencies {
 
     override val catalog: CatalogRepository get() = container.catalog
     override val sessionActivityClass: Class<*> = MainActivity::class.java
+    override val downloadStore: OfflineDownloadStore get() = container.downloads
+    override val resumeStore: PlaybackResumeStore get() = container.resumeStore
 
     @OptIn(UnstableApi::class)
     override fun onCreate() {

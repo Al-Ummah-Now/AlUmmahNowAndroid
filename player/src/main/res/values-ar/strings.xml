@@ -18,4 +18,23 @@
     <string name="aun_player_subtitles_off">إيقاف</string>
     <string name="aun_player_error">لا يمكن تشغيل هذا المرئي الآن.</string>
     <string name="aun_player_seek">تقديم أو ترجيع</string>
+    <string name="aun_listen_mode">استماع</string>
+    <string name="aun_listen_video_mode">المرئي</string>
+    <string name="aun_listen_audio_only">صوت فقط</string>
+    <string name="aun_sleep_timer">مؤقت النوم</string>
+    <string name="aun_sleep_timer_off">إيقاف</string>
+    <string name="aun_sleep_timer_minutes">%1$d دقيقة</string>
+    <string name="aun_sleep_timer_end_of_episode">نهاية الحلقة</string>
+    <string name="aun_queue_title">التالي</string>
+    <string name="aun_queue_empty">قائمة التشغيل فارغة.</string>
+    <string name="aun_queue_clear">مسح القائمة</string>
+    <string name="aun_downloads_title">التنزيلات</string>
+    <string name="aun_downloads_empty">لا توجد مرئيات منزّلة بعد.</string>
+    <string name="aun_downloads_wifi_only">التنزيل عبر شبكة واي فاي فقط</string>
+    <string name="aun_downloads_remove">إزالة التنزيل</string>
+    <string name="aun_downloads_expired">انتهت صلاحية الترخيص، اتصل بالإنترنت للتجديد.</string>
+    <string name="aun_car_continue">متابعة الاستماع</string>
+    <string name="aun_car_downloads">التنزيلات</string>
+    <string name="aun_car_subscriptions">الاشتراكات</string>
+    <string name="aun_car_recitation">التلاوة</string>
 </resources>

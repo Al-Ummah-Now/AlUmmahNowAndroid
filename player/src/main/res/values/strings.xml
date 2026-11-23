@@ -18,4 +18,23 @@
     <string name="aun_player_subtitles_off">Off</string>
     <string name="aun_player_error">This video can\'t be played right now.</string>
     <string name="aun_player_seek">Seek</string>
+    <string name="aun_listen_mode">Listen</string>
+    <string name="aun_listen_video_mode">Video</string>
+    <string name="aun_listen_audio_only">Audio only</string>
+    <string name="aun_sleep_timer">Sleep timer</string>
+    <string name="aun_sleep_timer_off">Off</string>
+    <string name="aun_sleep_timer_minutes">%1$d min</string>
+    <string name="aun_sleep_timer_end_of_episode">End of episode</string>
+    <string name="aun_queue_title">Up next</string>
+    <string name="aun_queue_empty">Your queue is empty.</string>
+    <string name="aun_queue_clear">Clear queue</string>
+    <string name="aun_downloads_title">Downloads</string>
+    <string name="aun_downloads_empty">No downloaded videos yet.</string>
+    <string name="aun_downloads_wifi_only">Download on Wi-Fi only</string>
+    <string name="aun_downloads_remove">Remove download</string>
+    <string name="aun_downloads_expired">License expired. Connect to refresh.</string>
+    <string name="aun_car_continue">Continue listening</string>
+    <string name="aun_car_downloads">Downloads</string>
+    <string name="aun_car_subscriptions">Subscriptions</string>
+    <string name="aun_car_recitation">Recitation</string>
 </resources>
