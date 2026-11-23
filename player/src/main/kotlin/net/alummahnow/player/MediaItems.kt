@@ -7,9 +7,13 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import java.io.File
 import java.util.Locale
+import net.alummahnow.core.bridge.model.LocalizedText
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
+import net.alummahnow.player.offline.OfflineDownloadQuality
+import net.alummahnow.player.offline.OfflineDownloadRecord
 
 /** Builds Media3 items from core models. One place, so phone, TV and Android Auto behave identically. */
 object MediaItems {
@@ -34,6 +38,44 @@ object MediaItems {
             .build()
     }
 
+    /** Audio-only playable item for Listen mode & Android Auto (uses existing HLS audio rendition). */
+    fun playableAudio(
+        video: VideoDetail,
+        audioUrl: String? = null,
+        locale: Locale = Locale.getDefault()
+    ): MediaItem {
+        val uri = audioUrl ?: requireNotNull(video.playUrl) { "video ${video.id} has no audio or play URL" }
+        val mime = if (uri.contains(".m4a", ignoreCase = true)) MimeTypes.AUDIO_MP4 else MimeTypes.APPLICATION_M3U8
+        return MediaItem.Builder()
+            .setMediaId(video.id)
+            .setUri(uri)
+            .setMimeType(mime)
+            .setMediaMetadata(metadata(video.summary, locale, playable = true, audioOnly = true))
+            .build()
+    }
+
+    /** Playable offline item backed by a plain local progressive file (`file://`). */
+    fun playableOffline(
+        record: OfflineDownloadRecord,
+        localFile: File,
+        locale: Locale = Locale.getDefault()
+    ): MediaItem {
+        val mime = if (record.quality == OfflineDownloadQuality.AUDIO) MimeTypes.AUDIO_MP4 else MimeTypes.VIDEO_MP4
+        return MediaItem.Builder()
+            .setMediaId(record.videoId)
+            .setUri(Uri.fromFile(localFile))
+            .setMimeType(mime)
+            .setMediaMetadata(downloadMetadata(record, locale))
+            .build()
+    }
+
+    /** Browsable audio entry for a locally downloaded item (Android Auto Downloads tab; zero network URLs). */
+    fun browsableDownload(record: OfflineDownloadRecord, locale: Locale = Locale.getDefault()): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(record.videoId)
+            .setMediaMetadata(downloadMetadata(record, locale))
+            .build()
+
     /** A browsable/playable entry without a URI; the service resolves it on play (Android Auto). */
     fun browsableVideo(video: VideoSummary, locale: Locale = Locale.getDefault()): MediaItem =
         MediaItem.Builder().setMediaId(video.id).setMediaMetadata(metadata(video, locale, playable = true)).build()
@@ -50,7 +92,32 @@ object MediaItems {
         )
         .build()
 
-    private fun metadata(video: VideoSummary, locale: Locale, playable: Boolean): MediaMetadata =
+    private fun downloadMetadata(record: OfflineDownloadRecord, locale: Locale): MediaMetadata {
+        val title = LocalizedText(
+            fallback = record.title,
+            translations = record.titleAr?.let { mapOf("ar" to it) }.orEmpty()
+        ).resolve(locale)
+        val artworkUri = record.thumbnailPath?.let { path ->
+            val f = File(path)
+            if (f.exists()) Uri.fromFile(f) else null
+        }
+        return MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(record.channelName)
+            .setArtworkUri(artworkUri)
+            .setDurationMs(record.durationSeconds?.times(1000))
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+            .build()
+    }
+
+    private fun metadata(
+        video: VideoSummary,
+        locale: Locale,
+        playable: Boolean,
+        audioOnly: Boolean = false
+    ): MediaMetadata =
         MediaMetadata.Builder()
             .setTitle(video.title.resolve(locale))
             .setArtist(video.channelName)
@@ -58,7 +125,7 @@ object MediaItems {
             .setDurationMs(video.durationSeconds?.times(1000))
             .setIsBrowsable(false)
             .setIsPlayable(playable)
-            .setMediaType(MediaMetadata.MEDIA_TYPE_VIDEO)
+            .setMediaType(if (audioOnly) MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE else MediaMetadata.MEDIA_TYPE_VIDEO)
             .setExtras(Bundle().apply { putString(EXTRA_CHANNEL_ID, video.channelId) })
             .build()
 }

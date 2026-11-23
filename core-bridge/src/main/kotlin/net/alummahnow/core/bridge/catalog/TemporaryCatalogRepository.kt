@@ -8,6 +8,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.internal.ListEnvelope
@@ -18,6 +24,7 @@ import net.alummahnow.core.bridge.model.Rail
 import net.alummahnow.core.bridge.model.RailKind
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
+import net.alummahnow.core.bridge.studio.UserFeatures
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -59,6 +66,43 @@ class TemporaryCatalogRepository(
     override suspend fun video(id: String): VideoDetail {
         val dto = get<VideoDto>(base.newBuilder().addPathSegments("api/videos").addPathSegment(id).build(), what = "video $id")
         return dto.toDetail()
+    }
+
+    override suspend fun audioUrl(videoId: String): String? = withContext(Dispatchers.IO) {
+        val url = base.newBuilder()
+            .addPathSegments("api/v1/videos")
+            .addPathSegment(videoId)
+            .addPathSegment("audio")
+            .build()
+        val req = Request.Builder().url(url).header("Accept", "application/json").build()
+        runCatching {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                val root = json.parseToJsonElement(resp.body.string()).jsonObject
+                val payload = root["result"] as? JsonObject ?: root["data"] as? JsonObject ?: root
+                payload["audioUrl"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["tracks"]?.jsonArray?.firstOrNull()?.jsonObject?.get("hlsUrl")?.jsonPrimitive?.contentOrNull
+            }
+        }.getOrNull()
+    }
+
+    override suspend fun viewerFeatures(bearerToken: String?): UserFeatures = withContext(Dispatchers.IO) {
+        val url = base.newBuilder().addPathSegments("api/me/features").build()
+        val reqBuilder = Request.Builder().url(url).header("Accept", "application/json")
+        if (!bearerToken.isNullOrBlank()) reqBuilder.header("Authorization", "Bearer $bearerToken")
+        runCatching {
+            client.newCall(reqBuilder.build()).execute().use { resp ->
+                if (!resp.isSuccessful) return@use UserFeatures.NONE
+                val root = json.parseToJsonElement(resp.body.string()).jsonObject
+                val container = (root["result"] as? JsonObject) ?: (root["data"] as? JsonObject) ?: root
+                val flags = (container["features"] as? JsonObject) ?: container
+                val on = flags.entries
+                    .filter { (_, v) -> v.jsonPrimitive.booleanOrNull == true }
+                    .map { (k, _) -> k }
+                    .toSet()
+                UserFeatures(on)
+            }
+        }.getOrDefault(UserFeatures.NONE)
     }
 
     override suspend fun related(video: VideoDetail, limit: Int): List<VideoSummary> {

@@ -13,6 +13,15 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
     }
     androidResources { generateLocaleConfig = true }
+    // E14-D7: do not ship com.google.android.gms.car.application metadata in Play builds until
+    // the Android Auto form factor is opted in on Play Console (-Paun.enableAndroidAuto=true).
+    val enableAndroidAuto = (project.findProperty("aun.enableAndroidAuto") as String?)?.toBoolean() ?: false
+    if (enableAndroidAuto) {
+        sourceSets.getByName("main") {
+            manifest.srcFile("src/androidAuto/AndroidManifest.xml")
+            res.srcDir("src/androidAuto/res")
+        }
+    }
 }
 
 play {

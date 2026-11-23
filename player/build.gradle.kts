@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.media3.cast)
     implementation(libs.cast.framework)
     implementation(libs.androidx.mediarouter)
+    implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.okhttp)

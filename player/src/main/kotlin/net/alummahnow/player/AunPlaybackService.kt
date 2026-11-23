@@ -20,8 +20,8 @@ import net.alummahnow.core.bridge.AunLog
 
 /**
  * Owns the one player for the app: background audio, lock-screen / notification controls (spec 13.5),
- * Chromecast (13.6) via [CastPlayer] wrapping the local ExoPlayer, and the media browse tree used by
- * Android Auto (14.4).
+ * Chromecast (13.6) via [CastPlayer] wrapping the local ExoPlayer, plain local `file://` offline
+ * playback (E14-D1), and the gated Android Auto browse tree (14.4).
  */
 class AunPlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
@@ -32,7 +32,10 @@ class AunPlaybackService : MediaLibraryService() {
         super.onCreate()
         val deps = application as PlayerDependencies
         val exo = ExoPlayer.Builder(this)
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
+            .setAudioAttributes(
+                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(),
+                true
+            )
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .setSeekBackIncrementMs(SeekGestures.SKIP_MS)
@@ -46,13 +49,38 @@ class AunPlaybackService : MediaLibraryService() {
             exo
         }
         player.addListener(PlaybackLogger)
+        deps.resumeStore?.let { store ->
+            player.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    val id = player.currentMediaItem?.mediaId ?: return
+                    if (!isPlaying) store.save(id, player.currentPosition)
+                }
+
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val id = mediaItem?.mediaId ?: return
+                    store.save(id, player.currentPosition)
+                }
+            })
+        }
         val openApp = PendingIntent.getActivity(
             this,
             0,
             Intent(this, deps.sessionActivityClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        session = MediaLibrarySession.Builder(this, player, LibraryCallback(this, deps.catalog, scope))
+        session = MediaLibrarySession.Builder(
+            this,
+            player,
+            LibraryCallback(
+                context = this,
+                catalog = deps.catalog,
+                scope = scope,
+                downloadStore = deps.downloadStore,
+                resumeStore = deps.resumeStore,
+                listenModeEnabled = { deps.listenModeEnabled },
+                activeUserId = { deps.activeUserId }
+            )
+        )
             .setSessionActivity(openApp)
             .build()
     }
@@ -60,7 +88,6 @@ class AunPlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Keep playing in the background only while something is actually playing (platform guidance).
         val player = session?.player
         if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
     }
