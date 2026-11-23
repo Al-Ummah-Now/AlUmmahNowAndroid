@@ -213,14 +213,13 @@ class OfflineDownloadStore(
     /** Returns the plain local media file for direct Media3 `file://` playback. */
     @Synchronized
     fun playableFile(userId: String, videoId: String): File? {
-        if (!offlineDownloadsEnabled) return null
         val key = recordKey(userId, videoId)
-        val record = records[key] ?: return null
-        if (!record.isPlayable) return null
-        val file = File(rootDir, record.fileName)
-        if (!file.exists()) return null
-        records[key] = record.copy(lastAccessedAtMs = wallClockMs())
-        persistManifestLocked()
+        val record = if (offlineDownloadsEnabled) records[key]?.takeIf { it.isPlayable } else null
+        val file = record?.let { File(rootDir, it.fileName) }?.takeIf { it.exists() }
+        if (record != null && file != null) {
+            records[key] = record.copy(lastAccessedAtMs = wallClockMs())
+            persistManifestLocked()
+        }
         return file
     }
 
