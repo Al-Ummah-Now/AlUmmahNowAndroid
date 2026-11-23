@@ -1,5 +1,6 @@
 package net.alummahnow.player
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -33,7 +34,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [35])
 @androidx.media3.common.util.UnstableApi
 class OfflineAndListenTest {
     private val fakeCatalog = object : CatalogRepository {
