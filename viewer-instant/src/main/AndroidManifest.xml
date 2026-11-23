@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:dist="http://schemas.android.com/apk/distribution"
+    android:targetSandboxVersion="2">
+
+    <dist:module dist:instant="true" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/instant_app_name"
+        android:supportsRtl="true">
+        <activity
+            android:name=".InstantMainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|density|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Play Instant App Links on the videos site (`E22-D8`). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="${webHost}" />
+                <data android:pathPrefix="/en/video/" />
+                <data android:pathPrefix="/en/shorts/" />
+                <data android:pathPrefix="/ar/video/" />
+                <data android:pathPrefix="/ar/shorts/" />
+                <data android:pathPrefix="/video/" />
+                <data android:pathPrefix="/shorts/" />
+            </intent-filter>
+            <!-- Play Instant App Links on `alummahnow.link` (`E22-D8`). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="${shortLinkHost}" />
+                <data android:pathPrefix="/v/" />
+                <data android:pathPrefix="/s/" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

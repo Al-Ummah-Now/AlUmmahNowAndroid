@@ -43,6 +43,7 @@ include(":feature-passkey")
 
 // Apps
 include(":viewer-mobile")
+include(":viewer-instant")
 include(":viewer-tv")
 include(":studio-mobile")
 include(":admin-mobile")

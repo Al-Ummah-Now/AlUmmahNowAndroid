@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
+import net.alummahnow.design.format.displayLocale
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.home.HomeScreen
 import net.alummahnow.feature.home.HomeViewModel
@@ -66,6 +67,7 @@ class MainActivity : ComponentActivity() {
         val pipListener = Consumer<PictureInPictureModeChangedInfo> { inPip.value = it.isInPictureInPictureMode }
         addOnPictureInPictureModeChangedListener(pipListener)
         val container = (application as AunViewerApp).container
+        ViewerNotificationChannels.ensureAll(this)
         if (savedInstanceState == null) handle(intent)
         setContent {
             val theme by container.displayPrefs.theme.collectAsState(initial = null)
@@ -84,11 +86,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         val url = intent?.data?.toString() ?: return
-        when (val link = AppLinkParser.parse(url, BuildConfig.WEB_HOST)) {
+        when (val link = AppLinkParser.parse(url, BuildConfig.WEB_HOST, BuildConfig.SHORT_LINK_HOST)) {
             is AppLink.Video -> links.trySend(link.id)
             is AppLink.Short -> links.trySend(link.id)
             // No native screen for these yet: show the page on the site instead of a dead end.
-            is AppLink.Playlist, is AppLink.Post, is AppLink.Channel -> openInBrowser(url)
+            is AppLink.Live, is AppLink.Playlist, is AppLink.Post, is AppLink.Channel, is AppLink.ChannelId -> openInBrowser(url)
             // The viewer has no sign-in; the app simply opens.
             is AppLink.AuthCallback, is AppLink.Studio, null -> Unit
         }
@@ -160,15 +162,30 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var settingsOpen by remember { mutableStateOf(false) }
+    var notificationsOpen by remember { mutableStateOf(false) }
+    var eventsOpen by remember { mutableStateOf(false) }
+    var badgeCount by remember { mutableStateOf(0) }
+    var eventCalendarEnabled by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
+
+    LaunchedEffect(container) {
+        runCatching { badgeCount = container.notifications.badge().visibleCount }
+        runCatching { eventCalendarEnabled = container.events.viewerFeatures().eventCalendar }
+    }
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory(container.catalog))
             val state by vm.state.collectAsStateWithLifecycle()
-            HomeScreen(state, onVideoClick = {
-                nav.navigate(Routes.watch(it))
-            }, onRetry = vm::load, onOpenSettings = { settingsOpen = true })
+            HomeScreen(
+                state = state,
+                onVideoClick = { nav.navigate(Routes.watch(it)) },
+                onRetry = vm::load,
+                onOpenSettings = { settingsOpen = true },
+                notificationBadgeCount = badgeCount,
+                onOpenNotifications = { notificationsOpen = true },
+                onOpenEvents = if (eventCalendarEnabled) ({ eventsOpen = true }) else null
+            )
         }
         composable(
             Routes.WATCH,
@@ -191,9 +208,39 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
                 isInPictureInPicture = inPip,
                 onToggleFullscreen = { fullscreen = !fullscreen },
                 onVideoClick = { nav.navigate(Routes.watch(it)) },
-                onRetry = vm::load
+                onRetry = vm::load,
+                onShare = { video, positionSeconds ->
+                    val lang = AppLanguage.current(context)
+                    ShareShortLink.shareVideo(
+                        context = context,
+                        videoId = video.id,
+                        title = video.summary.title.resolve(context.resources.displayLocale()),
+                        startSeconds = positionSeconds,
+                        lang = if (lang == "ar") "ar" else null
+                    )
+                }
             )
         }
+    }
+    if (notificationsOpen) {
+        NotificationsSheet(
+            repository = container.notifications,
+            onBadgeChange = { badgeCount = it },
+            onDismiss = { notificationsOpen = false }
+        )
+    }
+    if (eventsOpen && eventCalendarEnabled) {
+        EventsCalendarSheet(
+            repository = container.events,
+            onOpenEvent = { event ->
+                eventsOpen = false
+                val targetUrl = "${BuildConfig.WEB_BASE_URL}${event.watchPath}"
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                }
+            },
+            onDismiss = { eventsOpen = false }
+        )
     }
     if (settingsOpen) {
         DisplaySettingsSheet(

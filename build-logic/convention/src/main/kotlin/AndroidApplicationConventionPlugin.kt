@@ -24,8 +24,10 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     buildConfigField("String", "WEB_BASE_URL", "\"https://videos.qa.alummahnow.net\"")
                     buildConfigField("String", "ENV_NAME", "\"qa\"")
                     buildConfigField("String", "WEB_HOST", "\"videos.qa.alummahnow.net\"")
+                    buildConfigField("String", "SHORT_LINK_HOST", "\"qa.alummahnow.link\"")
                     // Android App Links host (manifest placeholder webHost), verified against its assetlinks.json.
                     manifestPlaceholders["webHost"] = "videos.qa.alummahnow.net"
+                    manifestPlaceholders["shortLinkHost"] = "qa.alummahnow.link"
                 }
                 create("prod") {
                     dimension = "env"
@@ -33,7 +35,9 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     buildConfigField("String", "WEB_BASE_URL", "\"https://videos.alummahnow.net\"")
                     buildConfigField("String", "ENV_NAME", "\"prod\"")
                     buildConfigField("String", "WEB_HOST", "\"videos.alummahnow.net\"")
+                    buildConfigField("String", "SHORT_LINK_HOST", "\"alummahnow.link\"")
                     manifestPlaceholders["webHost"] = "videos.alummahnow.net"
+                    manifestPlaceholders["shortLinkHost"] = "alummahnow.link"
                 }
             }
             // Release signing, in order: the owner's upload key (docs/RELEASE.md), else the pre-release

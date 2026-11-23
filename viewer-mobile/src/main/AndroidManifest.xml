@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Package visibility (Android 11+): find a browser for site links the app has no screen for. -->
     <queries>
@@ -50,18 +51,36 @@
                 <data android:path="/app/auth/callback" />
                 <data android:pathPrefix="/en/video/" />
                 <data android:pathPrefix="/en/shorts/" />
+                <data android:pathPrefix="/en/live/" />
                 <data android:pathPrefix="/en/playlist/" />
                 <data android:pathPrefix="/en/post/" />
                 <data android:pathPrefix="/ar/video/" />
                 <data android:pathPrefix="/ar/shorts/" />
+                <data android:pathPrefix="/ar/live/" />
                 <data android:pathPrefix="/ar/playlist/" />
                 <data android:pathPrefix="/ar/post/" />
                 <data android:pathPrefix="/video/" />
                 <data android:pathPrefix="/shorts/" />
+                <data android:pathPrefix="/live/" />
                 <data android:pathPrefix="/playlist/" />
                 <data android:pathPrefix="/post/" />
                 <data android:pathPattern="/en/@.*" />
                 <data android:pathPattern="/ar/@.*" />
+                <data android:pathPattern="/@.*" />
+            </intent-filter>
+            <!-- Canonical short links (Epic 22 / #20): verified against https://${shortLinkHost}/.well-known/assetlinks.json. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="${shortLinkHost}" />
+                <data android:pathPrefix="/v/" />
+                <data android:pathPrefix="/s/" />
+                <data android:pathPrefix="/e/" />
+                <data android:pathPrefix="/c/" />
+                <data android:pathPrefix="/p/" />
+                <data android:pathPrefix="/l/" />
                 <data android:pathPattern="/@.*" />
             </intent-filter>
         </activity>

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -45,6 +46,7 @@ import java.util.Locale
 import net.alummahnow.core.bridge.model.Chapter
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.components.LanternLoader
@@ -73,7 +75,8 @@ fun WatchScreen(
     onToggleFullscreen: () -> Unit,
     onVideoClick: (String) -> Unit,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onShare: ((VideoDetail, Long?) -> Unit)? = null
 ) {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
@@ -93,7 +96,7 @@ fun WatchScreen(
                 }
                 when {
                     isInPictureInPicture || isFullscreen -> playerBox(Modifier.fillMaxSize())
-                    else -> WatchLayout(state, player, playerBox, onVideoClick)
+                    else -> WatchLayout(state, player, playerBox, onVideoClick, onShare)
                 }
             }
         }
@@ -149,12 +152,19 @@ private fun WatchLayout(
     state: WatchUiState.Content,
     player: Player?,
     playerBox: @Composable (Modifier) -> Unit,
-    onVideoClick: (String) -> Unit
+    onVideoClick: (String) -> Unit,
+    onShare: ((VideoDetail, Long?) -> Unit)? = null
 ) {
     val locale = currentLocale()
     var seekRequest by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(seekRequest) { seekRequest?.let { player?.seekTo(it) } }
     val onChapter: (Chapter) -> Unit = { seekRequest = (it.startSeconds * 1000).toLong() }
+    val shareAction: (() -> Unit)? = onShare?.let { callback ->
+        {
+            val positionSeconds = player?.currentPosition?.div(MS_PER_SECOND)?.takeIf { it > 0 }
+            callback(state.video, positionSeconds)
+        }
+    }
     val twoPane = currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
 
     if (twoPane) {
@@ -162,7 +172,7 @@ private fun WatchLayout(
         Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             LazyColumn(Modifier.weight(0.64f)) {
                 item { playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) }
-                details(state.video, locale, onChapter)
+                details(state.video, locale, onChapter, shareAction)
             }
             LazyColumn(Modifier.weight(0.36f).padding(horizontal = FanousTokens.Spacing.sm)) {
                 related(state.related, locale, onVideoClick)
@@ -172,48 +182,22 @@ private fun WatchLayout(
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
             playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             LazyColumn(Modifier.fillMaxSize()) {
-                details(state.video, locale, onChapter)
+                details(state.video, locale, onChapter, shareAction)
                 related(state.related, locale, onVideoClick)
             }
         }
     }
 }
 
-private fun LazyListScope.details(video: VideoDetail, locale: Locale, onChapter: (Chapter) -> Unit) {
-    item(key = "details") {
-        var expanded by rememberSaveable { mutableStateOf(false) }
-        Column(Modifier.padding(FanousTokens.Spacing.lg)) {
-            Text(
-                video.summary.title.resolve(locale),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.semantics { heading() }
-            )
-            Text(
-                joinMeta(video.summary.channelName, viewsLabel(video.summary.views)),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = FanousTokens.Spacing.xs)
-            )
-            val description = video.description.resolve(locale)
-            if (description.isNotBlank()) {
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = if (expanded) Int.MAX_VALUE else 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .padding(top = FanousTokens.Spacing.md)
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { expanded = !expanded }
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .padding(FanousTokens.Spacing.md)
-                )
-            }
-        }
-    }
+private const val MS_PER_SECOND = 1_000L
+
+private fun LazyListScope.details(
+    video: VideoDetail,
+    locale: Locale,
+    onChapter: (Chapter) -> Unit,
+    onShare: (() -> Unit)? = null
+) {
+    item(key = "details") { WatchDetailsHeader(video, locale, onShare) }
     if (video.chapters.isNotEmpty()) {
         item(key = "chapters-title") { SectionHeader(stringResource(R.string.watch_chapters)) }
         items(video.chapters, key = { "ch-" + it.id }) { chapter ->
@@ -237,6 +221,50 @@ private fun LazyListScope.details(video: VideoDetail, locale: Locale, onChapter:
             }
         }
         item(key = "chapters-divider") { HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.sm)) }
+    }
+}
+
+@Composable
+private fun WatchDetailsHeader(video: VideoDetail, locale: Locale, onShare: (() -> Unit)?) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.padding(FanousTokens.Spacing.lg)) {
+        Text(
+            video.summary.title.resolve(locale),
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.semantics { heading() }
+        )
+        Text(
+            joinMeta(video.summary.channelName, viewsLabel(video.summary.views)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = FanousTokens.Spacing.xs)
+        )
+        if (onShare != null) {
+            OutlinedButton(
+                onClick = onShare,
+                modifier = Modifier.padding(top = FanousTokens.Spacing.sm)
+            ) {
+                Text(stringResource(DesignR.string.aun_share))
+            }
+        }
+        val description = video.description.resolve(locale)
+        if (description.isNotBlank()) {
+            Text(
+                description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(top = FanousTokens.Spacing.md)
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable { expanded = !expanded }
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(FanousTokens.Spacing.md)
+            )
+        }
     }
 }
 

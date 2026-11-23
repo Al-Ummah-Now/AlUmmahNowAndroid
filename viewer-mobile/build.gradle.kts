@@ -5,12 +5,17 @@ plugins {
     alias(libs.plugins.play.publisher)
 }
 
+val firebaseConfigured = listOf("google-services.json", "src/qa/google-services.json", "src/prod/google-services.json")
+    .any { file(it).exists() }
+if (firebaseConfigured) apply(plugin = "com.google.gms.google-services")
+
 android {
     namespace = "net.alummahnow.viewer"
     defaultConfig {
         applicationId = "net.alummahnow.app"
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
+        buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
     }
     androidResources { generateLocaleConfig = true }
 }
@@ -36,6 +41,8 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.cast)
     implementation(libs.compose.material3.window.size)
+    implementation(libs.compose.material.icons)
+    implementation(libs.firebase.messaging)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)

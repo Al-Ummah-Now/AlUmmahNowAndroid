@@ -64,4 +64,28 @@
     <string name="aun_size_mb">%1$s\u00A0م.ب</string>
     <string name="aun_size_gb">%1$s\u00A0ج.ب</string>
     <string name="aun_size_tb">%1$s\u00A0ت.ب</string>
+    <!-- المشاركة والإشعارات وساعات الهدوء والفعاليات القادمة عبر الإنترنت (Epic 22). -->
+    <string name="aun_share">مشاركة</string>
+    <string name="aun_share_at_time">مشاركة عند %1$s</string>
+    <string name="aun_notifications">الإشعارات</string>
+    <string name="aun_notifications_empty">لا توجد إشعارات بعد.</string>
+    <string name="aun_notifications_mark_all_read">تعليم الكل كمقروء</string>
+    <string name="aun_quiet_hours">ساعات الهدوء</string>
+    <string name="aun_quiet_hours_daily">نافذة الهدوء اليومية</string>
+    <string name="aun_quiet_hours_window">%1$s – %2$s (%3$s)</string>
+    <string name="aun_quiet_hours_prayer">إيقاف التنبيهات في أوقات الصلاة</string>
+    <string name="aun_quiet_hours_note">تبقى الإشعارات الاختيارية في صندوقك خلال ساعات الهدوء، بينما تصل إشعارات الحساب والأمان دائماً.</string>
+    <string name="aun_notif_channel_live">البث المباشر</string>
+    <string name="aun_notif_channel_new_videos">المرئيات الجديدة</string>
+    <string name="aun_notif_channel_comments">التعليقات والردود</string>
+    <string name="aun_notif_channel_account">الحساب والأمان</string>
+    <string name="aun_events">الفعاليات القادمة</string>
+    <string name="aun_events_subtitle">البثوث المباشرة المجدولة والعروض الأولى والحلقات</string>
+    <string name="aun_events_empty">لا توجد فعاليات قادمة عبر الإنترنت حالياً.</string>
+    <string name="aun_events_filter_all">الكل</string>
+    <string name="aun_events_filter_live">بث مباشر</string>
+    <string name="aun_events_filter_premiere">عروض أولى</string>
+    <string name="aun_events_filter_halqa">حلقات</string>
+    <string name="aun_instant_install_app">تنزيل التطبيق الكامل</string>
+    <string name="aun_instant_open_browser">الفتح على الويب</string>
 </resources>

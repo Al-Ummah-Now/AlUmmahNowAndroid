@@ -60,4 +60,28 @@
     <string name="aun_size_mb">%1$s\u00A0MB</string>
     <string name="aun_size_gb">%1$s\u00A0GB</string>
     <string name="aun_size_tb">%1$s\u00A0TB</string>
+    <!-- Sharing, notifications, quiet hours, and upcoming online events (Epic 22). -->
+    <string name="aun_share">Share</string>
+    <string name="aun_share_at_time">Share at %1$s</string>
+    <string name="aun_notifications">Notifications</string>
+    <string name="aun_notifications_empty">No notifications yet.</string>
+    <string name="aun_notifications_mark_all_read">Mark all read</string>
+    <string name="aun_quiet_hours">Quiet hours</string>
+    <string name="aun_quiet_hours_daily">Daily quiet window</string>
+    <string name="aun_quiet_hours_window">%1$s – %2$s (%3$s)</string>
+    <string name="aun_quiet_hours_prayer">Pause during prayer times</string>
+    <string name="aun_quiet_hours_note">Optional notifications wait in your inbox during quiet hours. Account and security notices still arrive.</string>
+    <string name="aun_notif_channel_live">Live streams</string>
+    <string name="aun_notif_channel_new_videos">New videos</string>
+    <string name="aun_notif_channel_comments">Comments and replies</string>
+    <string name="aun_notif_channel_account">Account and security</string>
+    <string name="aun_events">Upcoming events</string>
+    <string name="aun_events_subtitle">Scheduled live streams, premieres, and halqas</string>
+    <string name="aun_events_empty">No upcoming online events right now.</string>
+    <string name="aun_events_filter_all">All</string>
+    <string name="aun_events_filter_live">Live streams</string>
+    <string name="aun_events_filter_premiere">Premieres</string>
+    <string name="aun_events_filter_halqa">Halqas</string>
+    <string name="aun_instant_install_app">Get the full app</string>
+    <string name="aun_instant_open_browser">Open on the web</string>
 </resources>
