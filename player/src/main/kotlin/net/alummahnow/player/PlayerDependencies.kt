@@ -1,7 +1,7 @@
 package net.alummahnow.player
 
 import net.alummahnow.core.bridge.catalog.CatalogRepository
-import net.alummahnow.player.offline.LicenseRefreshExecutor
+import net.alummahnow.player.offline.DownloadSyncExecutor
 import net.alummahnow.player.offline.OfflineDownloadStore
 import net.alummahnow.player.offline.PlaybackResumeStore
 
@@ -27,5 +27,5 @@ interface PlayerDependencies {
 
     val downloadStore: OfflineDownloadStore? get() = null
     val resumeStore: PlaybackResumeStore? get() = null
-    val licenseRefreshExecutor: LicenseRefreshExecutor? get() = null
+    val downloadSyncExecutor: DownloadSyncExecutor? get() = null
 }

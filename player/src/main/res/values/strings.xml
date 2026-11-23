@@ -32,7 +32,6 @@
     <string name="aun_downloads_empty">No downloaded videos yet.</string>
     <string name="aun_downloads_wifi_only">Download on Wi-Fi only</string>
     <string name="aun_downloads_remove">Remove download</string>
-    <string name="aun_downloads_expired">License expired. Connect to refresh.</string>
     <string name="aun_car_continue">Continue listening</string>
     <string name="aun_car_downloads">Downloads</string>
     <string name="aun_car_subscriptions">Subscriptions</string>

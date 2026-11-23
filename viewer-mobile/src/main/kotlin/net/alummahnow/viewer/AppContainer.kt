@@ -2,8 +2,6 @@ package net.alummahnow.viewer
 
 import android.content.Context
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,7 +14,6 @@ import net.alummahnow.core.bridge.auth.GuestOnlyAuthBridge
 import net.alummahnow.core.bridge.catalog.CatalogRepository
 import net.alummahnow.core.bridge.catalog.TemporaryCatalogRepository
 import net.alummahnow.core.bridge.studio.UserFeatures
-import net.alummahnow.player.offline.LicenseSlotReleaser
 import net.alummahnow.player.offline.OfflineDownloadStore
 import net.alummahnow.player.offline.PlaybackResumeStore
 import org.json.JSONArray
@@ -62,52 +59,6 @@ class ViewerFeaturesCache(private val file: File) {
     }
 }
 
-private class HttpLicenseSlotReleaser(
-    private val apiBaseUrl: String,
-    private val bearerTokenProvider: () -> String? = { null }
-) : LicenseSlotReleaser {
-    override fun releaseLicense(licenseId: String): Boolean {
-        val token = bearerTokenProvider() ?: return false
-        return runCatching {
-            val url = URL("${apiBaseUrl.trimEnd('/')}/api/v1/downloads/$licenseId")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "DELETE"
-                connectTimeout = 8_000
-                readTimeout = 8_000
-                setRequestProperty("Authorization", "Bearer $token")
-            }
-            try {
-                conn.responseCode in 200..299 || conn.responseCode == 404
-            } finally {
-                conn.disconnect()
-            }
-        }.getOrDefault(false)
-    }
-
-    override fun revokeDevice(deviceId: String): Boolean {
-        val token = bearerTokenProvider() ?: return false
-        return runCatching {
-            val url = URL("${apiBaseUrl.trimEnd('/')}/api/v1/downloads/revoke-device")
-            val conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                doOutput = true
-                connectTimeout = 8_000
-                readTimeout = 8_000
-                setRequestProperty("Authorization", "Bearer $token")
-                setRequestProperty("Content-Type", "application/json")
-            }
-            try {
-                conn.outputStream.use { out ->
-                    out.write(JSONObject().put("deviceId", deviceId).toString().toByteArray(Charsets.UTF_8))
-                }
-                conn.responseCode in 200..299
-            } finally {
-                conn.disconnect()
-            }
-        }.getOrDefault(false)
-    }
-}
-
 /**
  * Manual DI for the viewer. When the aun-core UniFFI AAR is published, swap the `Temporary*` /
  * `GuestOnly*` bindings here for the core-backed implementations; nothing else changes.
@@ -125,8 +76,7 @@ class AppContainer(context: Context) {
     val downloads: OfflineDownloadStore by lazy {
         OfflineDownloadStore.createDefault(
             context = appContext,
-            offlineDownloadsEnabled = featuresCache.offlineDownloadsEnabled,
-            slotReleaser = HttpLicenseSlotReleaser(BuildConfig.API_BASE_URL)
+            offlineDownloadsEnabled = featuresCache.offlineDownloadsEnabled
         )
     }
     val resumeStore: PlaybackResumeStore by lazy {
@@ -139,7 +89,6 @@ class AppContainer(context: Context) {
             val latest = catalog.viewerFeatures()
             featuresCache.update(latest)
             downloads.offlineDownloadsEnabled = latest.offlineDownloads
-            downloads.flushPendingSlotReleases()
         }
     }
 }

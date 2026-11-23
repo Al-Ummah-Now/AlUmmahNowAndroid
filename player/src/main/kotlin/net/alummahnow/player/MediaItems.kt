@@ -7,13 +7,11 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
-import androidx.media3.common.util.UnstableApi
 import java.io.File
 import java.util.Locale
 import net.alummahnow.core.bridge.model.LocalizedText
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
-import net.alummahnow.player.offline.EncryptedOfflineDataSource
 import net.alummahnow.player.offline.OfflineDownloadQuality
 import net.alummahnow.player.offline.OfflineDownloadRecord
 
@@ -56,13 +54,16 @@ object MediaItems {
             .build()
     }
 
-    /** Playable offline item backed by [EncryptedOfflineDataSource] (`aun-offline://<videoId>`). */
-    @UnstableApi
-    fun playableOffline(record: OfflineDownloadRecord, locale: Locale = Locale.getDefault()): MediaItem {
+    /** Playable offline item backed by a plain local progressive file (`file://`). */
+    fun playableOffline(
+        record: OfflineDownloadRecord,
+        localFile: File,
+        locale: Locale = Locale.getDefault()
+    ): MediaItem {
         val mime = if (record.quality == OfflineDownloadQuality.AUDIO) MimeTypes.AUDIO_MP4 else MimeTypes.VIDEO_MP4
         return MediaItem.Builder()
             .setMediaId(record.videoId)
-            .setUri(EncryptedOfflineDataSource.uriFor(record.videoId))
+            .setUri(Uri.fromFile(localFile))
             .setMimeType(mime)
             .setMediaMetadata(downloadMetadata(record, locale))
             .build()

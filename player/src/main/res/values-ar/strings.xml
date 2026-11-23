@@ -32,7 +32,6 @@
     <string name="aun_downloads_empty">لا توجد مرئيات منزّلة بعد.</string>
     <string name="aun_downloads_wifi_only">التنزيل عبر شبكة واي فاي فقط</string>
     <string name="aun_downloads_remove">إزالة التنزيل</string>
-    <string name="aun_downloads_expired">انتهت صلاحية الترخيص، اتصل بالإنترنت للتجديد.</string>
     <string name="aun_car_continue">متابعة الاستماع</string>
     <string name="aun_car_downloads">التنزيلات</string>
     <string name="aun_car_subscriptions">الاشتراكات</string>

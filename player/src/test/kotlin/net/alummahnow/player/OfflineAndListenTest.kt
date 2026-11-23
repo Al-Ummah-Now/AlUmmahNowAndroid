@@ -3,7 +3,6 @@ package net.alummahnow.player
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.IOException
 import java.nio.file.Files
 import java.util.Locale
 import kotlinx.coroutines.runBlocking
@@ -13,12 +12,8 @@ import net.alummahnow.core.bridge.model.Rail
 import net.alummahnow.core.bridge.model.RailKind
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
-import net.alummahnow.player.offline.AunDl01Format
-import net.alummahnow.player.offline.AunDl01RandomAccessReader
-import net.alummahnow.player.offline.AunDl01StreamWriter
-import net.alummahnow.player.offline.InMemoryDownloadKeyVault
-import net.alummahnow.player.offline.LicenseRefreshDecision
-import net.alummahnow.player.offline.LicenseSlotReleaser
+import net.alummahnow.player.offline.AvailabilitySyncDecision
+import net.alummahnow.player.offline.MaxVideosExceededException
 import net.alummahnow.player.offline.NetworkTransferAllowance
 import net.alummahnow.player.offline.OfflineDownloadPolicy
 import net.alummahnow.player.offline.OfflineDownloadQuality
@@ -30,7 +25,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -95,135 +89,100 @@ class OfflineAndListenTest {
     private fun saveItem(
         store: OfflineDownloadStore,
         userId: String,
-        licenseId: String,
         videoId: String,
         title: String,
         bytes: ByteArray,
-        serverTimeMs: Long = 10_000L,
-        expiresAtMs: Long = 90_000L,
+        quality: OfflineDownloadQuality = OfflineDownloadQuality.AUDIO,
         thumbnailPath: String? = null
     ) = store.saveFromStream(
         userId = userId,
-        licenseId = licenseId,
         videoId = videoId,
         title = title,
         thumbnailPath = thumbnailPath,
-        quality = OfflineDownloadQuality.AUDIO,
-        serverTimeMs = serverTimeMs,
-        expiresAtMs = expiresAtMs,
+        quality = quality,
         input = ByteArrayInputStream(bytes)
     )
 
     @Test
-    fun aundl01StreamingEncryptRandomAccessAndTruncationRejection() {
-        val dir = Files.createTempDirectory("aun-dl-cipher").toFile()
-        val vault = InMemoryDownloadKeyVault()
-        val payload = ByteArray(AunDl01Format.CHUNK_SIZE + 5000) { i -> (i * 31).toByte() }
-        val enc = File(dir, "clip.aun")
-        AunDl01StreamWriter.encryptStream(vault.secretKey(), "vid-1", "lic-1", ByteArrayInputStream(payload), enc)
-
-        AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-1", "lic-1").use { reader ->
-            assertEquals(payload.size.toLong(), reader.plainLen)
-            val slice = reader.readRange((AunDl01Format.CHUNK_SIZE - 100).toLong(), 250)
-            assertArrayEquals(payload.copyOfRange(AunDl01Format.CHUNK_SIZE - 100, AunDl01Format.CHUNK_SIZE + 150), slice)
-        }
-        assertThrows(IOException::class.java) {
-            AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-other", "lic-1")
-        }
-        assertThrows(IOException::class.java) {
-            AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-1", "lic-other")
-        }
-        val raw = enc.readBytes()
-        val hdrLen = 16 + 2 + "vid-1".length + 2 + "lic-1".length
-        val truncated = File(dir, "trunc.aun").apply { writeBytes(raw.copyOfRange(0, hdrLen + AunDl01Format.CHUNK_STRIDE)) }
-        assertThrows(IOException::class.java) {
-            AunDl01RandomAccessReader.open(vault.secretKey(), truncated, "vid-1", "lic-1")
-        }
-    }
-
-    @Test
-    fun storeIsolatesAccountsBlocksClockRollbackAndForbidsSignedUrls() {
+    fun plainStoreIsolatesAccountsPlaysLocalFilesAndForbidsSignedUrls() {
         val dir = Files.createTempDirectory("aun-dl-store").toFile()
-        var wall = 10_000L
-        var mono = 1_000L
         val store = OfflineDownloadStore(
             rootDir = dir,
-            keyVault = InMemoryDownloadKeyVault(),
             offlineDownloadsEnabled = true,
-            wallClockMs = { wall },
-            monotonicClockMs = { mono }
+            wallClockMs = { 10_000L }
         )
         assertThrows(IllegalArgumentException::class.java) {
             saveItem(
                 store = store,
                 userId = "u1",
-                licenseId = "lic-bad",
                 videoId = "v1",
                 title = "Bad",
                 bytes = "ok".toByteArray(),
                 thumbnailPath = "https://media.alummahnow.net/priv/token/thumb.jpg"
             )
         }
-        saveItem(store, "u1", "lic-u1", "v1", "User 1", "user1".toByteArray(), expiresAtMs = 20_000L)
-        saveItem(store, "u2", "lic-u2", "v1", "User 2", "user2".toByteArray(), expiresAtMs = 90_000L)
+        val payload1 = "plain-audio-u1".toByteArray()
+        val payload2 = "plain-audio-u2".toByteArray()
+        val rec1 = saveItem(store, "u1", "v1", "User 1", payload1)
+        saveItem(store, "u2", "v1", "User 2", payload2)
+        assertTrue(rec1.fileName.endsWith(".m4a"))
         assertEquals(1, store.playableDownloads("u1").size)
         assertEquals(1, store.playableDownloads("u2").size)
 
-        wall = 1_000L
-        mono = 15_000L
-        assertNull(store.findPlayableByVideoId("u1", "v1"))
-        assertNotNull(store.findPlayableByVideoId("u2", "v1"))
+        val file1 = store.playableFile("u1", "v1")
+        assertNotNull(file1)
+        assertArrayEquals(payload1, file1!!.readBytes())
+        assertArrayEquals(payload2, store.playableFile("u2", "v1")!!.readBytes())
     }
 
     @Test
-    fun storeReleasesServerSlotsAndNeverSilentlyEvictsUserDownloads() {
-        val dir = Files.createTempDirectory("aun-dl-slots").toFile()
-        val released = mutableListOf<String>()
-        val releaser = object : LicenseSlotReleaser {
-            override fun releaseLicense(licenseId: String): Boolean {
-                released.add(licenseId)
-                return true
-            }
-        }
+    fun storeEnforcesStorageAndVideoCountCapsWithoutSilentEviction() {
+        val dir = Files.createTempDirectory("aun-dl-caps").toFile()
         val store = OfflineDownloadStore(
             rootDir = dir,
-            keyVault = InMemoryDownloadKeyVault(),
             offlineDownloadsEnabled = true,
-            wallClockMs = { 1_000L },
-            monotonicClockMs = { 100L },
-            slotReleaser = releaser
+            wallClockMs = { 1_000L }
         )
-        store.updateSettings(OfflineDownloadSettings(maxStorageBytes = 500L))
-        saveItem(store, "u1", "lic-1", "v1", "Keep me", ByteArray(300) { 1 }, serverTimeMs = 1_000L)
+        store.updateSettings(OfflineDownloadSettings(maxStorageBytes = 500L, maxVideos = 2))
+        saveItem(store, "u1", "v1", "Keep me", ByteArray(300) { 1 })
         assertThrows(StorageBudgetExceededException::class.java) {
-            saveItem(store, "u1", "lic-2", "v2", "Too big", ByteArray(300) { 2 }, serverTimeMs = 1_000L)
+            saveItem(store, "u1", "v2", "Too big", ByteArray(300) { 2 })
         }
         assertNotNull(store.findPlayableByVideoId("u1", "v1"))
+
+        saveItem(store, "u1", "v2", "Fits", ByteArray(100) { 2 })
+        assertThrows(MaxVideosExceededException::class.java) {
+            saveItem(store, "u1", "v3", "Third", ByteArray(50) { 3 })
+        }
+        assertEquals(2, store.playableDownloads("u1").size)
         assertTrue(store.remove("u1", "v1"))
-        assertEquals(listOf("lic-1"), released)
+        assertEquals(1, store.playableDownloads("u1").size)
     }
 
     @Test
-    fun storeRefreshRevokesDeletesFileAndReleasesSlot() {
-        val dir = Files.createTempDirectory("aun-dl-refresh").toFile()
-        val released = mutableListOf<String>()
+    fun availabilitySyncRemovesPrivateOrDeletedVideos() {
+        val dir = Files.createTempDirectory("aun-dl-sync").toFile()
         val store = OfflineDownloadStore(
             rootDir = dir,
-            keyVault = InMemoryDownloadKeyVault(),
             offlineDownloadsEnabled = true,
-            wallClockMs = { 1_000L },
-            monotonicClockMs = { 100L },
-            slotReleaser = object : LicenseSlotReleaser {
-                override fun releaseLicense(licenseId: String): Boolean {
-                    released.add(licenseId)
-                    return true
-                }
-            }
+            wallClockMs = { 1_000L }
         )
-        saveItem(store, "u1", "lic-rev", "v-rev", "Revoke", "abc".toByteArray(), serverTimeMs = 1_000L)
-        assertEquals(1, store.applyLicenseRefresh(listOf(LicenseRefreshDecision("lic-rev", "revoked")), 2_000L))
-        assertEquals(listOf("lic-rev"), released)
-        assertTrue(store.allDownloads("u1").isEmpty())
+        saveItem(store, "u1", "v-priv", "Going private", "abc".toByteArray())
+        saveItem(store, "u2", "v-priv", "Going private", "def".toByteArray())
+        saveItem(store, "u1", "v-ok", "Still public", "ghi".toByteArray())
+        val fileBefore = store.playableFile("u1", "v-priv")!!
+        assertTrue(fileBefore.exists())
+
+        val deleted = store.applyAvailabilitySync(
+            listOf(
+                AvailabilitySyncDecision("v-priv", available = false, reason = "video_private"),
+                AvailabilitySyncDecision("v-ok", available = true)
+            )
+        )
+        assertEquals(2, deleted)
+        assertFalse(fileBefore.exists())
+        assertEquals(1, store.allDownloads("u1").size)
+        assertTrue(store.allDownloads("u2").isEmpty())
     }
 
     @Test
@@ -231,12 +190,10 @@ class OfflineAndListenTest {
         val dir = Files.createTempDirectory("aun-car").toFile()
         val store = OfflineDownloadStore(
             rootDir = dir,
-            keyVault = InMemoryDownloadKeyVault(),
             offlineDownloadsEnabled = true,
-            wallClockMs = { 1_000L },
-            monotonicClockMs = { 100L }
+            wallClockMs = { 1_000L }
         )
-        saveItem(store, "u1", "lic-off", "v-offline", "Offline Tafsir", "offline audio".toByteArray(), serverTimeMs = 1_000L)
+        saveItem(store, "u1", "v-offline", "Offline Tafsir", "offline audio".toByteArray())
 
         var listenOn = false
         val carTree = CarBrowseTree(
@@ -253,7 +210,8 @@ class OfflineAndListenTest {
         listenOn = true
         assertEquals(4, carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH).size)
         val offlineItem = carTree.resolvePlayable("v-offline", audioOnly = true, locale = Locale.ENGLISH)
-        assertEquals("aun-offline://v-offline", offlineItem.localConfiguration?.uri.toString())
+        assertEquals("file", offlineItem.localConfiguration?.uri?.scheme)
+        assertTrue(offlineItem.localConfiguration?.uri?.path?.endsWith(".m4a") == true)
         val onlineAudio = carTree.resolvePlayable("v-quran-1", audioOnly = true, locale = Locale.ENGLISH)
         assertEquals("https://media.alummahnow.net/pub/v-quran-1/rev1/audio.m4a", onlineAudio.localConfiguration?.uri.toString())
     }

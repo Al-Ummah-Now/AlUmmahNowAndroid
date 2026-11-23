@@ -25,8 +25,9 @@ import net.alummahnow.player.offline.PlaybackResumeStore
  * late resolution of play URLs.
  *
  * Android Auto surfaces (root, tabs, voice search, resumption) stay completely hidden while
- * `listenMode` is off (`GET /api/me/features`). When on, Downloads play strictly offline via
- * `aun-offline://` and online items use the audio-only rendition from `GET /api/v1/videos/:id/audio`.
+ * `listenMode` is off (`GET /api/me/features`). When on, Downloads play strictly offline from local
+ * progressive files (`file://`) and online items use the audio-only rendition from
+ * `GET /api/v1/videos/:id/audio`.
  */
 @UnstableApi
 internal class LibraryCallback(
@@ -295,13 +296,15 @@ internal class CarBrowseTree(
 
     /**
      * Resolves a mediaId to a playable [MediaItem].
-     * Always prefers a valid local encrypted offline download (zero network calls) so the Car
+     * Always prefers a valid local offline download (zero network calls) so the Car
      * Downloads tab works offline; otherwise resolves the audio-only rendition when [audioOnly].
      */
     suspend fun resolvePlayable(mediaId: String, audioOnly: Boolean, locale: Locale): MediaItem {
-        val offline = downloadStore?.findPlayableByVideoId(activeUserId(), mediaId)
-        if (offline != null) {
-            return MediaItems.playableOffline(offline, locale)
+        val userId = activeUserId()
+        val offline = downloadStore?.findPlayableByVideoId(userId, mediaId)
+        val localFile = if (offline != null) downloadStore?.playableFile(userId, mediaId) else null
+        if (offline != null && localFile != null) {
+            return MediaItems.playableOffline(offline, localFile, locale)
         }
         val video = catalog.video(mediaId)
         if (audioOnly) {
