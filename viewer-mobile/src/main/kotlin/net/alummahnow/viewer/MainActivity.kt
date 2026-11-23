@@ -47,6 +47,8 @@ import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.home.HomeScreen
 import net.alummahnow.feature.home.HomeViewModel
+import net.alummahnow.feature.live.LiveWatchScreen
+import net.alummahnow.feature.live.LiveWatchViewModel
 import net.alummahnow.feature.watch.WatchScreen
 import net.alummahnow.feature.watch.WatchViewModel
 import net.alummahnow.player.ui.rememberMediaController
@@ -85,8 +87,9 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         val url = intent?.data?.toString() ?: return
         when (val link = AppLinkParser.parse(url, BuildConfig.WEB_HOST)) {
-            is AppLink.Video -> links.trySend(link.id)
-            is AppLink.Short -> links.trySend(link.id)
+            is AppLink.Video -> links.trySend(Routes.watch(link.id))
+            is AppLink.Short -> links.trySend(Routes.watch(link.id))
+            is AppLink.Live -> links.trySend(Routes.live(link.id))
             // No native screen for these yet: show the page on the site instead of a dead end.
             is AppLink.Playlist, is AppLink.Post, is AppLink.Channel -> openInBrowser(url)
             // The viewer has no sign-in; the app simply opens.
@@ -144,16 +147,18 @@ class MainActivity : ComponentActivity() {
 object Routes {
     const val HOME = "home"
     const val WATCH = "watch/{id}"
+    const val LIVE = "live/{id}"
     fun watch(id: String) = "watch/$id"
+    fun live(id: String) = "live/$id"
 }
 
 @Composable
 private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<String>, onPipEligible: (Boolean) -> Unit) {
     val nav = rememberNavController()
     LaunchedEffect(nav) {
-        links.collect { id ->
+        links.collect { route ->
             // Ids are validated by AppLinkParser; a route that still fails is logged, never a crash.
-            runCatching { nav.navigate(Routes.watch(id)) { launchSingleTop = true } }
+            runCatching { nav.navigate(route) { launchSingleTop = true } }
                 .onFailure { AunLog.w("links", "link not routed", "type" to it.javaClass.simpleName) }
         }
     }
@@ -192,6 +197,40 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
                 onToggleFullscreen = { fullscreen = !fullscreen },
                 onVideoClick = { nav.navigate(Routes.watch(it)) },
                 onRetry = vm::load
+            )
+        }
+        composable(
+            Routes.LIVE,
+            arguments = listOf(navArgument("id") { type = NavType.StringType })
+        ) { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            val vm: LiveWatchViewModel = viewModel(key = id, factory = LiveWatchViewModel.Factory(container.catalog, id))
+            val state by vm.state.collectAsStateWithLifecycle()
+            val player by rememberMediaController()
+            var fullscreen by remember { mutableStateOf(false) }
+            val activity = context as MainActivity
+            PipEligibility(player, onPipEligible)
+            LaunchedEffect(fullscreen) { activity.setFullscreen(fullscreen) }
+            BackHandler(enabled = fullscreen) { fullscreen = false }
+            DisposableEffect(Unit) { onDispose { activity.setFullscreen(false) } }
+            LiveWatchScreen(
+                state = state,
+                player = player,
+                isFullscreen = fullscreen,
+                isInPictureInPicture = inPip,
+                onToggleFullscreen = { fullscreen = !fullscreen },
+                onRetry = vm::load,
+                onToggleReminder = vm::toggleReminder,
+                onDraftChanged = vm::onDraftChanged,
+                onSendChat = vm::sendChatMessage,
+                onSeekToLiveEdge = { player?.seekToDefaultPosition() },
+                onRequestRemoveMessage = vm::requestRemoveMessage,
+                onConfirmRemoveMessage = vm::confirmRemoveMessage,
+                onDismissRemoveMessage = vm::dismissRemoveMessage,
+                onTogglePinMessage = vm::togglePinMessage,
+                onRequestReportMessage = vm::requestReportMessage,
+                onConfirmReportMessage = vm::confirmReportMessage,
+                onDismissReportMessage = vm::dismissReportMessage
             )
         }
     }
