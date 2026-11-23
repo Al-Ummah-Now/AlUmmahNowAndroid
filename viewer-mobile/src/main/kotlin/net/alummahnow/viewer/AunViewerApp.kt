@@ -16,6 +16,8 @@ class AunViewerApp : Application(), PlayerDependencies {
 
     override val catalog: CatalogRepository get() = container.catalog
     override val sessionActivityClass: Class<*> = MainActivity::class.java
+    override val listenModeEnabled: Boolean get() = container.featuresCache.listenModeEnabled
+    override val offlineDownloadsEnabled: Boolean get() = container.featuresCache.offlineDownloadsEnabled
     override val downloadStore: OfflineDownloadStore get() = container.downloads
     override val resumeStore: PlaybackResumeStore get() = container.resumeStore
 
@@ -24,6 +26,7 @@ class AunViewerApp : Application(), PlayerDependencies {
         super.onCreate()
         AunLog.enabled = BuildConfig.DEBUG || BuildConfig.ENV_NAME == "qa"
         container = AppContainer(this)
+        container.refreshFeaturesAsync()
         // Chromecast is optional: devices without Google Play services simply don't show the cast button.
         runCatching { Cast.getSingletonInstance(this).initialize() }
             .onFailure { AunLog.w("app", "cast init failed", "error" to it.message) }

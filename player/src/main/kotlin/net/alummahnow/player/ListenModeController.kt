@@ -1,6 +1,8 @@
 package net.alummahnow.player
 
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,7 +54,9 @@ data class QueueEntry(
     val title: LocalizedText,
     val channelName: String?,
     val thumbnailUrl: String?,
-    val durationSeconds: Long?
+    val durationSeconds: Long?,
+    val playUrl: String? = null,
+    val audioUrl: String? = null
 )
 
 data class ListenModeState(
@@ -92,7 +96,15 @@ class ListenModeController(
     fun setAudioOnly(audioOnly: Boolean, player: Player? = null) {
         if (audioOnly && !mutableState.value.listenModeEnabled) return
         mutableState.update { it.copy(isAudioOnly = audioOnly) }
-        player?.let { applyAudioOnlyTrackSelection(it, audioOnly) }
+        val entry = mutableState.value.currentEntry
+        if (player != null) {
+            val targetUrl = if (audioOnly) entry?.audioUrl else entry?.playUrl
+            if (!targetUrl.isNullOrBlank()) {
+                swapMediaUrlPreservingPlayback(player, entry!!.videoId, targetUrl)
+            } else {
+                applyAudioOnlyTrackSelection(player, audioOnly)
+            }
+        }
     }
 
     fun setSleepTimer(preset: SleepTimerPreset) {
@@ -215,7 +227,20 @@ class ListenModeController(
     }
 
     companion object {
-        /** Disables or restores the video track on [player] while preserving position and playback speed. */
+        /** Swaps to the audio-only rendition (`audio.m4a` / `a/orig/index.m3u8`) while keeping position, speed and play state. */
+        fun swapMediaUrlPreservingPlayback(player: Player, videoId: String, url: String) {
+            val pos = player.currentPosition
+            val speed = player.playbackParameters
+            val wasPlaying = player.playWhenReady
+            val mime = if (url.contains(".m4a", ignoreCase = true)) MimeTypes.AUDIO_MP4 else MimeTypes.APPLICATION_M3U8
+            val item = MediaItem.Builder().setMediaId(videoId).setUri(url).setMimeType(mime).build()
+            player.setMediaItem(item, pos)
+            player.playbackParameters = speed
+            player.prepare()
+            player.playWhenReady = wasPlaying
+        }
+
+        /** Fallback when no standalone audio rendition exists yet: disables or restores the video track. */
         fun applyAudioOnlyTrackSelection(player: Player, audioOnly: Boolean) {
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, audioOnly)

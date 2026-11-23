@@ -9,7 +9,11 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.CoroutineScope
@@ -17,11 +21,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.player.offline.EncryptedOfflineDataSource
 
 /**
  * Owns the one player for the app: background audio, lock-screen / notification controls (spec 13.5),
- * Chromecast (13.6) via [CastPlayer] wrapping the local ExoPlayer, and the media browse tree used by
- * Android Auto (14.4).
+ * Chromecast (13.6) via [CastPlayer] wrapping the local ExoPlayer, chunked decrypt-on-read offline
+ * playback via [EncryptedOfflineDataSource], and the gated Android Auto browse tree (14.4).
  */
 class AunPlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
@@ -31,7 +36,17 @@ class AunPlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         val deps = application as PlayerDependencies
+        val upstreamFactory = DefaultDataSource.Factory(this)
+        val dataSourceFactory = DataSource.Factory {
+            RoutingOfflineDataSource(
+                offlineFactory = deps.downloadStore?.let { store ->
+                    EncryptedOfflineDataSource.Factory(store) { deps.activeUserId }
+                },
+                fallbackFactory = upstreamFactory
+            )
+        }
         val exo = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -68,7 +83,15 @@ class AunPlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(
             this,
             player,
-            LibraryCallback(this, deps.catalog, scope, deps.downloadStore, deps.resumeStore)
+            LibraryCallback(
+                context = this,
+                catalog = deps.catalog,
+                scope = scope,
+                downloadStore = deps.downloadStore,
+                resumeStore = deps.resumeStore,
+                listenModeEnabled = { deps.listenModeEnabled },
+                activeUserId = { deps.activeUserId }
+            )
         )
             .setSessionActivity(openApp)
             .build()
@@ -77,7 +100,6 @@ class AunPlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Keep playing in the background only while something is actually playing (platform guidance).
         val player = session?.player
         if (player == null || !player.playWhenReady || player.mediaItemCount == 0) stopSelf()
     }
@@ -100,5 +122,40 @@ class AunPlaybackService : MediaLibraryService() {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             AunLog.i("player", "item", "id" to mediaItem?.mediaId, "reason" to reason)
         }
+    }
+}
+
+@UnstableApi
+private class RoutingOfflineDataSource(
+    private val offlineFactory: DataSource.Factory?,
+    private val fallbackFactory: DataSource.Factory
+) : DataSource {
+    private var active: DataSource? = null
+    private val listeners = mutableListOf<androidx.media3.datasource.TransferListener>()
+
+    override fun addTransferListener(transferListener: androidx.media3.datasource.TransferListener) {
+        listeners.add(transferListener)
+        active?.addTransferListener(transferListener)
+    }
+
+    override fun open(dataSpec: DataSpec): Long {
+        val target = if (dataSpec.uri.scheme == EncryptedOfflineDataSource.SCHEME && offlineFactory != null) {
+            offlineFactory.createDataSource()
+        } else {
+            fallbackFactory.createDataSource()
+        }
+        listeners.forEach { target.addTransferListener(it) }
+        active = target
+        return target.open(dataSpec)
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+        active?.read(buffer, offset, length) ?: C.RESULT_END_OF_INPUT
+
+    override fun getUri() = active?.uri
+
+    override fun close() {
+        active?.close()
+        active = null
     }
 }

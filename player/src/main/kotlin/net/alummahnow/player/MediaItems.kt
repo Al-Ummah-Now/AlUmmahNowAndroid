@@ -7,10 +7,14 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
+import java.io.File
 import java.util.Locale
 import net.alummahnow.core.bridge.model.LocalizedText
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
+import net.alummahnow.player.offline.EncryptedOfflineDataSource
+import net.alummahnow.player.offline.OfflineDownloadQuality
 import net.alummahnow.player.offline.OfflineDownloadRecord
 
 /** Builds Media3 items from core models. One place, so phone, TV and Android Auto behave identically. */
@@ -36,14 +40,14 @@ object MediaItems {
             .build()
     }
 
-    /** Audio-only playable item for Listen mode & Android Auto (strictly audio, never video). */
+    /** Audio-only playable item for Listen mode & Android Auto (prefers `audio.m4a` / audio HLS rendition). */
     fun playableAudio(
         video: VideoDetail,
         audioUrl: String? = null,
         locale: Locale = Locale.getDefault()
     ): MediaItem {
         val uri = audioUrl ?: requireNotNull(video.playUrl) { "video ${video.id} has no audio or play URL" }
-        val mime = if (uri.endsWith(".m4a", ignoreCase = true)) MimeTypes.AUDIO_MP4 else MimeTypes.APPLICATION_M3U8
+        val mime = if (uri.contains(".m4a", ignoreCase = true)) MimeTypes.AUDIO_MP4 else MimeTypes.APPLICATION_M3U8
         return MediaItem.Builder()
             .setMediaId(video.id)
             .setUri(uri)
@@ -52,27 +56,24 @@ object MediaItems {
             .build()
     }
 
-    /** Browsable audio entry for a locally downloaded item (Android Auto Downloads tab). */
-    fun browsableDownload(record: OfflineDownloadRecord, locale: Locale = Locale.getDefault()): MediaItem {
-        val title = LocalizedText(
-            fallback = record.title,
-            translations = record.titleAr?.let { mapOf("ar" to it) }.orEmpty()
-        ).resolve(locale)
+    /** Playable offline item backed by [EncryptedOfflineDataSource] (`aun-offline://<videoId>`). */
+    @UnstableApi
+    fun playableOffline(record: OfflineDownloadRecord, locale: Locale = Locale.getDefault()): MediaItem {
+        val mime = if (record.quality == OfflineDownloadQuality.AUDIO) MimeTypes.AUDIO_MP4 else MimeTypes.VIDEO_MP4
         return MediaItem.Builder()
             .setMediaId(record.videoId)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(title)
-                    .setArtist(record.channelName)
-                    .setArtworkUri(record.thumbnailUrl?.let(Uri::parse))
-                    .setDurationMs(record.durationSeconds?.times(1000))
-                    .setIsBrowsable(false)
-                    .setIsPlayable(true)
-                    .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
-                    .build()
-            )
+            .setUri(EncryptedOfflineDataSource.uriFor(record.videoId))
+            .setMimeType(mime)
+            .setMediaMetadata(downloadMetadata(record, locale))
             .build()
     }
+
+    /** Browsable audio entry for a locally downloaded item (Android Auto Downloads tab; zero network URLs). */
+    fun browsableDownload(record: OfflineDownloadRecord, locale: Locale = Locale.getDefault()): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(record.videoId)
+            .setMediaMetadata(downloadMetadata(record, locale))
+            .build()
 
     /** A browsable/playable entry without a URI; the service resolves it on play (Android Auto). */
     fun browsableVideo(video: VideoSummary, locale: Locale = Locale.getDefault()): MediaItem =
@@ -89,6 +90,26 @@ object MediaItems {
                 .build()
         )
         .build()
+
+    private fun downloadMetadata(record: OfflineDownloadRecord, locale: Locale): MediaMetadata {
+        val title = LocalizedText(
+            fallback = record.title,
+            translations = record.titleAr?.let { mapOf("ar" to it) }.orEmpty()
+        ).resolve(locale)
+        val artworkUri = record.thumbnailPath?.let { path ->
+            val f = File(path)
+            if (f.exists()) Uri.fromFile(f) else null
+        }
+        return MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(record.channelName)
+            .setArtworkUri(artworkUri)
+            .setDurationMs(record.durationSeconds?.times(1000))
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE)
+            .build()
+    }
 
     private fun metadata(
         video: VideoSummary,

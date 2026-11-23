@@ -172,9 +172,13 @@ data class UserFeatures(val enabled: Set<String>) {
     operator fun contains(key: String): Boolean = key in enabled
 
     val upload: Boolean get() = UPLOAD in enabled
+    val listenMode: Boolean get() = LISTEN_MODE in enabled
+    val offlineDownloads: Boolean get() = OFFLINE_DOWNLOADS in enabled
 
     companion object {
         const val UPLOAD = "upload"
+        const val LISTEN_MODE = "listenMode"
+        const val OFFLINE_DOWNLOADS = "offlineDownloads"
 
         /** Every feature hidden: what the app uses before it has read the answer. */
         val NONE = UserFeatures(emptySet())

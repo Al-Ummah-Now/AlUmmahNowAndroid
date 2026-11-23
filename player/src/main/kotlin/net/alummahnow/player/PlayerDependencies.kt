@@ -18,9 +18,12 @@ interface PlayerDependencies {
     /** Phones cast to Chromecast; TV apps are cast targets themselves and Fire TV has no Play services. */
     val castEnabled: Boolean get() = true
 
-    /** Admin feature switches (AUN-FEATURES): both default OFF until enabled by the server. */
+    /** Admin feature switches (AUN-FEATURES): both default OFF until enabled by `/api/me/features`. */
     val listenModeEnabled: Boolean get() = false
     val offlineDownloadsEnabled: Boolean get() = false
+
+    /** Current signed-in user id for isolating multi-account offline downloads. */
+    val activeUserId: String get() = "default"
 
     val downloadStore: OfflineDownloadStore? get() = null
     val resumeStore: PlaybackResumeStore? get() = null

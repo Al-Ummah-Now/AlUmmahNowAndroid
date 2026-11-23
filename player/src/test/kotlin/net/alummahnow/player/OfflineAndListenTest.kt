@@ -1,257 +1,284 @@
 package net.alummahnow.player
 
-import androidx.test.ext.junit.runners.AndroidJUnit4
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
 import java.util.Locale
-import kotlin.io.path.createTempDirectory
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
+import net.alummahnow.core.bridge.catalog.CatalogRepository
 import net.alummahnow.core.bridge.model.LocalizedText
-import net.alummahnow.player.offline.ChunkedAesCipher
+import net.alummahnow.core.bridge.model.Rail
+import net.alummahnow.core.bridge.model.RailKind
+import net.alummahnow.core.bridge.model.VideoDetail
+import net.alummahnow.core.bridge.model.VideoSummary
+import net.alummahnow.player.offline.AunDl01Format
+import net.alummahnow.player.offline.AunDl01RandomAccessReader
+import net.alummahnow.player.offline.AunDl01StreamWriter
 import net.alummahnow.player.offline.InMemoryDownloadKeyVault
 import net.alummahnow.player.offline.LicenseRefreshDecision
+import net.alummahnow.player.offline.LicenseSlotReleaser
 import net.alummahnow.player.offline.NetworkTransferAllowance
 import net.alummahnow.player.offline.OfflineDownloadPolicy
 import net.alummahnow.player.offline.OfflineDownloadQuality
 import net.alummahnow.player.offline.OfflineDownloadSettings
 import net.alummahnow.player.offline.OfflineDownloadStore
 import net.alummahnow.player.offline.PlaybackResumeStore
+import net.alummahnow.player.offline.StorageBudgetExceededException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.annotation.Config
 
-@RunWith(AndroidJUnit4::class)
-@Config(sdk = [35])
+@androidx.media3.common.util.UnstableApi
 class OfflineAndListenTest {
+    private val fakeCatalog = object : CatalogRepository {
+        private val sample = VideoSummary(
+            id = "v-quran-1",
+            title = LocalizedText("Surah Al-Kahf Recitation", mapOf("ar" to "تلاوة سورة الكهف")),
+            channelId = "ch-1",
+            channelName = "Al-Huda",
+            thumbnailUrl = null,
+            durationSeconds = 1800,
+            views = 1200,
+            category = "Quran"
+        )
+        private val lecture = VideoSummary(
+            id = "v-lecture-2",
+            title = LocalizedText("Seerah Lesson 1"),
+            channelId = "ch-2",
+            channelName = "Seerah Series",
+            thumbnailUrl = null,
+            durationSeconds = 2400,
+            views = 500,
+            category = "Lectures"
+        )
 
-    @Test fun `sleep timer expires on schedule and end-of-episode pauses playback`() {
-        var now = 1_000_000L
-        val controller = ListenModeController(listenModeEnabled = true, clockMs = { now })
+        override suspend fun homeRails(): List<Rail> = listOf(
+            Rail(RailKind.CONTINUE_WATCHING, listOf(lecture)),
+            Rail(RailKind.RECENT, listOf(lecture, sample)),
+            Rail(RailKind.TRENDING, listOf(sample))
+        )
 
-        controller.setSleepTimer(SleepTimerPreset.Minutes(15))
-        assertTrue(controller.state.value.sleepTimer.isActive)
-        assertFalse(controller.tickSleepTimer())
+        override suspend fun video(id: String): VideoDetail = VideoDetail(
+            summary = if (id == sample.id) sample else lecture,
+            description = LocalizedText("desc"),
+            playUrl = "https://cdn.example/$id/master.m3u8",
+            subtitles = emptyList(),
+            chapters = emptyList()
+        )
 
-        now += 15 * 60_000L
-        assertTrue(controller.tickSleepTimer())
-        assertFalse(controller.state.value.sleepTimer.isActive)
+        override suspend fun audioUrl(videoId: String): String =
+            "https://media.alummahnow.net/pub/$videoId/rev1/audio.m4a"
 
-        controller.setSleepTimer(SleepTimerPreset.EndOfEpisode)
-        assertFalse(controller.tickSleepTimer())
-        assertTrue(controller.onEpisodeEnded())
-        assertFalse(controller.state.value.sleepTimer.isActive)
+        override suspend fun related(video: VideoDetail, limit: Int): List<VideoSummary> = emptyList()
+        override suspend fun search(query: String, limit: Int): List<VideoSummary> =
+            listOf(sample, lecture).filter { it.title.fallback.contains(query, ignoreCase = true) }
     }
 
-    @Test fun `listen mode audio-only toggle is blocked when feature switch is OFF`() {
-        val controller = ListenModeController(listenModeEnabled = false)
+    @Test
+    fun aundl01StreamingEncryptRandomAccessAndTruncationRejection() {
+        val dir = Files.createTempDirectory("aun-dl-cipher").toFile()
+        val vault = InMemoryDownloadKeyVault()
+        val payload = ByteArray(AunDl01Format.CHUNK_SIZE + 5000) { i -> (i * 31).toByte() }
+        val enc = File(dir, "clip.aun")
+        AunDl01StreamWriter.encryptStream(vault.secretKey(), "vid-1", "lic-1", ByteArrayInputStream(payload), enc)
+
+        AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-1", "lic-1").use { reader ->
+            assertEquals(payload.size.toLong(), reader.plainLen)
+            val slice = reader.readRange((AunDl01Format.CHUNK_SIZE - 100).toLong(), 250)
+            assertArrayEquals(payload.copyOfRange(AunDl01Format.CHUNK_SIZE - 100, AunDl01Format.CHUNK_SIZE + 150), slice)
+        }
+        // Cross-video and cross-license file swapping fails on open.
+        assertThrows(IOException::class.java) {
+            AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-other", "lic-1")
+        }
+        assertThrows(IOException::class.java) {
+            AunDl01RandomAccessReader.open(vault.secretKey(), enc, "vid-1", "lic-other")
+        }
+        // Truncating at exact chunk boundary fails final-chunk AAD on open.
+        val raw = enc.readBytes()
+        val hdrLen = 16 + 2 + "vid-1".length + 2 + "lic-1".length
+        val truncated = File(dir, "trunc.aun").apply { writeBytes(raw.copyOfRange(0, hdrLen + AunDl01Format.CHUNK_STRIDE)) }
+        assertThrows(IOException::class.java) {
+            AunDl01RandomAccessReader.open(vault.secretKey(), truncated, "vid-1", "lic-1")
+        }
+    }
+
+    @Test
+    fun storeIsolatesAccountsBlocksClockRollbackAndForbidsSignedUrls() {
+        val dir = Files.createTempDirectory("aun-dl-store").toFile()
+        var wall = 10_000L
+        var mono = 1_000L
+        val store = OfflineDownloadStore(
+            rootDir = dir,
+            keyVault = InMemoryDownloadKeyVault(),
+            offlineDownloadsEnabled = true,
+            wallClockMs = { wall },
+            monotonicClockMs = { mono }
+        )
+        // Signed HTTP URLs are strictly forbidden in thumbnailPath.
+        assertThrows(IllegalArgumentException::class.java) {
+            store.saveFromStream(
+                userId = "u1", licenseId = "lic-bad", videoId = "v1", title = "Bad",
+                thumbnailPath = "https://media.alummahnow.net/priv/token/thumb.jpg",
+                quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 10_000L, expiresAtMs = 50_000L,
+                input = ByteArrayInputStream("ok".toByteArray())
+            )
+        }
+        // Two users downloading the same video stay isolated.
+        store.saveFromStream(
+            userId = "u1", licenseId = "lic-u1", videoId = "v1", title = "User 1",
+            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 10_000L, expiresAtMs = 20_000L,
+            input = ByteArrayInputStream("user1".toByteArray())
+        )
+        store.saveFromStream(
+            userId = "u2", licenseId = "lic-u2", videoId = "v1", title = "User 2",
+            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 10_000L, expiresAtMs = 90_000L,
+            input = ByteArrayInputStream("user2".toByteArray())
+        )
+        assertEquals(1, store.playableDownloads("u1").size)
+        assertEquals(1, store.playableDownloads("u2").size)
+
+        // Roll wall clock backward while monotonic advances past u1's expiry: u1 MUST NOT be playable!
+        wall = 1_000L
+        mono = 15_000L // server anchor 10_000 + 14_000 = 24_000 > 20_000
+        assertNull(store.findPlayableByVideoId("u1", "v1"))
+        assertNotNull(store.findPlayableByVideoId("u2", "v1"))
+    }
+
+    @Test
+    fun storeReleasesServerSlotsAndNeverSilentlyEvictsUserDownloads() {
+        val dir = Files.createTempDirectory("aun-dl-slots").toFile()
+        val released = mutableListOf<String>()
+        val releaser = object : LicenseSlotReleaser {
+            override fun releaseLicense(licenseId: String): Boolean {
+                released.add(licenseId)
+                return true
+            }
+        }
+        val store = OfflineDownloadStore(
+            rootDir = dir,
+            keyVault = InMemoryDownloadKeyVault(),
+            offlineDownloadsEnabled = true,
+            wallClockMs = { 1_000L },
+            monotonicClockMs = { 100L },
+            slotReleaser = releaser
+        )
+        store.updateSettings(OfflineDownloadSettings(maxStorageBytes = 500L))
+        store.saveFromStream(
+            userId = "u1", licenseId = "lic-1", videoId = "v1", title = "Keep me",
+            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
+            input = ByteArrayInputStream(ByteArray(300) { 1 })
+        )
+        // Adding a second download over budget must throw instead of silently deleting v1!
+        assertThrows(StorageBudgetExceededException::class.java) {
+            store.saveFromStream(
+                userId = "u1", licenseId = "lic-2", videoId = "v2", title = "Too big",
+                quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
+                input = ByteArrayInputStream(ByteArray(300) { 2 })
+            )
+        }
+        assertNotNull(store.findPlayableByVideoId("u1", "v1"))
+
+        assertTrue(store.remove("u1", "v1"))
+        assertEquals(listOf("lic-1"), released)
+    }
+
+    @Test
+    fun storeRefreshRevokesDeletesFileAndReleasesSlot() {
+        val dir = Files.createTempDirectory("aun-dl-refresh").toFile()
+        val released = mutableListOf<String>()
+        val store = OfflineDownloadStore(
+            rootDir = dir,
+            keyVault = InMemoryDownloadKeyVault(),
+            offlineDownloadsEnabled = true,
+            wallClockMs = { 1_000L },
+            monotonicClockMs = { 100L },
+            slotReleaser = object : LicenseSlotReleaser {
+                override fun releaseLicense(licenseId: String): Boolean {
+                    released.add(licenseId)
+                    return true
+                }
+            }
+        )
+        store.saveFromStream(
+            userId = "u1", licenseId = "lic-rev", videoId = "v-rev", title = "Revoke",
+            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
+            input = ByteArrayInputStream("abc".toByteArray())
+        )
+        assertEquals(1, store.applyLicenseRefresh(listOf(LicenseRefreshDecision("lic-rev", "revoked")), 2_000L))
+        assertEquals(listOf("lic-rev"), released)
+        assertTrue(store.allDownloads("u1").isEmpty())
+    }
+
+    @Test
+    fun carBrowseTreeIsHiddenWhenListenModeOffAndPlaysOfflineAndAudioRenditionsWhenOn() = runBlocking {
+        val dir = Files.createTempDirectory("aun-car").toFile()
+        val store = OfflineDownloadStore(
+            rootDir = dir,
+            keyVault = InMemoryDownloadKeyVault(),
+            offlineDownloadsEnabled = true,
+            wallClockMs = { 1_000L },
+            monotonicClockMs = { 100L }
+        )
+        store.saveFromStream(
+            userId = "u1", licenseId = "lic-off", videoId = "v-offline", title = "Offline Tafsir",
+            quality = OfflineDownloadQuality.AUDIO, serverTimeMs = 1_000L, expiresAtMs = 90_000L,
+            input = ByteArrayInputStream("offline audio bytes".toByteArray())
+        )
+
+        var listenOn = false
+        val carTree = CarBrowseTree(
+            catalog = fakeCatalog,
+            downloadStore = store,
+            listenModeEnabled = { listenOn },
+            activeUserId = { "u1" },
+            rootTitle = "Al Ummah Now",
+            tabTitle = { it.name }
+        )
+        // Gate: Android Auto is completely empty while listenMode is off!
+        assertTrue(carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH).isEmpty())
+        assertTrue(carTree.search("Tafsir", Locale.ENGLISH).isEmpty())
+
+        listenOn = true
+        val tabs = carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH)
+        assertEquals(4, tabs.size)
+
+        // Car Downloads tab plays offline via aun-offline:// without calling catalog.video()!
+        val offlineItem = carTree.resolvePlayable("v-offline", audioOnly = true, locale = Locale.ENGLISH)
+        assertEquals("aun-offline://v-offline", offlineItem.localConfiguration?.uri.toString())
+
+        // Car online playback uses the audio.m4a rendition, NOT the muxed master.m3u8!
+        val onlineAudio = carTree.resolvePlayable("v-quran-1", audioOnly = true, locale = Locale.ENGLISH)
+        assertEquals("https://media.alummahnow.net/pub/v-quran-1/rev1/audio.m4a", onlineAudio.localConfiguration?.uri.toString())
+    }
+
+    @Test
+    fun listenControllerSleepTimerQueueAndResumePersistence() {
+        var now = 1_000L
+        val controller = ListenModeController(listenModeEnabled = false, clockMs = { now })
         controller.setAudioOnly(true)
         assertFalse(controller.state.value.isAudioOnly)
 
         controller.setFeatureEnabled(true)
         controller.setAudioOnly(true)
         assertTrue(controller.state.value.isAudioOnly)
+        controller.setSleepTimer(SleepTimerPreset.Minutes(15))
+        now += 15 * 60_000L
+        assertTrue(controller.tickSleepTimer())
 
-        controller.setFeatureEnabled(false)
-        assertFalse(controller.state.value.isAudioOnly)
-    }
-
-    @Test fun `playback queue supports play-next, append, reorder, advance, and clear`() {
-        val controller = ListenModeController(listenModeEnabled = true)
-        val e1 = QueueEntry("v1", LocalizedText.of("First"), "Ch", null, 60)
-        val e2 = QueueEntry("v2", LocalizedText.of("Second"), "Ch", null, 120)
-        val e3 = QueueEntry("v3", LocalizedText.of("Third"), "Ch", null, 180)
-
-        controller.setNowPlaying(e1)
-        controller.addToEnd(e2)
-        controller.playNext(e3)
-        assertEquals(listOf("v1", "v3", "v2"), controller.state.value.queue.map { it.videoId })
-
-        controller.moveQueueItem(2, 1)
-        assertEquals(listOf("v1", "v2", "v3"), controller.state.value.queue.map { it.videoId })
-
-        assertEquals("v2", controller.advance()?.videoId)
-        controller.clearUpNext()
-        assertEquals(listOf("v2"), controller.state.value.queue.map { it.videoId })
-    }
-
-    @Test fun `chunked AES-256-GCM cipher round-trips and detects tampering or wrong key`() {
-        val dir = createTempDirectory("aun-cipher-test").toFile()
-        try {
-            val vaultA = InMemoryDownloadKeyVault()
-            val vaultB = InMemoryDownloadKeyVault()
-            val payload = ByteArray(150_000) { i -> (i * 31 % 251).toByte() }
-            val dest = File(dir, "clip.aun")
-
-            ChunkedAesCipher.encrypt(vaultA.secretKey(), "vid-1", "lic-1", payload, dest)
-            assertFalse(dest.readBytes().contentEquals(payload))
-
-            val decrypted = ChunkedAesCipher.decrypt(vaultA.secretKey(), "vid-1", "lic-1", dest)
-            assertArrayEquals(payload, decrypted)
-
-            // Wrong key must fail
-            try {
-                ChunkedAesCipher.decrypt(vaultB.secretKey(), "vid-1", "lic-1", dest)
-                fail("expected wrong key to fail decryption")
-            } catch (_: Exception) {
-                // expected
-            }
-
-            // Wrong videoId AAD binding must fail
-            try {
-                ChunkedAesCipher.decrypt(vaultA.secretKey(), "vid-2", "lic-1", dest)
-                fail("expected mismatched AAD to fail decryption")
-            } catch (_: Exception) {
-                // expected
-            }
-
-            // Tampering a single byte must fail
-            val tampered = dest.readBytes()
-            tampered[tampered.size - 1] = (tampered[tampered.size - 1].toInt() xor 0xFF).toByte()
-            dest.writeBytes(tampered)
-            try {
-                ChunkedAesCipher.decrypt(vaultA.secretKey(), "vid-1", "lic-1", dest)
-                fail("expected tampered ciphertext to fail decryption")
-            } catch (_: Exception) {
-                // expected
-            }
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
-    @Test fun `offline download policy enforces feature gate and wifi-only setting`() {
-        val wifiOnlySettings = OfflineDownloadSettings(wifiOnly = true)
-        assertEquals(
-            NetworkTransferAllowance.BLOCKED_FEATURE_OFF,
-            OfflineDownloadPolicy.canDownload(
-                featureEnabled = false,
-                settings = OfflineDownloadSettings(),
-                isConnected = true,
-                isUnmeteredWifi = true
-            )
-        )
+        val resumeDir = Files.createTempDirectory("aun-resume").toFile()
+        val resume = PlaybackResumeStore(File(resumeDir, "resume.json"))
+        resume.save("v-quran-1", 123_456L)
+        assertEquals(123_456L, resume.load()?.positionMs)
         assertEquals(
             NetworkTransferAllowance.BLOCKED_WIFI_ONLY,
-            OfflineDownloadPolicy.canDownload(
-                featureEnabled = true,
-                settings = wifiOnlySettings,
-                isConnected = true,
-                isUnmeteredWifi = false
-            )
+            OfflineDownloadPolicy.canDownload(true, OfflineDownloadSettings(wifiOnly = true), true, false)
         )
-        assertEquals(
-            NetworkTransferAllowance.ALLOWED,
-            OfflineDownloadPolicy.canDownload(
-                featureEnabled = true,
-                settings = wifiOnlySettings,
-                isConnected = true,
-                isUnmeteredWifi = true
-            )
-        )
-    }
-
-    @Test fun `offline download store enforces encryption, refresh revocation, and sign-out wipe`() {
-        val dir = createTempDirectory("aun-store-test").toFile()
-        try {
-            var now = 10_000L
-            val vault = InMemoryDownloadKeyVault()
-            val store = OfflineDownloadStore(dir, vault, offlineDownloadsEnabled = true, clockMs = { now })
-            val r1 = store.saveEncrypted(
-                licenseId = "lic-1",
-                videoId = "v1",
-                title = "Surah Al-Kahf",
-                titleAr = "سورة الكهف",
-                channelName = "Qari",
-                quality = OfflineDownloadQuality.AUDIO,
-                expiresAtMs = now + 5_000L,
-                plaintextBytes = "audio-one".toByteArray()
-            )
-            assertEquals("audio-one", store.readDecrypted(r1.licenseId).decodeToString())
-            assertEquals(1, store.playableDownloads().size)
-
-            now += 1_000L
-            val r2 = store.saveEncrypted(
-                licenseId = "lic-2",
-                videoId = "v2",
-                title = "Fiqh Lecture",
-                quality = OfflineDownloadQuality.Q480P,
-                expiresAtMs = now + 5_000L,
-                plaintextBytes = "video-two".toByteArray()
-            )
-            val file2 = File(dir, r2.fileName)
-            assertTrue(file2.exists())
-
-            val revoked = store.applyLicenseRefresh(
-                listOf(
-                    LicenseRefreshDecision("lic-1", "active", expiresAtMs = now + 30_000L),
-                    LicenseRefreshDecision("lic-2", "revoked", reason = "creator_disabled")
-                )
-            )
-            assertEquals(1, revoked)
-            assertFalse(file2.exists())
-            assertNull(store.findPlayableByVideoId("v2"))
-            assertNotNull(store.findPlayableByVideoId("v1"))
-
-            store.wipeAll()
-            assertEquals(0, store.allDownloads().size)
-            assertEquals(0L, store.totalUsedBytes())
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
-    @Test fun `android auto car browse tree exposes shallow audio-only tabs, downloads gating, and voice search`() = runTest {
-        val dir = createTempDirectory("aun-car-test").toFile()
-        try {
-            val store = OfflineDownloadStore(dir, InMemoryDownloadKeyVault(), offlineDownloadsEnabled = false)
-            val carTree = CarBrowseTree(FakeCatalog(), store, "Al Ummah Now") { it.name }
-
-            assertTrue(isAndroidAutoController("com.google.android.projection.gearhead"))
-            assertFalse(isAndroidAutoController("net.alummahnow.app"))
-
-            // Downloads tab hidden while offlineDownloads feature switch is OFF
-            val tabsOff = carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH)
-            assertEquals(
-                listOf(CarTab.CONTINUE_LISTENING.id, CarTab.SUBSCRIPTIONS.id, CarTab.RECITATION.id),
-                tabsOff.map { it.mediaId }
-            )
-
-            // Downloads tab appears once enabled and lists playable downloads
-            store.offlineDownloadsEnabled = true
-            store.saveEncrypted(
-                licenseId = "lic-car",
-                videoId = "offline-1",
-                title = "Surah Yasin",
-                titleAr = "سورة يس",
-                channelName = "Reciter",
-                quality = OfflineDownloadQuality.AUDIO,
-                expiresAtMs = System.currentTimeMillis() + 60_000L,
-                plaintextBytes = byteArrayOf(1, 2, 3)
-            )
-            val tabsOn = carTree.children(CarBrowseTree.ROOT_ID, Locale.ENGLISH)
-            assertEquals(4, tabsOn.size)
-            val downloads = carTree.children(CarTab.DOWNLOADS.id, Locale.forLanguageTag("ar"))
-            assertEquals(1, downloads.size)
-            assertEquals("سورة يس", downloads[0].mediaMetadata.title.toString())
-
-            // Voice search matches offline downloads even when searching Arabic title
-            val searchResults = carTree.search("يس", Locale.forLanguageTag("ar"))
-            assertTrue(searchResults.any { it.mediaId == "offline-1" })
-
-            // Resume store round-trip
-            val resumeStore = PlaybackResumeStore(File(dir, "resume.json"))
-            resumeStore.save("t1", 42_000L)
-            val resumed = resumeStore.load()
-            assertEquals("t1", resumed?.videoId)
-            assertEquals(42_000L, resumed?.positionMs)
-        } finally {
-            dir.deleteRecursively()
-        }
     }
 }

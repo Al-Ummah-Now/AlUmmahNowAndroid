@@ -22,8 +22,11 @@ import net.alummahnow.player.offline.PlaybackResumeStore
 
 /**
  * Browse tree (Android Auto, other media controllers), voice search, playback resumption, and
- * late resolution of play URLs. Android Auto controllers receive a shallow, strictly audio-only
- * 4-tab tree (Continue listening, Downloads, Subscriptions, Recitation).
+ * late resolution of play URLs.
+ *
+ * Android Auto surfaces (root, tabs, voice search, resumption) stay completely hidden while
+ * `listenMode` is off (`GET /api/me/features`). When on, Downloads play strictly offline via
+ * `aun-offline://` and online items use the audio-only rendition from `GET /api/v1/videos/:id/audio`.
  */
 @UnstableApi
 internal class LibraryCallback(
@@ -31,7 +34,9 @@ internal class LibraryCallback(
     private val catalog: CatalogRepository,
     private val scope: CoroutineScope,
     private val downloadStore: OfflineDownloadStore? = null,
-    private val resumeStore: PlaybackResumeStore? = null
+    private val resumeStore: PlaybackResumeStore? = null,
+    private val listenModeEnabled: () -> Boolean = { false },
+    private val activeUserId: () -> String = { "default" }
 ) : MediaLibrarySession.Callback {
 
     private val tree =
@@ -40,6 +45,8 @@ internal class LibraryCallback(
     private val carTree = CarBrowseTree(
         catalog = catalog,
         downloadStore = downloadStore,
+        listenModeEnabled = listenModeEnabled,
+        activeUserId = activeUserId,
         rootTitle = context.getString(R.string.aun_browse_root),
         tabTitle = { tab -> context.getString(CarBrowseTree.titleRes(tab)) }
     )
@@ -49,8 +56,13 @@ internal class LibraryCallback(
         browser: MediaSession.ControllerInfo,
         params: LibraryParams?
     ): ListenableFuture<LibraryResult<MediaItem>> = scope.future {
-        val root = if (isAndroidAutoController(browser.packageName)) carTree.root() else tree.root()
-        LibraryResult.ofItem(root, params)
+        if (isAndroidAutoController(browser.packageName)) {
+            if (!listenModeEnabled()) {
+                return@future LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED)
+            }
+            return@future LibraryResult.ofItem(carTree.root(), params)
+        }
+        LibraryResult.ofItem(tree.root(), params)
     }
 
     override fun onGetChildren(
@@ -80,6 +92,10 @@ internal class LibraryCallback(
         query: String,
         params: LibraryParams?
     ): ListenableFuture<LibraryResult<Void>> = scope.future {
+        if (!listenModeEnabled()) {
+            session.notifySearchResultChanged(browser, query, 0, params)
+            return@future LibraryResult.ofVoid(params)
+        }
         val results = runCatching { carTree.search(query, locale()) }.getOrDefault(emptyList())
         session.notifySearchResultChanged(browser, query, results.size, params)
         LibraryResult.ofVoid(params)
@@ -93,6 +109,9 @@ internal class LibraryCallback(
         pageSize: Int,
         params: LibraryParams?
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
+        if (!listenModeEnabled()) {
+            return@future LibraryResult.ofItemList(ImmutableList.of(), params)
+        }
         runCatching { paginate(carTree.search(query, locale()), page, pageSize) }.fold(
             onSuccess = { LibraryResult.ofItemList(ImmutableList.copyOf(it), params) },
             onFailure = { LibraryResult.ofError(SessionError.ERROR_IO) }
@@ -104,7 +123,11 @@ internal class LibraryCallback(
         browser: MediaSession.ControllerInfo,
         mediaId: String
     ): ListenableFuture<LibraryResult<MediaItem>> = scope.future {
-        runCatching { resolvePlayable(mediaId, isAndroidAutoController(browser.packageName)) }
+        val isCar = isAndroidAutoController(browser.packageName)
+        if (isCar && !listenModeEnabled()) {
+            return@future LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED)
+        }
+        runCatching { carTree.resolvePlayable(mediaId, audioOnly = isCar, locale = locale()) }
             .fold({ LibraryResult.ofItem(it, null) }, { LibraryResult.ofError(SessionError.ERROR_BAD_VALUE) })
     }
 
@@ -114,12 +137,15 @@ internal class LibraryCallback(
         mediaItems: MutableList<MediaItem>
     ): ListenableFuture<MutableList<MediaItem>> = scope.future {
         val trusted = acceptsPrebuiltItems(controller.packageName, context.packageName)
-        val audioOnly = isAndroidAutoController(controller.packageName)
+        val isCar = isAndroidAutoController(controller.packageName)
+        if (isCar && !listenModeEnabled()) {
+            return@future mutableListOf()
+        }
         mediaItems.map { item ->
             if (trusted && item.localConfiguration != null) {
                 item
             } else {
-                resolvePlayable(item.mediaId, audioOnly)
+                carTree.resolvePlayable(item.mediaId, audioOnly = isCar, locale = locale())
             }
         }.toMutableList()
     }
@@ -128,39 +154,23 @@ internal class LibraryCallback(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
-        val point = resumeStore?.load()
-        if (point != null) {
-            val resolved = runCatching { resolvePlayable(point.videoId, audioOnly = isAndroidAutoController(controller.packageName)) }
-                .getOrNull()
-            if (resolved != null) {
-                return@future MediaSession.MediaItemsWithStartPosition(listOf(resolved), 0, point.positionMs)
-            }
+        val isCar = isAndroidAutoController(controller.packageName)
+        if (isCar && !listenModeEnabled()) {
+            return@future MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
         }
-        val fallback = runCatching {
-            catalog.homeRails().firstOrNull()?.videos?.firstOrNull()?.let {
-                resolvePlayable(it.id, audioOnly = isAndroidAutoController(controller.packageName))
-            }
-        }.getOrNull()
-        val list = listOfNotNull(fallback)
-        MediaSession.MediaItemsWithStartPosition(list, 0, 0L)
-    }
-
-    private suspend fun resolvePlayable(mediaId: String, audioOnly: Boolean): MediaItem {
-        val video = catalog.video(mediaId)
-        return if (audioOnly) MediaItems.playableAudio(video, locale = locale()) else MediaItems.playable(video, locale())
+        val point = resumeStore?.load()
+            ?: return@future MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+        val resolved = runCatching { carTree.resolvePlayable(point.videoId, audioOnly = isCar, locale = locale()) }
+            .getOrNull()
+            ?: return@future MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+        MediaSession.MediaItemsWithStartPosition(listOf(resolved), 0, point.positionMs)
     }
 
     private fun locale(): Locale = context.resources.configuration.locales[0]
 }
 
-/**
- * The session service is exported (Android Auto, system media controls), so a foreign controller could
- * otherwise hand us an item pointing at any URI. Only our own process may pass a ready-made item; every
- * other caller gets the item rebuilt from the catalog by `mediaId`.
- */
 internal fun acceptsPrebuiltItems(callerPackage: String, ownPackage: String): Boolean = callerPackage == ownPackage
 
-/** True for Android Auto and Android Automotive OS media hosts (strictly audio-only templates). */
 internal fun isAndroidAutoController(callerPackage: String): Boolean =
     callerPackage == "com.google.android.projection.gearhead" ||
         callerPackage == "com.android.car.media" ||
@@ -173,7 +183,6 @@ internal fun <T> paginate(items: List<T>, page: Int, pageSize: Int): List<T> {
     return items.subList(from, (from + pageSize).coerceAtMost(items.size))
 }
 
-/** Pure browse-tree logic, unit-tested without a session. */
 internal class BrowseTree(
     private val catalog: CatalogRepository,
     private val rootTitle: String,
@@ -213,18 +222,23 @@ internal enum class CarTab(val id: String) {
 
 /**
  * Shallow audio-only browse tree for Android Auto (E14-S8):
- * 4 top-level tabs — Continue listening, Downloads, Subscriptions, Recitation — plus voice search
- * that merges online catalog results with locally downloaded items for offline car playback.
+ * Completely hidden while [listenModeEnabled] is false. When enabled, exposes 4 top-level tabs
+ * (Continue listening, Downloads when `offlineDownloads` is on, Subscriptions, Recitation), plays
+ * offline copies directly without network calls, and plays online items via our audio rendition.
  */
+@UnstableApi
 internal class CarBrowseTree(
     private val catalog: CatalogRepository,
     private val downloadStore: OfflineDownloadStore?,
+    private val listenModeEnabled: () -> Boolean = { false },
+    private val activeUserId: () -> String = { "default" },
     private val rootTitle: String,
     private val tabTitle: (CarTab) -> String
 ) {
     fun root(): MediaItem = MediaItems.folder(ROOT_ID, rootTitle)
 
     suspend fun children(parentId: String, locale: Locale): List<MediaItem> {
+        if (!listenModeEnabled()) return emptyList()
         if (parentId == ROOT_ID) {
             val tabs = CarTab.entries.filter { tab ->
                 tab != CarTab.DOWNLOADS || (downloadStore?.offlineDownloadsEnabled == true)
@@ -234,7 +248,7 @@ internal class CarBrowseTree(
         val tab = CarTab.entries.firstOrNull { it.id == parentId } ?: return emptyList()
         return when (tab) {
             CarTab.DOWNLOADS ->
-                downloadStore?.playableDownloads().orEmpty().map { MediaItems.browsableDownload(it, locale) }
+                downloadStore?.playableDownloads(activeUserId()).orEmpty().map { MediaItems.browsableDownload(it, locale) }
 
             CarTab.CONTINUE_LISTENING -> {
                 val rails = runCatching { catalog.homeRails() }.getOrDefault(emptyList())
@@ -263,9 +277,10 @@ internal class CarBrowseTree(
     }
 
     suspend fun search(query: String, locale: Locale): List<MediaItem> {
+        if (!listenModeEnabled()) return emptyList()
         val needle = query.trim()
         if (needle.isEmpty()) return emptyList()
-        val offlineMatches = downloadStore?.playableDownloads().orEmpty()
+        val offlineMatches = downloadStore?.playableDownloads(activeUserId()).orEmpty()
             .filter {
                 it.title.contains(needle, ignoreCase = true) ||
                     (it.titleAr?.contains(needle, ignoreCase = true) == true) ||
@@ -276,6 +291,24 @@ internal class CarBrowseTree(
             .getOrDefault(emptyList())
             .map { MediaItems.browsableVideo(it, locale) }
         return (offlineMatches + onlineMatches).distinctBy { it.mediaId }
+    }
+
+    /**
+     * Resolves a mediaId to a playable [MediaItem].
+     * Always prefers a valid local encrypted offline download (zero network calls) so the Car
+     * Downloads tab works offline; otherwise resolves the audio-only rendition when [audioOnly].
+     */
+    suspend fun resolvePlayable(mediaId: String, audioOnly: Boolean, locale: Locale): MediaItem {
+        val offline = downloadStore?.findPlayableByVideoId(activeUserId(), mediaId)
+        if (offline != null) {
+            return MediaItems.playableOffline(offline, locale)
+        }
+        val video = catalog.video(mediaId)
+        if (audioOnly) {
+            val audioUrl = runCatching { catalog.audioUrl(mediaId) }.getOrNull()
+            return MediaItems.playableAudio(video, audioUrl = audioUrl, locale = locale)
+        }
+        return MediaItems.playable(video, locale)
     }
 
     private fun isRecitationCandidate(video: VideoSummary): Boolean {
