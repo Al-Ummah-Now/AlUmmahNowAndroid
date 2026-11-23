@@ -9,8 +9,11 @@ android { namespace = "net.alummahnow.feature.live" }
 dependencies {
     implementation(project(":core-bridge"))
     implementation(project(":design"))
+    implementation(project(":player"))
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
+    implementation(libs.compose.adaptive)
+    implementation(libs.compose.adaptive.layout)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     testImplementation(libs.junit)

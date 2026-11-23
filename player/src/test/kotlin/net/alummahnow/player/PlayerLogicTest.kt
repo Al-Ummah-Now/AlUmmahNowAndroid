@@ -11,6 +11,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.collect.ImmutableList
 import java.util.Locale
 import kotlinx.coroutines.test.runTest
+import net.alummahnow.core.bridge.model.LiveStream
+import net.alummahnow.core.bridge.model.LiveStreamStatus
+import net.alummahnow.core.bridge.model.LocalizedText
 import net.alummahnow.core.bridge.model.RailKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -115,5 +118,21 @@ class PlayerLogicTest {
         assertTrue(acceptsPrebuiltItems("net.alummahnow.app", "net.alummahnow.app"))
         assertFalse(acceptsPrebuiltItems("com.google.android.projection.gearhead", "net.alummahnow.app"))
         assertFalse(acceptsPrebuiltItems("com.example.other", "net.alummahnow.app"))
+    }
+
+    @Test fun `playableLive configures low-latency live target offset and localized title`() {
+        val stream = LiveStream(
+            id = "live-1",
+            channelId = "ch-1",
+            channelName = "الأمة الآن",
+            title = LocalizedText("Friday Sermon", mapOf("ar" to "خطبة الجمعة")),
+            status = LiveStreamStatus.LIVE,
+            playbackUrl = "https://cdn.example/live-1/index.m3u8"
+        )
+        val item = MediaItems.playableLive(stream, locale = ar)
+        assertEquals("live-1", item.mediaId)
+        assertEquals(MimeTypes.APPLICATION_M3U8, item.localConfiguration!!.mimeType)
+        assertEquals(3_000L, item.liveConfiguration.targetOffsetMs)
+        assertEquals("خطبة الجمعة", item.mediaMetadata.title.toString())
     }
 }

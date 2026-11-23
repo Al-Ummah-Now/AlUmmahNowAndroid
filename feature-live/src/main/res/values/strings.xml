@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_badge_live">LIVE</string>
+    <string name="live_badge_premiere">PREMIERE</string>
+    <string name="live_badge_upcoming">UPCOMING</string>
+    <string name="live_badge_ended">RECORDING</string>
+    <string name="live_event_jummah">Jumu\'ah Prayer</string>
+    <string name="live_event_taraweh">Taraweh Prayer</string>
+    <string name="live_event_eid">Eid Broadcast</string>
+    <string name="live_event_halqa">Study Circle</string>
+    <string name="live_viewers_watching">%1$s watching now</string>
+    <string name="live_scheduled_for">Scheduled for %1$s</string>
+    <string name="live_return_to_live">Return to live</string>
+    <string name="live_remind_me">Remind me</string>
+    <string name="live_reminder_set">Reminder set (%1$s)</string>
+    <string name="live_chat_title">Live chat</string>
+    <string name="live_chat_replay_title">Chat replay</string>
+    <string name="live_chat_pinned">Pinned message</string>
+    <string name="live_chat_empty">No messages yet. Start the conversation with kindness.</string>
+    <string name="live_chat_disabled">Live chat is turned off for this stream.</string>
+    <string name="live_chat_kids_disabled">Live chat is turned off on kids content.</string>
+    <string name="live_chat_slow_mode">Slow mode: one message every %1$s s</string>
+    <string name="live_chat_placeholder">Say something…</string>
+    <string name="live_chat_send">Send</string>
+    <string name="live_chat_error_empty">Enter a message before sending.</string>
+    <string name="live_chat_error_too_long">Messages can be at most 300 characters.</string>
+    <string name="live_chat_error_links">Links are not allowed in live chat.</string>
+    <string name="live_chat_error_blocked">This message cannot be posted.</string>
+    <string name="live_chat_error_send">Couldn\'t send message. Please try again.</string>
+    <string name="live_chat_mod_remove">Remove</string>
+    <string name="live_chat_mod_remove_title">Remove message?</string>
+    <string name="live_chat_mod_remove_body">This message will be hidden for everyone in the chat.</string>
+    <string name="live_chat_mod_pin">Pin</string>
+    <string name="live_chat_mod_unpin">Unpin</string>
+    <string name="live_chat_report">Report</string>
+    <string name="live_chat_report_title">Report message?</string>
+    <string name="live_chat_report_body">Send this message to moderators for review.</string>
+    <string name="live_chat_report_sent">Report submitted. Thank you.</string>
+    <string name="live_role_owner">Creator</string>
+    <string name="live_role_moderator">Moderator</string>
+</resources>

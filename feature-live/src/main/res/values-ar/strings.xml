@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_badge_live">مباشر</string>
+    <string name="live_badge_premiere">عرض أول</string>
+    <string name="live_badge_upcoming">قريباً</string>
+    <string name="live_badge_ended">تسجيل المرئي</string>
+    <string name="live_event_jummah">صلاة الجمعة</string>
+    <string name="live_event_taraweh">صلاة التراويح</string>
+    <string name="live_event_eid">بث العيد</string>
+    <string name="live_event_halqa">حلقة علم</string>
+    <string name="live_viewers_watching">%1$s يشاهدون الآن</string>
+    <string name="live_scheduled_for">مجدول في %1$s</string>
+    <string name="live_return_to_live">العودة للبث المباشر</string>
+    <string name="live_remind_me">ذكّرني</string>
+    <string name="live_reminder_set">تم ضبط التذكير (%1$s)</string>
+    <string name="live_chat_title">المحادثة المباشرة</string>
+    <string name="live_chat_replay_title">إعادة المحادثة</string>
+    <string name="live_chat_pinned">رسالة مثبّتة</string>
+    <string name="live_chat_empty">لا توجد رسائل بعد. ابدأ الحوار بالكلمة الطيبة.</string>
+    <string name="live_chat_disabled">المحادثة المباشرة متوقفة لهذا البث.</string>
+    <string name="live_chat_kids_disabled">المحادثة المباشرة متوقفة لمحتوى الأطفال.</string>
+    <string name="live_chat_slow_mode">الوضع البطيء: رسالة كل %1$s ث</string>
+    <string name="live_chat_placeholder">اكتب رسالة…</string>
+    <string name="live_chat_send">إرسال</string>
+    <string name="live_chat_error_empty">أدخل رسالة قبل الإرسال.</string>
+    <string name="live_chat_error_too_long">الحد الأقصى للرسالة ٣٠٠ حرف.</string>
+    <string name="live_chat_error_links">الروابط غير مسموح بها في المحادثة المباشرة.</string>
+    <string name="live_chat_error_blocked">لا يمكن نشر هذه الرسالة.</string>
+    <string name="live_chat_error_send">تعذّر إرسال الرسالة، يرجى المحاولة مرة أخرى.</string>
+    <string name="live_chat_mod_remove">حذف</string>
+    <string name="live_chat_mod_remove_title">حذف الرسالة؟</string>
+    <string name="live_chat_mod_remove_body">سيتم إخفاء هذه الرسالة لدى جميع المشاركين في المحادثة.</string>
+    <string name="live_chat_mod_pin">تثبيت</string>
+    <string name="live_chat_mod_unpin">إلغاء التثبيت</string>
+    <string name="live_chat_report">إبلاغ</string>
+    <string name="live_chat_report_title">الإبلاغ عن الرسالة؟</string>
+    <string name="live_chat_report_body">إرسال هذه الرسالة إلى المشرفين للمراجعة.</string>
+    <string name="live_chat_report_sent">تم إرسال البلاغ، شكراً لك.</string>
+    <string name="live_role_owner">صاحب القناة</string>
+    <string name="live_role_moderator">مشرف</string>
+</resources>

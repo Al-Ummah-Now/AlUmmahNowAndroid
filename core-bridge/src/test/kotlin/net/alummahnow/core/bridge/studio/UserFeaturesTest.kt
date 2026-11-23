@@ -24,9 +24,15 @@ class UserFeaturesTest {
     }
 
     @Test fun `a missing key is hidden`() {
-        val f = StudioMappers.features("""{"version":1,"features":{"live":true}}""")
+        val f = StudioMappers.features(
+            """{"version":1,"features":{"live":true,"liveChat":true,"livePremieres":true,"liveReminders":false}}"""
+        )
         assertFalse(f.upload)
-        assertTrue("live" in f)
+        assertTrue(f.live)
+        assertTrue(f.liveChat)
+        assertTrue(f.livePremieres)
+        assertFalse(f.liveReminders)
+        assertFalse(f.liveEvents)
     }
 
     @Test fun `an unreadable answer hides everything`() {

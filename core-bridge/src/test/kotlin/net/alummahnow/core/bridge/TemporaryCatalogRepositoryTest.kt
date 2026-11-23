@@ -5,9 +5,15 @@ import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import net.alummahnow.core.bridge.catalog.TemporaryCatalogRepository
+import net.alummahnow.core.bridge.model.LiveChatFastFilter
+import net.alummahnow.core.bridge.model.LiveChatValidationError
+import net.alummahnow.core.bridge.model.LiveEventType
+import net.alummahnow.core.bridge.model.LiveStreamKind
+import net.alummahnow.core.bridge.model.LiveStreamStatus
 import net.alummahnow.core.bridge.model.RailKind
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -81,5 +87,44 @@ class TemporaryCatalogRepositoryTest {
             override fun dispatch(request: mockwebserver3.RecordedRequest) = MockResponse(code = 500)
         }
         assertTrue(runCatching { repo.homeRails() }.exceptionOrNull() is CoreError.Http)
+    }
+
+    @Test fun `live stream state, chat and reminders decode and fast filter validates links`() = runTest {
+        server.enqueue(
+            MockResponse(
+                body = """{"data":{"id":"live-1","channelId":"ch-1","channelName":"Al Ummah",""" +
+                    """"title":"Friday Sermon","titleLocalized":{"ar":"خطبة الجمعة"},""" +
+                    """"status":"live","streamKind":"premiere","eventType":"jummah","viewerCount":42}}"""
+            )
+        )
+        server.enqueue(
+            MockResponse(
+                body = """{"data":[{"id":"m1","streamId":"live-1","userId":"u1","channelId":"ch-1",""" +
+                    """"authorName":"Ahmad","authorRole":"moderator","text":"Assalamu alaikum","offsetMs":12000}],""" +
+                    """"settings":{"chatEnabled":true,"slowModeSeconds":10,"linksAllowed":false}}"""
+            )
+        )
+        server.enqueue(MockResponse(body = """{"data":{"reminded":true,"reminderCount":19}}"""))
+
+        val stream = repo.liveStream("live-1")
+        assertEquals(LiveStreamStatus.LIVE, stream.status)
+        assertEquals(LiveStreamKind.PREMIERE, stream.streamKind)
+        assertEquals(LiveEventType.JUMMAH, stream.eventType)
+        assertEquals("خطبة الجمعة", stream.title.resolve(Locale.forLanguageTag("ar")))
+
+        val chat = repo.liveChatMessages("live-1")
+        assertEquals(1, chat.items.size)
+        assertEquals("Assalamu alaikum", chat.items.first().text)
+        assertEquals(10, chat.settings.slowModeSeconds)
+
+        val reminder = repo.setLiveReminder("live-1", remind = true)
+        assertTrue(reminder.reminded)
+        assertEquals(19L, reminder.reminderCount)
+
+        assertNull(LiveChatFastFilter.validate("Assalamu alaikum", linksAllowed = false))
+        assertEquals(
+            LiveChatValidationError.LINKS_NOT_ALLOWED,
+            LiveChatFastFilter.validate("Visit https://evil.example", linksAllowed = false)
+        )
     }
 }

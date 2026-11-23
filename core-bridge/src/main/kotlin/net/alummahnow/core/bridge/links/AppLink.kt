@@ -16,6 +16,7 @@ sealed interface AppLink {
     val lang: String?
 
     data class Video(val id: String, override val lang: String? = null) : AppLink
+    data class Live(val id: String, override val lang: String? = null) : AppLink
     data class Short(val id: String, override val lang: String? = null) : AppLink
     data class Playlist(val id: String, override val lang: String? = null) : AppLink
     data class Post(val id: String, override val lang: String? = null) : AppLink
@@ -84,6 +85,7 @@ object AppLinkParser {
             head == "studio" && lang != null -> studio(rest.drop(1), lang)
             id == null -> null
             head == "video" -> AppLink.Video(id, lang)
+            head == "live" -> AppLink.Live(id, lang)
             head == "shorts" -> AppLink.Short(id, lang)
             head == "playlist" -> AppLink.Playlist(id, lang)
             head == "post" -> AppLink.Post(id, lang)

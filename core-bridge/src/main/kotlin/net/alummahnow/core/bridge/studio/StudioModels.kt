@@ -172,9 +172,19 @@ data class UserFeatures(val enabled: Set<String>) {
     operator fun contains(key: String): Boolean = key in enabled
 
     val upload: Boolean get() = UPLOAD in enabled
+    val live: Boolean get() = LIVE in enabled
+    val liveChat: Boolean get() = LIVE_CHAT in enabled
+    val livePremieres: Boolean get() = LIVE_PREMIERES in enabled
+    val liveReminders: Boolean get() = LIVE_REMINDERS in enabled
+    val liveEvents: Boolean get() = LIVE_EVENTS in enabled
 
     companion object {
         const val UPLOAD = "upload"
+        const val LIVE = "live"
+        const val LIVE_CHAT = "liveChat"
+        const val LIVE_PREMIERES = "livePremieres"
+        const val LIVE_REMINDERS = "liveReminders"
+        const val LIVE_EVENTS = "liveEvents"
 
         /** Every feature hidden: what the app uses before it has read the answer. */
         val NONE = UserFeatures(emptySet())
