@@ -9,6 +9,7 @@
     <string name="settings_help">المساعدة</string>
     <string name="settings_contact">تواصل معنا</string>
     <string name="settings_privacy_policy">سياسة الخصوصية</string>
-    <string name="settings_terms_of_service">شروط الخدمة</string>
+    <string name="settings_terms_of_service">شروط الاستخدام</string>
+    <string name="settings_no_browser">لا يوجد متصفح لفتح هذه الصفحة.</string>
     <string name="launcher_name">الأمة الآن</string>
 </resources>

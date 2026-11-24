@@ -72,136 +72,23 @@ fun AccountSheet(
     onOpenUrl: ((String) -> Unit)? = null
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
-    val lang = currentLocale().language
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("account-sheet"),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(bottom = FanousTokens.Spacing.lg)
-        ) {
-            if (channel != null) {
-                SheetRow(
-                    icon = { ChannelAvatar(channel, 40) },
-                    title = channel.localizedName(currentLocale().language),
-                    subtitle = stringResource(R.string.studio_channel_switch),
-                    modifier = Modifier.clickable(role = Role.Button, onClick = onSwitchChannel).testTag("switch-channel"),
-                    trailing = { Icon(Icons.Filled.SwapHoriz, contentDescription = null) }
-                )
-                HorizontalDivider()
-            }
-            Text(
-                stringResource(R.string.studio_accounts),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(FanousTokens.Spacing.lg).semantics { heading() }
-            )
-            accounts.forEach { a ->
-                val active = a.userId == activeUserId
-                SheetRow(
-                    icon = { Initial(a.label) },
-                    title = a.label,
-                    subtitle = when {
-                        a.needsReauth -> stringResource(R.string.studio_account_reauth)
-                        active -> stringResource(R.string.studio_account_active)
-                        else -> a.email.orEmpty()
-                    },
-                    modifier = Modifier
-                        .semantics { selected = active }
-                        .clickable(enabled = !active, role = Role.Button) { onSwitchAccount(a.userId) }
-                        .testTag("account-${a.userId}"),
-                    trailing = {
-                        IconButton(onClick = { confirmSignOut = a }, modifier = Modifier.testTag("sign-out-${a.userId}")) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Logout,
-                                contentDescription = aunString(R.string.studio_sign_out_cd, isolate(a.label))
-                            )
-                        }
-                    }
-                )
-            }
-            SheetRow(
-                icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null, modifier = Modifier.size(40.dp).padding(8.dp)) },
-                title = stringResource(R.string.studio_signin_add),
-                subtitle = null,
-                modifier = Modifier.clickable(role = Role.Button, onClick = onAddAccount).testTag("add-account")
-            )
-            if (onAddPasskey != null) {
-                SheetRow(
-                    icon = { Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(40.dp).padding(8.dp)) },
-                    title = stringResource(net.alummahnow.feature.passkey.R.string.passkey_add),
-                    subtitle = stringResource(net.alummahnow.feature.passkey.R.string.passkey_explainer),
-                    modifier = Modifier.clickable(role = Role.Button, onClick = onAddPasskey).testTag("add-passkey")
-                )
-            }
-            if (onOpenUrl != null) {
-                HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.xs))
-                SheetRow(
-                    icon = {
-                        Icon(
-                            Icons.AutoMirrored.Filled.HelpOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp).padding(8.dp)
-                        )
-                    },
-                    title = stringResource(R.string.studio_help),
-                    subtitle = null,
-                    modifier = Modifier.clickable(role = Role.Button) {
-                        onDismiss()
-                        onOpenUrl(SupportLinks.helpUrl(lang))
-                    }.testTag("studio-help")
-                )
-                SheetRow(
-                    icon = {
-                        Icon(
-                            Icons.Filled.MailOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp).padding(8.dp)
-                        )
-                    },
-                    title = stringResource(R.string.studio_contact),
-                    subtitle = null,
-                    modifier = Modifier.clickable(role = Role.Button) {
-                        onDismiss()
-                        onOpenUrl(SupportLinks.contactUrl(lang))
-                    }.testTag("studio-contact")
-                )
-                SheetRow(
-                    icon = {
-                        Icon(
-                            Icons.Filled.PrivacyTip,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp).padding(8.dp)
-                        )
-                    },
-                    title = stringResource(R.string.studio_privacy_policy),
-                    subtitle = null,
-                    modifier = Modifier.clickable(role = Role.Button) {
-                        onDismiss()
-                        onOpenUrl(SupportLinks.privacyUrl(lang))
-                    }.testTag("studio-privacy")
-                )
-                SheetRow(
-                    icon = {
-                        Icon(
-                            Icons.Filled.Description,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp).padding(8.dp)
-                        )
-                    },
-                    title = stringResource(R.string.studio_terms_of_service),
-                    subtitle = null,
-                    modifier = Modifier.clickable(role = Role.Button) {
-                        onDismiss()
-                        onOpenUrl(SupportLinks.termsUrl(lang))
-                    }.testTag("studio-terms")
-                )
-            }
-        }
+        AccountSheetContent(
+            accounts = accounts,
+            activeUserId = activeUserId,
+            channel = channel,
+            onSwitchAccount = onSwitchAccount,
+            onAddAccount = onAddAccount,
+            onRequestSignOut = { confirmSignOut = it },
+            onSwitchChannel = onSwitchChannel,
+            onDismiss = onDismiss,
+            onAddPasskey = onAddPasskey,
+            onOpenUrl = onOpenUrl
+        )
     }
     confirmSignOut?.let { a ->
         ConfirmDialog(
@@ -214,6 +101,146 @@ fun AccountSheet(
             },
             onDismiss = { confirmSignOut = null }
         )
+    }
+}
+
+@Composable
+internal fun AccountSheetContent(
+    accounts: List<StudioAccount>,
+    activeUserId: String?,
+    channel: StudioChannel?,
+    onSwitchAccount: (String) -> Unit,
+    onAddAccount: () -> Unit,
+    onRequestSignOut: (StudioAccount) -> Unit,
+    onSwitchChannel: () -> Unit,
+    onDismiss: () -> Unit,
+    onAddPasskey: (() -> Unit)? = null,
+    onOpenUrl: ((String) -> Unit)? = null
+) {
+    val lang = currentLocale().language
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
+            .padding(bottom = FanousTokens.Spacing.lg)
+    ) {
+        if (channel != null) {
+            SheetRow(
+                icon = { ChannelAvatar(channel, 40) },
+                title = channel.localizedName(lang),
+                subtitle = stringResource(R.string.studio_channel_switch),
+                modifier = Modifier.clickable(role = Role.Button, onClick = onSwitchChannel).testTag("switch-channel"),
+                trailing = { Icon(Icons.Filled.SwapHoriz, contentDescription = null) }
+            )
+            HorizontalDivider()
+        }
+        Text(
+            stringResource(R.string.studio_accounts),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(FanousTokens.Spacing.lg).semantics { heading() }
+        )
+        accounts.forEach { a ->
+            val active = a.userId == activeUserId
+            SheetRow(
+                icon = { Initial(a.label) },
+                title = a.label,
+                subtitle = when {
+                    a.needsReauth -> stringResource(R.string.studio_account_reauth)
+                    active -> stringResource(R.string.studio_account_active)
+                    else -> a.email.orEmpty()
+                },
+                modifier = Modifier
+                    .semantics { selected = active }
+                    .clickable(enabled = !active, role = Role.Button) { onSwitchAccount(a.userId) }
+                    .testTag("account-${a.userId}"),
+                trailing = {
+                    IconButton(onClick = { onRequestSignOut(a) }, modifier = Modifier.testTag("sign-out-${a.userId}")) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = aunString(R.string.studio_sign_out_cd, isolate(a.label))
+                        )
+                    }
+                }
+            )
+        }
+        SheetRow(
+            icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null, modifier = Modifier.size(40.dp).padding(8.dp)) },
+            title = stringResource(R.string.studio_signin_add),
+            subtitle = null,
+            modifier = Modifier.clickable(role = Role.Button, onClick = onAddAccount).testTag("add-account")
+        )
+        if (onAddPasskey != null) {
+            SheetRow(
+                icon = { Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(40.dp).padding(8.dp)) },
+                title = stringResource(net.alummahnow.feature.passkey.R.string.passkey_add),
+                subtitle = stringResource(net.alummahnow.feature.passkey.R.string.passkey_explainer),
+                modifier = Modifier.clickable(role = Role.Button, onClick = onAddPasskey).testTag("add-passkey")
+            )
+        }
+        if (onOpenUrl != null) {
+            HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.xs))
+            SheetRow(
+                icon = {
+                    Icon(
+                        Icons.AutoMirrored.Filled.HelpOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).padding(8.dp)
+                    )
+                },
+                title = stringResource(R.string.studio_help),
+                subtitle = null,
+                modifier = Modifier.clickable(role = Role.Button) {
+                    onDismiss()
+                    onOpenUrl(SupportLinks.helpUrl(lang))
+                }.testTag("studio-help")
+            )
+            SheetRow(
+                icon = {
+                    Icon(
+                        Icons.Filled.MailOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).padding(8.dp)
+                    )
+                },
+                title = stringResource(R.string.studio_contact),
+                subtitle = null,
+                modifier = Modifier.clickable(role = Role.Button) {
+                    onDismiss()
+                    onOpenUrl(SupportLinks.contactUrl(lang))
+                }.testTag("studio-contact")
+            )
+            SheetRow(
+                icon = {
+                    Icon(
+                        Icons.Filled.PrivacyTip,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).padding(8.dp)
+                    )
+                },
+                title = stringResource(R.string.studio_privacy_policy),
+                subtitle = null,
+                modifier = Modifier.clickable(role = Role.Button) {
+                    onDismiss()
+                    onOpenUrl(SupportLinks.privacyUrl(lang))
+                }.testTag("studio-privacy")
+            )
+            SheetRow(
+                icon = {
+                    Icon(
+                        Icons.Filled.Description,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).padding(8.dp)
+                    )
+                },
+                title = stringResource(R.string.studio_terms_of_service),
+                subtitle = null,
+                modifier = Modifier.clickable(role = Role.Button) {
+                    onDismiss()
+                    onOpenUrl(SupportLinks.termsUrl(lang))
+                }.testTag("studio-terms")
+            )
+        }
     }
 }
 
