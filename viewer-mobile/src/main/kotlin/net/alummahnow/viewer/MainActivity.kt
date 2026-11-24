@@ -1,17 +1,21 @@
 package net.alummahnow.viewer
 
+import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -42,6 +46,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.auth.AuthState
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.format.displayLocale
@@ -161,16 +166,44 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
     }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val authState by container.auth.state.collectAsStateWithLifecycle()
+    val signedIn = authState is AuthState.SignedIn
     var settingsOpen by remember { mutableStateOf(false) }
     var notificationsOpen by remember { mutableStateOf(false) }
     var eventsOpen by remember { mutableStateOf(false) }
     var badgeCount by remember { mutableStateOf(0) }
     var eventCalendarEnabled by remember { mutableStateOf(false) }
+    var quietHoursEnabled by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
+    val pushLocale = AppLanguage.current(context)
+        ?: context.resources.configuration.locales[0]?.language.orEmpty().ifBlank { "en" }
+    val pushPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            scope.launch {
+                ViewerPush.register(context, container.pushRegistrar, container.installId, pushLocale)
+            }
+        }
+    }
 
-    LaunchedEffect(container) {
-        runCatching { badgeCount = container.notifications.badge().visibleCount }
-        runCatching { eventCalendarEnabled = container.events.viewerFeatures().eventCalendar }
+    LaunchedEffect(container, signedIn) {
+        runCatching {
+            val features = container.events.viewerFeatures()
+            eventCalendarEnabled = features.eventCalendar
+            quietHoursEnabled = features.quietHours
+        }
+        if (signedIn) {
+            runCatching { badgeCount = container.notifications.badge().visibleCount }
+            when {
+                !ViewerPush.available(context) -> Unit
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED ->
+                    pushPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                else -> ViewerPush.register(context, container.pushRegistrar, container.installId, pushLocale)
+            }
+        } else {
+            badgeCount = 0
+            notificationsOpen = false
+        }
     }
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
@@ -183,7 +216,7 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
                 onRetry = vm::load,
                 onOpenSettings = { settingsOpen = true },
                 notificationBadgeCount = badgeCount,
-                onOpenNotifications = { notificationsOpen = true },
+                onOpenNotifications = if (signedIn) ({ notificationsOpen = true }) else null,
                 onOpenEvents = if (eventCalendarEnabled) ({ eventsOpen = true }) else null
             )
         }
@@ -222,9 +255,10 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
             )
         }
     }
-    if (notificationsOpen) {
+    if (notificationsOpen && signedIn) {
         NotificationsSheet(
             repository = container.notifications,
+            quietHoursEnabled = quietHoursEnabled,
             onBadgeChange = { badgeCount = it },
             onDismiss = { notificationsOpen = false }
         )

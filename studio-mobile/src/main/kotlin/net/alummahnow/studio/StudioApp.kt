@@ -1,5 +1,10 @@
 package net.alummahnow.studio
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -141,9 +146,25 @@ fun StudioApp(
     val channelsState by channels.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val activeLocale = currentLocale().language
     val resources = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
     val selected = (channelsState as? ChannelsUiState.Content)?.selected
+    val pushPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            scope.launch { StudioPush.register(context, container.pushRegistrar, container.installId, activeLocale) }
+        }
+    }
+    LaunchedEffect(current.userId) {
+        when {
+            !StudioPush.available(context) -> Unit
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED ->
+                pushPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            else -> StudioPush.register(context, container.pushRegistrar, container.installId, activeLocale)
+        }
+    }
     LaunchedEffect(pendingLink, channelsState) {
         val link = pendingLink ?: return@LaunchedEffect
         val loaded = channelsState as? ChannelsUiState.Content ?: return@LaunchedEffect
@@ -271,6 +292,9 @@ fun StudioApp(
             onSignOut = { userId ->
                 sheetOpen = false
                 scope.launch {
+                    if (userId == current.userId) {
+                        StudioPush.unregister(context.applicationContext, container.pushRegistrar, container.installId)
+                    }
                     attempt("auth", "sign-out") { session.signOut(userId) }.fold(
                         onSuccess = { logoutUrl ->
                             container.forget(userId)

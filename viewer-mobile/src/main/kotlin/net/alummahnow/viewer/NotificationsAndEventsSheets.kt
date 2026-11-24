@@ -46,6 +46,7 @@ import net.alummahnow.design.theme.FanousTokens
 @Composable
 fun NotificationsSheet(
     repository: NotificationsRepository,
+    quietHoursEnabled: Boolean,
     onBadgeChange: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -53,13 +54,15 @@ fun NotificationsSheet(
     var items by remember { mutableStateOf<List<NotificationEntry>>(emptyList()) }
     var quietHours by remember { mutableStateOf(NotificationQuietHours()) }
 
-    LaunchedEffect(repository) {
+    LaunchedEffect(repository, quietHoursEnabled) {
         runCatching {
             val page = repository.list()
             items = page.items
             val updated = if (page.items.isNotEmpty()) repository.markSeen(page.items.map { it.id }) else page.badge
             onBadgeChange(updated.visibleCount)
-            quietHours = repository.quietHours()
+            if (quietHoursEnabled) {
+                quietHours = repository.quietHours()
+            }
         }
     }
 
@@ -101,26 +104,138 @@ fun NotificationsSheet(
             } else {
                 items(items, key = { it.id }) { item ->
                     Column(Modifier.fillMaxWidth().padding(vertical = FanousTokens.Spacing.xs)) {
-                        Text(item.title, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            item.category,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(notificationTitle(item), style = MaterialTheme.typography.bodyLarge)
                     }
                 }
             }
-            item(key = "divider") { HorizontalDivider() }
-            item(key = "quiet-hours") {
-                QuietHoursSection(
-                    quietHours = quietHours,
-                    onUpdate = { next ->
-                        quietHours = next
-                        scope.launch { runCatching { quietHours = repository.updateQuietHours(next) } }
-                    }
-                )
+            if (quietHoursEnabled) {
+                item(key = "divider") { HorizontalDivider() }
+                item(key = "quiet-hours") {
+                    QuietHoursSection(
+                        quietHours = quietHours,
+                        onUpdate = { next ->
+                            quietHours = next
+                            scope.launch { runCatching { quietHours = repository.updateQuietHours(next) } }
+                        }
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun msgOrFallback(arg: String, msgRes: Int, fallbackRes: Int): String =
+    if (arg.isNotBlank()) aunString(msgRes, arg) else stringResource(fallbackRes)
+
+@Composable
+private fun msgOrFallback2(first: String, second: String, msgRes: Int, fallbackRes: Int): String =
+    if (first.isNotBlank() && second.isNotBlank()) {
+        aunString(msgRes, first, second)
+    } else {
+        stringResource(fallbackRes)
+    }
+
+@Composable
+@Suppress("CyclomaticComplexMethod")
+internal fun notificationTitle(item: NotificationEntry): String {
+    val isAr = currentLocale().language == "ar"
+    val video = item.params["videoTitle"].orEmpty()
+    val stream = item.params["streamTitle"].orEmpty().ifBlank { video }
+    val channel = item.params["channelName"].orEmpty().ifBlank { item.params["channel"].orEmpty() }
+    val tierLocalized = if (isAr) item.params["tier_ar"] else item.params["tier_en"]
+    val tier = tierLocalized.orEmpty().ifBlank { item.params["tier"].orEmpty() }
+    val inviter = item.params["inviter"].orEmpty()
+    val member = item.params["member"].orEmpty()
+    val actor = item.params["actorName"].orEmpty()
+
+    return when (item.notificationKey) {
+        "newVideo" -> msgOrFallback2(
+            channel,
+            video,
+            DesignR.string.aun_notif_new_video_msg,
+            DesignR.string.aun_notif_new_video
+        )
+        "liveStarted" -> msgOrFallback2(
+            channel,
+            stream,
+            DesignR.string.aun_notif_live_started_msg,
+            DesignR.string.aun_notif_live_started
+        )
+        "commentReply" -> msgOrFallback(
+            actor,
+            DesignR.string.aun_notif_comment_reply_msg,
+            DesignR.string.aun_notif_comment_reply
+        )
+        "newComment" -> msgOrFallback(
+            video,
+            DesignR.string.aun_notif_new_comment_msg,
+            DesignR.string.aun_notif_new_comment
+        )
+        "newSubscriber" -> msgOrFallback(
+            channel,
+            DesignR.string.aun_notif_new_subscriber_msg,
+            DesignR.string.aun_notif_new_subscriber
+        )
+        "uploadReady" -> msgOrFallback(
+            video,
+            DesignR.string.aun_notif_upload_ready_msg,
+            DesignR.string.aun_notif_upload_ready
+        )
+        "uploadFailed" -> msgOrFallback(
+            video,
+            DesignR.string.aun_notif_upload_failed_msg,
+            DesignR.string.aun_notif_upload_failed
+        )
+        "accountWarning" -> stringResource(DesignR.string.aun_notif_account_warning)
+        "reviewApproved" -> msgOrFallback(
+            video,
+            DesignR.string.aun_notif_review_approved_msg,
+            DesignR.string.aun_notif_review_approved
+        )
+        "reviewRejected" -> msgOrFallback(
+            video,
+            DesignR.string.aun_notif_review_rejected_msg,
+            DesignR.string.aun_notif_review_rejected
+        )
+        "reviewNeeded" -> msgOrFallback(
+            video,
+            DesignR.string.aun_notif_review_needed_msg,
+            DesignR.string.aun_notif_review_needed
+        )
+        "youtubeImportFinished" -> stringResource(DesignR.string.aun_notif_youtube_import)
+        "channelInviteReceived" -> msgOrFallback2(
+            inviter,
+            channel,
+            DesignR.string.aun_notif_channel_invite_msg,
+            DesignR.string.aun_notif_channel_invite
+        )
+        "channelInviteAccepted" -> msgOrFallback2(
+            member,
+            channel,
+            DesignR.string.aun_notif_channel_invite_accepted_msg,
+            DesignR.string.aun_notif_channel_invite_accepted
+        )
+        "channelRoleChanged" -> stringResource(DesignR.string.aun_notif_channel_role_changed)
+        "channelMemberRemoved" -> stringResource(DesignR.string.aun_notif_channel_member_removed)
+        "channelMemberLeft" -> stringResource(DesignR.string.aun_notif_channel_member_left)
+        "tierRequestApproved" -> msgOrFallback(
+            tier,
+            DesignR.string.aun_notif_tier_approved_msg,
+            DesignR.string.aun_notif_tier_approved
+        )
+        "tierRequestDeclined" -> msgOrFallback(
+            tier,
+            DesignR.string.aun_notif_tier_declined_msg,
+            DesignR.string.aun_notif_tier_declined
+        )
+        "tierRequestReceived" -> msgOrFallback(
+            tier,
+            DesignR.string.aun_notif_tier_received_msg,
+            DesignR.string.aun_notif_tier_received
+        )
+        "tierChanged" -> stringResource(DesignR.string.aun_notif_tier_changed)
+        else -> item.title.ifBlank { stringResource(DesignR.string.aun_notif_default) }
     }
 }
 
@@ -154,16 +269,19 @@ private fun QuietHoursSection(
                 onCheckedChange = { onUpdate(quietHours.copy(enabled = it)) }
             )
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                stringResource(DesignR.string.aun_quiet_hours_prayer),
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f)
-            )
-            Switch(
-                checked = quietHours.prayerQuietEnabled,
-                onCheckedChange = { onUpdate(quietHours.copy(prayerQuietEnabled = it)) }
-            )
+        // Hidden until Epic 21.1 supplies non-empty locally computed prayer windows on this device.
+        if (quietHours.prayerWindows.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(DesignR.string.aun_quiet_hours_prayer),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = quietHours.prayerQuietEnabled,
+                    onCheckedChange = { onUpdate(quietHours.copy(prayerQuietEnabled = it)) }
+                )
+            }
         }
         Text(
             stringResource(DesignR.string.aun_quiet_hours_note),

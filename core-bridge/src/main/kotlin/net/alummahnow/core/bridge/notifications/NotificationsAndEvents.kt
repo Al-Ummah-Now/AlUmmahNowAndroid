@@ -86,7 +86,8 @@ data class NotificationEntry(
     val notificationKey: String,
     val title: String,
     val isUnread: Boolean,
-    val createdAtMs: Long
+    val createdAtMs: Long,
+    val params: Map<String, String> = emptyMap()
 )
 
 data class NotificationsPage(
@@ -204,9 +205,13 @@ class HttpNotificationsRepository(
             .build()
         val dto = send<Envelope<ListDto>>("GET", url, token = token).result
         val entries = dto.items.map { item ->
-            val title = item.params?.get("videoTitle")?.jsonPrimitive?.content
-                ?: item.params?.get("channelName")?.jsonPrimitive?.content
-                ?: item.notificationKey
+            val stringParams = item.params.orEmpty().mapValues { (_, v) ->
+                runCatching { v.jsonPrimitive.content }.getOrDefault("")
+            }
+            val title = stringParams["videoTitle"]?.takeIf { it.isNotBlank() }
+                ?: stringParams["streamTitle"]?.takeIf { it.isNotBlank() }
+                ?: stringParams["channelName"]?.takeIf { it.isNotBlank() }
+                ?: ""
             NotificationEntry(
                 id = item.id,
                 category = item.category,
@@ -214,7 +219,8 @@ class HttpNotificationsRepository(
                 notificationKey = item.notificationKey,
                 title = title,
                 isUnread = item.readAt == null,
-                createdAtMs = item.createdAt
+                createdAtMs = item.createdAt,
+                params = stringParams
             )
         }
         val badge = NotificationBadge(dto.unreadCount, dto.unseenCount ?: dto.unreadCount, dto.menuOpen)

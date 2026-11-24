@@ -17,10 +17,17 @@ import net.alummahnow.core.bridge.notifications.NotificationsRepository
  * `GuestOnly*` / `Http*` bindings here for the core-backed implementations; nothing else changes.
  */
 class AppContainer(context: Context) {
+    private val appContext = context.applicationContext
     val catalog: CatalogRepository = TemporaryCatalogRepository(BuildConfig.API_BASE_URL)
     val auth: AuthBridge = GuestOnlyAuthBridge()
-    val notifications: NotificationsRepository = HttpNotificationsRepository(BuildConfig.API_BASE_URL, accessToken = { null })
-    val events: EventsRepository = HttpEventsRepository(BuildConfig.API_BASE_URL, accessToken = { null })
-    val pushRegistrar: AppPushRegistrar = HttpAppPushRegistrar(BuildConfig.API_BASE_URL, accessToken = { null })
-    val displayPrefs = DisplayPrefsStore(context.applicationContext)
+    val notifications: NotificationsRepository = HttpNotificationsRepository(BuildConfig.API_BASE_URL, accessToken = auth::accessToken)
+    val events: EventsRepository = HttpEventsRepository(BuildConfig.API_BASE_URL, accessToken = auth::accessToken)
+    val pushRegistrar: AppPushRegistrar = HttpAppPushRegistrar(BuildConfig.API_BASE_URL, accessToken = auth::accessToken)
+    val displayPrefs = DisplayPrefsStore(appContext)
+    val installId: String by lazy {
+        val prefs = appContext.getSharedPreferences("viewer_push", Context.MODE_PRIVATE)
+        prefs.getString("install_id", null) ?: ("inst_" + java.util.UUID.randomUUID().toString().replace("-", "")).also {
+            prefs.edit().putString("install_id", it).apply()
+        }
+    }
 }
