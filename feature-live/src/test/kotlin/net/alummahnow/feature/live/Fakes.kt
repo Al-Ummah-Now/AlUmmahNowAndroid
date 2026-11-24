@@ -25,6 +25,10 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
     var chatReads = 0
     val beats = mutableListOf<Boolean>()
     var stateGate: CompletableDeferred<Unit>? = null
+    var chatGate: CompletableDeferred<Unit>? = null
+
+    /** What passes while an answer is on its way. */
+    var answering: () -> Unit = {}
     var askedEvent: LiveEventType? = null
     var fails = false
     var chatFails = false
@@ -45,6 +49,7 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
 
     override suspend fun state(id: String): LiveState {
         stateReads++
+        answering()
         stateGate?.await()
         refuse()
         return current
@@ -52,6 +57,8 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
 
     override suspend fun chat(id: String): LiveChatPage {
         chatReads++
+        answering()
+        chatGate?.await()
         refuse()
         if (chatFails) throw CoreError.Http(503)
         return LiveChatPage(listOf(LiveChatMessage("m", "A", "x", 0)), pollAfterMs = chatPollAfter)
@@ -65,15 +72,17 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
 
     override suspend fun beat(id: String, viewerId: String, leaving: Boolean): Long? {
         beats += leaving
+        if (!leaving) answering()
         refuse()
         return 5
     }
 }
 
-internal class FakeCatalog(private val videos: Set<String> = setOf("v1")) : CatalogRepository {
+internal class FakeCatalog(private val videos: Set<String> = setOf("v1"), private val error: CoreError? = null) : CatalogRepository {
     override suspend fun homeRails(): List<Rail> = emptyList()
 
     override suspend fun video(id: String): VideoDetail {
+        error?.let { throw it }
         if (id !in videos) throw CoreError.NotFound(id)
         return VideoDetail(
             summary = VideoSummary(id, LocalizedText.of("V"), null, 600, 0, null, null, null, null),

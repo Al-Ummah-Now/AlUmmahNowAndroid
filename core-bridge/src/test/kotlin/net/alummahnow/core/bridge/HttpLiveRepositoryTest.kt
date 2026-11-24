@@ -118,6 +118,8 @@ class HttpLiveRepositoryTest {
             return (runCatching { repo.chat("s") }.exceptionOrNull() as CoreError.Http).retryAfterMs
         }
         assertEquals(30_000L, refused(429, "30"))
+        assertEquals(30_000L, refused(503, " 30\t"))
+        assertNull(refused(429, "-1"))
         assertEquals(86_400_000L, refused(503, "999999"))
         assertEquals(86_400_000L, refused(429, "99999999999"))
         // OkHttp itself cannot read this one: refused, not crashed
