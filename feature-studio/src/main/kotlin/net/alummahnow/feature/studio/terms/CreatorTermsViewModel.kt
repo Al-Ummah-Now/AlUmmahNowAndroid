@@ -74,8 +74,9 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
         load()
     }
 
-    /** Reopens the gate when an upload fails with `403 terms_required`. */
+    /** Reopens the gate and invalidates any in-flight load started earlier. */
     fun requireTerms() {
+        acceptGeneration++
         if (mutableState.value !is CreatorTermsUiState.Required) {
             mutableState.value = CreatorTermsUiState.Required()
         }

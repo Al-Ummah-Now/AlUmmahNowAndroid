@@ -122,6 +122,21 @@ class StudioMappersTest {
         )
         assertNull(legacy.termsAccepted)
 
+        val explicitNull = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"termsAccepted":null}}"""
+        )
+        assertNull(explicitNull.termsAccepted)
+
+        val stringTrue = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"termsAccepted":"true"}}"""
+        )
+        assertEquals(false, stringTrue.termsAccepted)
+
+        val stringFalse = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"termsAccepted":"false"}}"""
+        )
+        assertEquals(false, stringFalse.termsAccepted)
+
         val malformedString = StudioMappers.creatorAccess(
             """{"success":true,"result":{"canUpload":true,"termsAccepted":"yes"}}"""
         )
