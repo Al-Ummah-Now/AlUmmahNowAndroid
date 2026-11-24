@@ -89,4 +89,6 @@
     </plurals>
     <string name="upload_pad_numbers">إكمال {n} بالأصفار (%1$s، %2$s …)</string>
     <string name="upload_error_title_long">يجب ألا يزيد العنوان على %1$d حرف.</string>
+    <string name="upload_refused_terms">رُفض لأن الشروط لم تُقبل. بعد الموافقة عليها، اضغط «إعادة المحاولة».</string>
+    <string name="upload_refused">رفض الخادم رفع هذا المرئي. تأكد من موافقتك على الشروط ومن أن لك صلاحية الرفع إلى هذه القناة، ثم اضغط «إعادة المحاولة».</string>
 </resources>

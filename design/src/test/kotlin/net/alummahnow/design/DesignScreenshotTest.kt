@@ -1,13 +1,19 @@
 package net.alummahnow.design
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
+import net.alummahnow.design.components.FanousButton
+import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.components.VideoCardData
 import net.alummahnow.design.components.VideoRail
 import net.alummahnow.design.theme.AunTheme
@@ -59,4 +65,32 @@ class DesignScreenshotTest {
     @Test fun railArDark() = shoot("rail_ar_dark", "ar-ldrtl", ThemeMode.DARK, arItems, "الأكثر رواجاً")
 
     @Test fun railArLight() = shoot("rail_ar_light", "ar-ldrtl", ThemeMode.LIGHT, arItems, "الأكثر رواجاً")
+
+    /** Every button kind, enabled and disabled, on the page and on a card. */
+    private fun shootButtons(name: String, qualifier: String, mode: ThemeMode, label: String) {
+        RuntimeEnvironment.setQualifiers("+$qualifier")
+        captureRoboImage("src/test/screenshots/design_buttons_$name.png") {
+            AunTheme(mode = mode) {
+                Column(
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    FanousButtonKind.entries.forEach { kind ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            FanousButton(label, {}, kind = kind)
+                            FanousButton(label, {}, kind = kind, enabled = false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun buttonsEnDark() = shootButtons("en_dark", "en-ldltr", ThemeMode.DARK, "Delete")
+
+    @Test fun buttonsEnLight() = shootButtons("en_light", "en-ldltr", ThemeMode.LIGHT, "Delete")
+
+    @Test fun buttonsArDark() = shootButtons("ar_dark", "ar-ldrtl", ThemeMode.DARK, "حذف")
+
+    @Test fun buttonsArLight() = shootButtons("ar_light", "ar-ldrtl", ThemeMode.LIGHT, "حذف")
 }

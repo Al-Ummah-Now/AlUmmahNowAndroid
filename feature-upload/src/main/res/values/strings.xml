@@ -73,4 +73,6 @@
     </plurals>
     <string name="upload_pad_numbers">Pad {n} with zeros (%1$s, %2$s …)</string>
     <string name="upload_error_title_long">A title can have at most %1$d characters.</string>
+    <string name="upload_refused_terms">Refused because the Terms weren\'t accepted. Once you\'ve agreed, tap Retry.</string>
+    <string name="upload_refused">The server refused this upload. Check that you\'ve agreed to the Terms and can upload to this channel, then tap Retry.</string>
 </resources>

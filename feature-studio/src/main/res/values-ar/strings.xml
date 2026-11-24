@@ -174,4 +174,5 @@
     <string name="studio_terms_saving">جارٍ الحفظ…</string>
     <string name="studio_terms_error">تعذّر حفظ موافقتك. حاول مرة أخرى.</string>
     <string name="studio_terms_load_error">تعذّر التحقق من حالة الشروط. حاول مرة أخرى.</string>
+    <string name="studio_terms_upload_refused">رُفض رفع أحد المرئيات لأن هذه الشروط لم تُقبل بعد. بعد الموافقة، اضغط «إعادة المحاولة» على ذلك المرئي.</string>
 </resources>

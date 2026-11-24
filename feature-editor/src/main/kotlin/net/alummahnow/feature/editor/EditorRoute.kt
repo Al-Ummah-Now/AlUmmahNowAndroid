@@ -139,12 +139,11 @@ fun EditorRoute(
                 onUndo = viewModel::undo,
                 onRedo = viewModel::redo,
                 onExport = viewModel::export,
-                onShare = { state.exportedPath?.let { context.shareVideo(File(it)) } },
+                onShare = { viewModel.exportedFile()?.let(context::shareVideo) },
                 // No Upload action when uploading is off for this person (the Upload tab is hidden too).
                 onSendToUpload = onSendToUpload?.let { send ->
                     {
-                        state.exportedPath?.let { path ->
-                            val file = File(path)
+                        viewModel.exportedFile()?.let { file ->
                             send(context.exportUri(file).toString(), file.name, file.length())
                         }
                     }

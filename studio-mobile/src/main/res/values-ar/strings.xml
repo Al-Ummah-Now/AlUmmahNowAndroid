@@ -3,4 +3,6 @@
     <string name="app_name">استوديو الأمة الآن</string>
     <string name="studio_tab_dashboard">لوحة التحكم</string>
     <string name="launcher_name">الاستوديو</string>
+    <string name="studio_upload_refused_terms">رُفض رفع أحد المرئيات: افتح «رفع» للموافقة على الشروط.</string>
+    <string name="studio_export_gone">لم يعد المرئي المُصدَّر على هذا الجهاز. صدِّره مرة أخرى من المحرر.</string>
 </resources>

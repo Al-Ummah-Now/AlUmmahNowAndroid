@@ -146,4 +146,5 @@
     <string name="studio_terms_saving">Saving…</string>
     <string name="studio_terms_error">Could not save your agreement. Try again.</string>
     <string name="studio_terms_load_error">Could not check Terms status. Try again.</string>
+    <string name="studio_terms_upload_refused">An upload was refused because these terms aren\'t accepted yet. After you agree, tap Retry on that upload.</string>
 </resources>

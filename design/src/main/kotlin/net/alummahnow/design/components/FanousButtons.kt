@@ -55,6 +55,8 @@ fun FanousButton(
     val pressed by interaction.collectIsPressedAsState()
     val textColor = when {
         !enabled && kind == FanousButtonKind.Primary -> p.buttonPrimaryDisabledText
+        !enabled && kind == FanousButtonKind.Ghost -> p.buttonGhostDisabledText
+        !enabled && kind == FanousButtonKind.Destructive -> p.buttonDestructiveDisabledText
         !enabled -> p.buttonSecondaryDisabledText
         kind == FanousButtonKind.Primary -> p.buttonPrimaryText
         kind == FanousButtonKind.Secondary -> p.buttonSecondaryText
@@ -62,15 +64,15 @@ fun FanousButton(
         else -> f.colors.errorText
     }.color
     val pressedFill = if (pressed && enabled) Modifier.fanousLayers(f.material.hover, CircleShape) else Modifier
-    val outline = if (kind == FanousButtonKind.Destructive) f.colors.errorText else p.buttonSecondaryBorder
+    val outline = if (enabled && kind == FanousButtonKind.Destructive) f.colors.errorText else p.buttonSecondaryBorder
     val surface = when {
         !enabled && kind == FanousButtonKind.Primary ->
             Modifier.background(p.buttonPrimaryDisabledBg.color, CircleShape)
         !enabled && kind == FanousButtonKind.Ghost -> Modifier
-        !enabled ->
-            Modifier
-                .background(p.buttonSecondaryDisabledBg.color, CircleShape)
-                .border(1.dp, outline.color, CircleShape)
+        !enabled -> {
+            val fill = if (kind == FanousButtonKind.Destructive) p.buttonDestructiveDisabledBg else p.buttonSecondaryDisabledBg
+            Modifier.background(fill.color, CircleShape).border(1.dp, outline.color, CircleShape)
+        }
         kind == FanousButtonKind.Primary -> {
             val fill = if (pressed) f.material.primaryPress else f.material.primary
             Modifier.fanousLayers(fill, CircleShape, shadows = f.material.primaryEdge)

@@ -1,6 +1,11 @@
 package net.alummahnow.studio
 
 import android.content.Context
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import net.alummahnow.core.ApiClient
 import net.alummahnow.core.ApiClientConfig
 import net.alummahnow.core.bridge.AunClient
@@ -14,16 +19,17 @@ import net.alummahnow.core.bridge.studio.core.CoreStudioRepository
 import net.alummahnow.core.bridge.studio.core.CoreUploadQueue
 import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
+import net.alummahnow.feature.editor.editorExportDir
 import net.alummahnow.feature.upload.UploadWorker
 import net.alummahnow.integrity.PlayIntegrityTokenSource
 
 /** Manual DI for Studio. Everything network- or token-related goes through aun-core. */
-class AppContainer(context: Context) {
+class AppContainer(context: Context) : StudioContainer {
     private val coreSession = CoreAccountSession(
         OAuthClientSettings(issuer = BuildConfig.AUTH_ISSUER, clientId = BuildConfig.AUTH_CLIENT_ID, redirectUri = REDIRECT_URI),
         KeystoreSecureStorage(context)
     )
-    val session: AccountSession = coreSession
+    override val session: AccountSession = coreSession
 
     private val clients = mutableMapOf<String, ApiClient>()
 
@@ -44,7 +50,9 @@ class AppContainer(context: Context) {
         }
     }
 
-    fun forget(userId: String) = synchronized(clients) { clients.remove(userId)?.close() }
+    override fun forget(userId: String) {
+        synchronized(clients) { clients.remove(userId) }?.close()
+    }
 
     private fun activeClient(): ApiClient = clientFor(session.active.value?.userId ?: throw CoreError.NotSignedIn())
 
@@ -55,9 +63,19 @@ class AppContainer(context: Context) {
         context.packageName
     )
 
-    val repository: StudioRepository = CoreStudioRepository(::activeClient, proofs)
+    override val repository: StudioRepository = CoreStudioRepository(::activeClient, proofs)
 
-    val uploads: CoreUploadQueue = CoreUploadQueue(
+    override fun repositoryFor(userId: String): StudioRepository = CoreStudioRepository({ clientFor(userId) }, proofs)
+
+    override val exports = PendingExports(editorExportDir(context), File(context.filesDir, "pending-exports.json"))
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        scope.launch { exports.follow(session.accounts) }
+    }
+
+    override val uploads: CoreUploadQueue = CoreUploadQueue(
         context = context,
         activeUserId = { session.active.value?.userId },
         clientFor = ::clientFor,

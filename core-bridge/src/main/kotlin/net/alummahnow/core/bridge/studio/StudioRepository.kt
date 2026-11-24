@@ -34,7 +34,7 @@ interface StudioRepository {
     suspend fun analytics(channelId: String, range: AnalyticsRange): ChannelAnalytics
 
     /** Records acceptance of the Terms of Service & Community Guidelines (`POST /api/me/creator/terms`). */
-    suspend fun acceptCreatorTerms() {}
+    suspend fun acceptCreatorTerms()
 }
 
 /**

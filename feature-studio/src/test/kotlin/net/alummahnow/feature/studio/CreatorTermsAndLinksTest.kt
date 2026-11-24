@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.IOException
@@ -79,6 +81,14 @@ class CreatorTermsAndLinksTest {
     }
 
     @Test
+    fun `SupportLinks has no default host`() {
+        listOf("", "videos.", "alummahnow.net", "example.org").forEach { host ->
+            assertTrue(host, runCatching { SupportLinks.termsUrl("en", host) }.isFailure)
+            assertTrue(host, runCatching { SupportLinks.privacyUrl("ar", host) }.isFailure)
+        }
+    }
+
+    @Test
     fun `CreatorTermsViewModel handles error, null compatibility, resume refresh, and POST`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
@@ -132,14 +142,6 @@ class CreatorTermsAndLinksTest {
             advanceUntilIdle()
             assertTrue(vm.state.value is CreatorTermsUiState.Required)
 
-            // Server 403 terms_required on upload reopens gate via requireTerms()
-            repo.termsAccepted = true
-            vm.refresh()
-            advanceUntilIdle()
-            assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
-            vm.requireTerms()
-            assertTrue(vm.state.value is CreatorTermsUiState.Required)
-
             // Older server omitting termsAccepted (null) falls through to Accepted
             val compatRepo = FakeRepository().apply { termsAccepted = null }
             val compatVm = CreatorTermsViewModel(compatRepo)
@@ -150,41 +152,103 @@ class CreatorTermsAndLinksTest {
         }
     }
 
-    @Test
-    fun `requireTerms bumps generation so an earlier in-flight load cannot reopen Accepted`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        Dispatchers.setMain(dispatcher)
+    private fun vmTest(block: suspend kotlinx.coroutines.test.TestScope.() -> Unit) = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val staleLoad = CompletableDeferred<CreatorAccess>()
-            var calls = 0
-            val baseRepo = FakeRepository()
-            val repo = object : net.alummahnow.core.bridge.studio.StudioRepository by baseRepo {
-                override suspend fun creatorAccess(): CreatorAccess {
-                    calls++
-                    return if (calls == 2) {
-                        staleLoad.await()
-                    } else {
-                        CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = true)
-                    }
-                }
-            }
-            val vm = CreatorTermsViewModel(repo)
-            advanceUntilIdle()
-            assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
-
-            // Start a background refresh, then requireTerms() before that refresh resolves.
-            vm.refresh()
-            advanceUntilIdle()
-            vm.requireTerms()
-            assertTrue(vm.state.value is CreatorTermsUiState.Required)
-
-            // Resolving the stale refresh with termsAccepted=true must NOT clear Required.
-            staleLoad.complete(CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = true))
-            advanceUntilIdle()
-            assertTrue(vm.state.value is CreatorTermsUiState.Required)
+            block()
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun `a refused upload asks the server, and only its answer opens the gate`() = vmTest {
+        val repo = FakeRepository()
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+
+        // Refused for another reason (role, invitation): the server still says accepted.
+        vm.uploadsRefused(setOf("u1"))
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+        assertEquals(emptySet<String>(), vm.refusedForTerms.value)
+
+        // Refused because the Terms changed.
+        repo.termsAccepted = false
+        vm.uploadsRefused(setOf("u1", "u2"))
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        assertEquals(setOf("u2"), vm.refusedForTerms.value)
+    }
+
+    @Test
+    fun `after agreeing the gate stays open, the row keeps its reason until it is retried, and a second refusal counts`() = vmTest {
+        val repo = FakeRepository().apply { termsAccepted = false }
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        vm.uploadsRefused(setOf("u1"))
+        advanceUntilIdle()
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+        // The same failed row reported again must not reopen the gate, and it still says why it failed.
+        repo.termsAccepted = false
+        vm.uploadsRefused(setOf("u1"))
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+        assertEquals(setOf("u1"), vm.refusedForTerms.value)
+        // Retried: no longer failed. Refused again: asked again.
+        vm.uploadsRefused(emptySet())
+        assertEquals(emptySet<String>(), vm.refusedForTerms.value)
+        vm.uploadsRefused(setOf("u1"))
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+    }
+
+    @Test
+    fun `a refusal while offline is asked about again on the next resume, and a failed accept keeps the reason`() = vmTest {
+        val repo = FakeRepository()
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        repo.creatorAccessError = CoreError.Network(IOException("offline"))
+        vm.uploadsRefused(setOf("u1"))
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+        repo.creatorAccessError = null
+        repo.termsAccepted = false
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        assertEquals(setOf("u1"), vm.refusedForTerms.value)
+        repo.acceptTermsError = CoreError.Http(503)
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Required(errorRes = R.string.studio_terms_error, uploadRefused = true), vm.state.value)
+    }
+
+    @Test
+    fun `an older read that answers late never replaces a newer one`() = vmTest {
+        val late = CompletableDeferred<CreatorAccess>()
+        var calls = 0
+        fun access(accepted: Boolean) = CreatorAccess(canUpload = true, canCreateChannel = true, tierName = null, termsAccepted = accepted)
+        val repo = object : net.alummahnow.core.bridge.studio.StudioRepository by FakeRepository() {
+            override suspend fun creatorAccess(): CreatorAccess = when (++calls) {
+                1 -> access(true)
+                2 -> late.await()
+                else -> access(false)
+            }
+        }
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        vm.refresh()
+        advanceUntilIdle()
+        vm.uploadsRefused(setOf("u1"))
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        late.complete(access(true))
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
     }
 
     @Test
@@ -327,6 +391,10 @@ class CreatorTermsAndLinksTest {
         )
     }
 
+    private val gateRefused = @androidx.compose.runtime.Composable {
+        CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {}, webHost = prodHost, uploadRefused = true)
+    }
+
     private val gateFailed = @androidx.compose.runtime.Composable {
         CreatorTermsError(onRetry = {})
     }
@@ -340,8 +408,9 @@ class CreatorTermsAndLinksTest {
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             ) {
+                val arabic = LocalLayoutDirection.current == LayoutDirection.Rtl
                 AccountSheetContent(
-                    accounts = listOf(sampleAccount),
+                    accounts = listOf(if (arabic) sampleAccount.copy(displayName = "أمينة يوسف") else sampleAccount),
                     activeUserId = sampleAccount.userId,
                     channel = sampleChannels[0],
                     onSwitchAccount = {},
@@ -381,6 +450,14 @@ class CreatorTermsAndLinksTest {
     @Test fun creatorTermsGateErrorEnDark() = shoot("creator_terms_gate_error", Lang.EN, ThemeMode.DARK, content = gateError)
 
     @Test fun creatorTermsGateErrorArLight() = shoot("creator_terms_gate_error", Lang.AR, ThemeMode.LIGHT, content = gateError)
+
+    @Test fun creatorTermsGateRefusedEnDark() = shoot("creator_terms_gate_refused", Lang.EN, ThemeMode.DARK, content = gateRefused)
+
+    @Test fun creatorTermsGateRefusedEnLight() = shoot("creator_terms_gate_refused", Lang.EN, ThemeMode.LIGHT, content = gateRefused)
+
+    @Test fun creatorTermsGateRefusedArDark() = shoot("creator_terms_gate_refused", Lang.AR, ThemeMode.DARK, content = gateRefused)
+
+    @Test fun creatorTermsGateRefusedArLight() = shoot("creator_terms_gate_refused", Lang.AR, ThemeMode.LIGHT, content = gateRefused)
 
     @Test fun creatorTermsGateFailedEnDark() = shoot("creator_terms_gate_failed", Lang.EN, ThemeMode.DARK, content = gateFailed)
 

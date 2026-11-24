@@ -7,14 +7,13 @@ package net.alummahnow.core.bridge
 object SupportLinks {
     private fun locale(language: String): String = if (language.lowercase().startsWith("ar")) "ar" else "en"
 
-    private fun wwwHost(webHost: String): String =
-        if (webHost.equals("videos.qa.alummahnow.net", ignoreCase = true) ||
-            webHost.endsWith(".qa.alummahnow.net", ignoreCase = true)
-        ) {
-            "www.qa.alummahnow.net"
-        } else {
-            "www.alummahnow.net"
-        }
+    /** The www host of the same environment. There is no default host: a build with no `videos.` host is a bug. */
+    private fun wwwHost(webHost: String): String {
+        require(webHost.startsWith(VIDEOS) && webHost.length > VIDEOS.length) { "not a videos host" }
+        return "www." + webHost.removePrefix(VIDEOS)
+    }
+
+    private const val VIDEOS = "videos."
 
     fun helpUrl(language: String, webHost: String): String =
         "https://$webHost/${locale(language)}/help"
