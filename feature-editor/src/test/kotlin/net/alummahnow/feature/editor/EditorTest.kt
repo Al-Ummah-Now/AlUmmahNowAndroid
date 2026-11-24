@@ -129,6 +129,20 @@ class EditorTest {
         assertEquals(null, vm.state.value.exportProgress)
     }
 
+    @Test fun anExportWhoseFileIsGoneIsOfferedAgainInsteadOfBeingHandedOn() {
+        val dir = java.nio.file.Files.createTempDirectory("export").toFile()
+        val vm = EditorViewModel({ durations[it] }, { _, output, _ -> output.writeText("mp4") }, { dir })
+        vm.import(listOf("a"))
+        vm.export()
+        val file = vm.exportedFile()
+        assertTrue(file != null && file.exists())
+        file!!.delete()
+        assertEquals(null, vm.exportedFile())
+        assertEquals(null, vm.state.value.exportedPath)
+        assertTrue(vm.state.value.exportFailed)
+        dir.deleteRecursively()
+    }
+
     private val sample = EditorUiState(
         list = EditDecisionList(
             listOf(

@@ -26,9 +26,7 @@ import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.terms.CreatorTermsGate
 import net.alummahnow.feature.studio.terms.CreatorTermsUiState
-import net.alummahnow.feature.upload.PickedFile
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -76,54 +74,6 @@ class StudioTermsWiringTest {
         compose.waitForIdle()
         assertEquals(1, agreed)
         compose.onNodeWithTag("upload-ready").assertIsDisplayed()
-    }
-
-    @Test
-    fun `pendingExportsSaver preserves multiple exports across channels and drops other accounts`() {
-        val fileA = PickedFile("file:///a.mp4", "a.mp4", 100L, "video/mp4")
-        val fileB = PickedFile("file:///b.mp4", "b.mp4", 200L, "video/mp4")
-        val fileC = PickedFile("file:///c.mp4", "c.mp4", 300L, null)
-        var map = emptyMap<String, List<PickedFile>>()
-        map = enqueuePendingExport(map, "ch1", fileA)
-        map = enqueuePendingExport(map, "ch1", fileB)
-        map = enqueuePendingExport(map, "ch1", fileA) // duplicate URI deduped
-        map = enqueuePendingExport(map, "ch2", fileC)
-
-        assertEquals(listOf(fileA, fileB), map["ch1"])
-        assertEquals(listOf(fileC), map["ch2"])
-
-        val saverA = pendingExportsSaver("user-a")
-        val saved = with(saverA) {
-            androidx.compose.runtime.saveable.SaverScope { true }.save(map)
-        }!!
-        val restoredSameAccount = saverA.restore(saved)!!
-        assertEquals(map, restoredSameAccount)
-        assertTrue((restoredSameAccount - "ch1").containsKey("ch2"))
-
-        // Restoring saved state under another account drops all rows belonging to user-a.
-        val restoredOtherAccount = pendingExportsSaver("user-b").restore(saved)!!
-        assertTrue(restoredOtherAccount.isEmpty())
-    }
-
-    @Test
-    fun `clearPendingEditorExportFiles deletes only files inside exportDir`() {
-        val root = java.nio.file.Files.createTempDirectory("aun-exports-test").toFile()
-        val outside = java.nio.file.Files.createTempFile("aun-outside", ".mp4").toFile()
-        try {
-            val inside = java.io.File(root, "clip.mp4").apply { writeText("video") }
-            val exports = mapOf(
-                "ch1" to listOf(
-                    PickedFile(inside.toURI().toString(), "clip.mp4", 5L, "video/mp4"),
-                    PickedFile(outside.toURI().toString(), "keep.mp4", 5L, "video/mp4")
-                )
-            )
-            clearPendingEditorExportFiles(root, exports)
-            assertTrue(!inside.exists())
-            assertTrue(outside.exists())
-        } finally {
-            outside.delete()
-            root.deleteRecursively()
-        }
     }
 
     private fun shootInChrome(name: String, lang: StoreLocale, mode: ThemeMode) {

@@ -147,6 +147,14 @@ class EditorViewModel(
         }
     }
 
+    /** The finished export's file, or null when it is no longer there (then the person is told to export again). */
+    fun exportedFile(): File? {
+        val file = state.value.exportedPath?.let(::File) ?: return null
+        if (file.exists()) return file
+        mutable.update { it.copy(exportedPath = null, exportFailed = true) }
+        return null
+    }
+
     fun undo() {
         history = history.undo()
         publish()

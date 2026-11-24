@@ -20,7 +20,9 @@ sealed interface CreatorTermsUiState {
     data object Failed : CreatorTermsUiState
     data class Required(
         val saving: Boolean = false,
-        @param:StringRes val errorRes: Int? = null
+        @param:StringRes val errorRes: Int? = null,
+        /** The server refused an upload because the Terms are not accepted: the gate says so. */
+        val uploadRefused: Boolean = false
     ) : CreatorTermsUiState
     data object Accepted : CreatorTermsUiState
 }
@@ -30,6 +32,15 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
     private val mutableState = MutableStateFlow<CreatorTermsUiState>(CreatorTermsUiState.Loading)
     val state: StateFlow<CreatorTermsUiState> = mutableState.asStateFlow()
     private var acceptGeneration = 0
+    private var newestLoad = 0
+    private val mutableRefused = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Uploads the server refused while it said the Terms were not accepted. The person retries them. */
+    val refusedForTerms: StateFlow<Set<String>> = mutableRefused.asStateFlow()
+
+    /** Refused uploads as last reported, and those whose reason is not known yet. */
+    private var reported: Set<String> = emptySet()
+    private var unexplained: Set<String> = emptySet()
 
     init {
         load()
@@ -45,21 +56,26 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
         val keepVisible = current == CreatorTermsUiState.Accepted || current is CreatorTermsUiState.Required
         if (!keepVisible) mutableState.value = CreatorTermsUiState.Loading
         val startGen = acceptGeneration
+        val thisLoad = ++newestLoad
         viewModelScope.launch {
             attempt("studio", "creator-terms-load") { repository.creatorAccess() }.fold(
                 onSuccess = { access ->
                     val latest = mutableState.value
-                    // Ignore a load started before an accept() completed, or while accept() is saving.
-                    if (startGen != acceptGeneration) return@fold
+                    // Ignore a load started before an accept() completed or while it is saving, or an older load.
+                    if (startGen != acceptGeneration || thisLoad != newestLoad) return@fold
                     if (latest is CreatorTermsUiState.Required && latest.saving) return@fold
+                    val explained = unexplained
+                    unexplained = emptySet()
                     mutableState.value = if (access.termsAccepted == false) {
-                        (latest as? CreatorTermsUiState.Required) ?: CreatorTermsUiState.Required()
+                        mutableRefused.value += explained
+                        val gate = (latest as? CreatorTermsUiState.Required) ?: CreatorTermsUiState.Required()
+                        gate.copy(uploadRefused = gate.uploadRefused || explained.isNotEmpty())
                     } else {
                         CreatorTermsUiState.Accepted
                     }
                 },
                 onFailure = {
-                    if (startGen == acceptGeneration && !keepVisible) {
+                    if (startGen == acceptGeneration && thisLoad == newestLoad && !keepVisible) {
                         mutableState.value = CreatorTermsUiState.Failed
                     }
                 }
@@ -74,12 +90,17 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
         load()
     }
 
-    /** Reopens the gate and invalidates any in-flight load started earlier. */
-    fun requireTerms() {
-        acceptGeneration++
-        if (mutableState.value !is CreatorTermsUiState.Required) {
-            mutableState.value = CreatorTermsUiState.Required()
-        }
+    /**
+     * [ids] are the uploads the server has refused. A newly refused one may be about the Terms, so the server is
+     * asked; only its answer opens the gate. If it can't be asked now, the next resume asks again.
+     */
+    fun uploadsRefused(ids: Set<String>) {
+        val new = ids - reported
+        reported = ids
+        // One that is retried or removed is no longer refused; if it fails again, it is new again.
+        mutableRefused.value = mutableRefused.value intersect ids
+        unexplained = (unexplained intersect ids) + new
+        if (new.isNotEmpty()) refresh()
     }
 
     /** Records acceptance on the server and unlocks Upload only on success. */
@@ -96,7 +117,8 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
                 onFailure = {
                     mutableState.value = CreatorTermsUiState.Required(
                         saving = false,
-                        errorRes = R.string.studio_terms_error
+                        errorRes = R.string.studio_terms_error,
+                        uploadRefused = current.uploadRefused
                     )
                 }
             )

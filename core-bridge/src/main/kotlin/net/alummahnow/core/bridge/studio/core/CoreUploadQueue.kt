@@ -18,6 +18,7 @@ import kotlinx.serialization.encodeToString
 import net.alummahnow.core.ApiClient
 import net.alummahnow.core.AunException
 import net.alummahnow.core.UploadEngine
+import net.alummahnow.core.UploadEngineInterface
 import net.alummahnow.core.UploadInfo
 import net.alummahnow.core.UploadRequest
 import net.alummahnow.core.UploadState
@@ -35,7 +36,7 @@ import net.alummahnow.core.uploadConfigDefault
  * [UploadQueue] over aun-upload's resumable TUS engine (one engine per account, state in
  * `files/uploads/<account>`). A picked `content://` video is staged into app storage first because
  * the engine reads files by path and must find them again after the process restarts; the staged
- * copy is deleted when the upload ends.
+ * copy is deleted when the upload is done, cancelled or removed. A failed upload keeps it: the person can retry.
  *
  * After the engine finishes, the values `upload/initiate` does not take are applied: language
  * (`PUT /api/videos/{id}`), playlists (`/api/playlists/upload-adds`) and the schedule
@@ -50,13 +51,17 @@ class CoreUploadQueue(
     private val clientFor: (userId: String) -> ApiClient,
     private val repository: () -> StudioRepository,
     /** Starts the background worker. */
-    private val onWorkNeeded: () -> Unit
+    private val onWorkNeeded: () -> Unit,
+    newEngine: ((userId: String, dir: File) -> UploadEngineInterface)? = null
 ) : UploadQueue {
     private val app = context.applicationContext
+    private val newEngine = newEngine ?: { userId, dir ->
+        UploadEngine(clientFor(userId), dir.absolutePath, userId, uploadConfigDefault(), AndroidConnectivity(app))
+    }
     private val root = File(app.filesDir, "uploads").apply { mkdirs() }
     private val staged = File(app.filesDir, "upload-staging").apply { mkdirs() }
     private val stateFile = File(root, "queue.json")
-    private val engines = mutableMapOf<String, UploadEngine>()
+    private val engines = mutableMapOf<String, UploadEngineInterface>()
     private val mutex = Mutex()
     private val json = J.json
 
@@ -102,10 +107,10 @@ class CoreUploadQueue(
         }
     }
 
-    private fun engine(userId: String): UploadEngine = synchronized(engines) {
+    private fun engine(userId: String): UploadEngineInterface = synchronized(engines) {
         engines.getOrPut(userId) {
             val dir = File(root, userId.replace(Regex("[^A-Za-z0-9_-]"), "_")).apply { mkdirs() }
-            UploadEngine(clientFor(userId), dir.absolutePath, userId, uploadConfigDefault(), AndroidConnectivity(app))
+            newEngine(userId, dir)
         }
     }
 
@@ -169,7 +174,11 @@ class CoreUploadQueue(
     /** True when the worker has something to do (used at app start to resume after a reboot). */
     fun hasWork(): Boolean {
         val s = load()
-        return s.pending.isNotEmpty() || s.followUps.any { !it.applied } || refresh().any { it.isActive }
+
+        // A failed upload waits for the person (retry or remove), not for the worker.
+        fun failed(f: FollowUp) =
+            runCatching { engine(f.draft.userId).get(f.uploadId)?.state == UploadState.FAILED }.getOrDefault(false)
+        return s.pending.isNotEmpty() || s.followUps.any { !it.applied && !failed(it) } || refresh().any { it.isActive }
     }
 
     private suspend fun stagePending() = withContext(Dispatchers.IO) {
@@ -236,7 +245,7 @@ class CoreUploadQueue(
     private suspend fun settle(f: FollowUp): Boolean {
         val info = runCatching { engine(f.draft.userId).get(f.uploadId) }.getOrNull()
         val state = info?.state
-        if (state != null && state !in TERMINAL) return false
+        if (state != null && state !in ENDED) return false
         File(f.stagedPath).delete()
         val videoId = info?.videoId
         if (state != UploadState.DONE || videoId == null) return true
@@ -254,7 +263,8 @@ class CoreUploadQueue(
         AunLog.i("upload", "post-upload settings applied")
     }
 
-    private fun refresh(): List<UploadItem> {
+    /** Re-reads the active account's queue (also after an account switch, so no other account's rows stay). */
+    override fun refresh(): List<UploadItem> {
         val userId = activeUserId()
         val s = load()
         val preparing = s.pending.filter { it.userId == userId }.map {
@@ -270,7 +280,7 @@ class CoreUploadQueue(
         return all
     }
 
-    private fun withEngine(block: UploadEngine.() -> Unit) {
+    private fun withEngine(block: UploadEngineInterface.() -> Unit) {
         val userId = activeUserId() ?: return
         runCatching { engine(userId).block() }.onFailure { AunLog.e("upload", "action failed", it) }
         refresh()
@@ -300,14 +310,23 @@ class CoreUploadQueue(
         refresh()
     }
 
-    override fun remove(id: String) = withEngine { remove(id) }
+    override fun remove(id: String) {
+        val userId = activeUserId() ?: return
+        withEngine { remove(id) }
+        // The engine forgot it, so nothing will retry it: its staged copy goes too.
+        if (mutableItems.value.none { it.id == id }) {
+            load().followUps.firstOrNull { it.uploadId == id && it.draft.userId == userId }?.let { File(it.stagedPath).delete() }
+        }
+    }
 
     private companion object {
         const val POLL_MS = 1_000L
         const val BATCH_ID_LENGTH = 12
         const val MAX_EXT = 5
         const val COPY_BUFFER = 1 shl 20
-        val TERMINAL = setOf(UploadState.DONE, UploadState.FAILED, UploadState.CANCELLED)
+
+        /** Nothing more can happen to it. A failed upload is not one: it can be retried, with its staged file. */
+        val ENDED = setOf(UploadState.DONE, UploadState.CANCELLED)
     }
 }
 

@@ -143,6 +143,7 @@ class UploadTest {
 private class FakeQueue : UploadQueue {
     override val items = MutableStateFlow<List<UploadItem>>(emptyList())
     val drafts = mutableListOf<List<UploadDraft>>()
+    override fun refresh(): List<UploadItem> = items.value
     override suspend fun enqueue(drafts: List<UploadDraft>) {
         this.drafts += drafts
     }
@@ -157,6 +158,7 @@ private class FakeRepo : StudioRepository {
     override suspend fun playlists(channelId: String) = listOf(StudioPlaylist("p1", "Series", true))
     override suspend fun channels() = error("unused")
     override suspend fun creatorAccess() = error("unused")
+    override suspend fun acceptCreatorTerms() = error("unused")
     override suspend fun features(channelId: String?) = error("unused")
     override suspend fun content(query: ContentQuery) = error("unused")
     override suspend fun counts(channelId: String) = error("unused")

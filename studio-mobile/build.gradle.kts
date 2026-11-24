@@ -54,6 +54,7 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.roborazzi)
     testImplementation(libs.coil.compose)
     testImplementation(libs.androidx.test.junit)

@@ -1,22 +1,27 @@
 package net.alummahnow.feature.studio.terms
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +59,8 @@ fun CreatorTermsGate(
     onAgree: () -> Unit,
     webHost: String,
     modifier: Modifier = Modifier,
-    initialChecked: Boolean = false
+    initialChecked: Boolean = false,
+    uploadRefused: Boolean = false
 ) {
     var checked by rememberSaveable { mutableStateOf(initialChecked) }
     val lang = currentLocale().language
@@ -81,20 +87,26 @@ fun CreatorTermsGate(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.semantics { heading() }
             )
+            if (uploadRefused) {
+                Text(
+                    stringResource(R.string.studio_terms_upload_refused),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("creator-terms-refused").semantics { liveRegion = LiveRegionMode.Polite }
+                )
+            }
             Text(
                 stringResource(R.string.studio_terms_body),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Column(verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xs)) {
-                TextButton(
-                    onClick = { onOpenUrl(SupportLinks.termsUrl(lang, webHost)) },
-                    modifier = Modifier.testTag("creator-terms-link")
-                ) { Text(stringResource(R.string.studio_terms_of_service)) }
-                TextButton(
-                    onClick = { onOpenUrl(SupportLinks.communityGuidelinesUrl(lang, webHost)) },
-                    modifier = Modifier.testTag("creator-guidelines-link")
-                ) { Text(stringResource(R.string.studio_community_guidelines)) }
+            Column {
+                GateLink(stringResource(R.string.studio_terms_of_service), "creator-terms-link") {
+                    onOpenUrl(SupportLinks.termsUrl(lang, webHost))
+                }
+                GateLink(stringResource(R.string.studio_community_guidelines), "creator-guidelines-link") {
+                    onOpenUrl(SupportLinks.communityGuidelinesUrl(lang, webHost))
+                }
             }
             Row(
                 modifier = Modifier
@@ -137,6 +149,33 @@ fun CreatorTermsGate(
                     .testTag("creator-terms-agree")
             )
         }
+    }
+}
+
+/** A page that opens in the browser: on the card's text edge, with the icon that says it leaves the app. */
+@Composable
+private fun GateLink(label: String, tag: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        Icon(
+            Icons.AutoMirrored.Filled.OpenInNew,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 

@@ -4,4 +4,6 @@
     <string name="studio_tab_dashboard">Dashboard</string>
     <!-- Launcher (home screen) name; the store listing and app_name keep the full name (owner, 2026-11-20). -->
     <string name="launcher_name">Studio</string>
+    <string name="studio_upload_refused_terms">An upload was refused: open Upload to agree to the Terms.</string>
+    <string name="studio_export_gone">The exported video is no longer on this device. Export it again from the editor.</string>
 </resources>

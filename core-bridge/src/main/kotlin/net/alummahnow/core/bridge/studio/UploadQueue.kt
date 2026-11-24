@@ -36,12 +36,21 @@ data class UploadItem(
     val fraction: Float get() = if (totalBytes <= 0) 0f else (sentBytes.toDouble() / totalBytes).toFloat().coerceIn(0f, 1f)
     val isActive: Boolean get() = phase in
         setOf(UploadPhase.PREPARING, UploadPhase.QUEUED, UploadPhase.WAITING, UploadPhase.UPLOADING, UploadPhase.FINISHING)
+
+    /**
+     * Failed because the server refused it (HTTP 403). The core keeps no code for a 403 (AlUmmahNowCore#61), only
+     * its error's `forbidden:` prefix; whether the Terms are why is asked of the server, never read from the text.
+     */
+    val isRefused: Boolean get() = phase == UploadPhase.FAILED && error?.startsWith("forbidden:") == true
     val isFinished: Boolean get() = phase in setOf(UploadPhase.DONE, UploadPhase.FAILED, UploadPhase.CANCELLED)
 }
 
 /** Resumable (TUS) uploads for the active account, driven by a WorkManager foreground worker. */
 interface UploadQueue {
     val items: StateFlow<List<UploadItem>>
+
+    /** Re-reads the active account's items. */
+    fun refresh(): List<UploadItem>
     suspend fun enqueue(drafts: List<UploadDraft>)
     fun pause(id: String)
     fun resume(id: String)

@@ -126,25 +126,14 @@ class StudioMappersTest {
             """{"success":true,"result":{"canUpload":true,"termsAccepted":null}}"""
         )
         assertNull(explicitNull.termsAccepted)
+    }
 
-        val stringTrue = StudioMappers.creatorAccess(
-            """{"success":true,"result":{"canUpload":true,"termsAccepted":"true"}}"""
-        )
-        assertEquals(false, stringTrue.termsAccepted)
-
-        val stringFalse = StudioMappers.creatorAccess(
-            """{"success":true,"result":{"canUpload":true,"termsAccepted":"false"}}"""
-        )
-        assertEquals(false, stringFalse.termsAccepted)
-
-        val malformedString = StudioMappers.creatorAccess(
-            """{"success":true,"result":{"canUpload":true,"termsAccepted":"yes"}}"""
-        )
-        assertEquals(false, malformedString.termsAccepted)
-
-        val malformedNumber = StudioMappers.creatorAccess(
-            """{"success":true,"result":{"canUpload":true,"termsAccepted":1}}"""
-        )
-        assertEquals(false, malformedNumber.termsAccepted)
+    @Test
+    fun `a malformed termsAccepted counts as absent, the server enforces the Terms`() {
+        listOf("\"true\"", "\"false\"", "\"yes\"", "\"\"", "0", "1", "{}", "[]", "[false]", "{\"accepted\":false}").forEach { value ->
+            val access = StudioMappers.creatorAccess("""{"success":true,"result":{"canUpload":true,"termsAccepted":$value}}""")
+            assertNull("termsAccepted: $value", access.termsAccepted)
+            assertTrue(access.canUpload)
+        }
     }
 }

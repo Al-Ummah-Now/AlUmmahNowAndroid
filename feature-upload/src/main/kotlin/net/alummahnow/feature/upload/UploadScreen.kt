@@ -112,7 +112,7 @@ class UploadActions(
 
 /** Wires [UploadViewModel] to the system picker and the notification permission. */
 @Composable
-fun UploadRoute(viewModel: UploadViewModel, modifier: Modifier = Modifier) {
+fun UploadRoute(viewModel: UploadViewModel, modifier: Modifier = Modifier, termsRefused: Set<String> = emptySet()) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -146,12 +146,20 @@ fun UploadRoute(viewModel: UploadViewModel, modifier: Modifier = Modifier) {
             onRemove = viewModel::remove,
             defaultSchedule = viewModel::defaultScheduleTime
         ),
-        modifier = modifier
+        modifier = modifier,
+        termsRefused = termsRefused
     )
 }
 
+/** [termsRefused]: uploads the server refused because the Terms were not accepted; their rows say so. */
 @Composable
-fun UploadScreen(state: UploadUiState, titles: List<String>, actions: UploadActions, modifier: Modifier = Modifier) {
+fun UploadScreen(
+    state: UploadUiState,
+    titles: List<String>,
+    actions: UploadActions,
+    modifier: Modifier = Modifier,
+    termsRefused: Set<String> = emptySet()
+) {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (maxWidth >= TWO_PANE_WIDTH) {
@@ -160,7 +168,7 @@ fun UploadScreen(state: UploadUiState, titles: List<String>, actions: UploadActi
                     horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xl)
                 ) {
                     Column(Modifier.weight(3f).verticalScroll(rememberScrollState())) { Form(state, titles, actions) }
-                    Column(Modifier.weight(2f).verticalScroll(rememberScrollState())) { QueueList(state.queue, actions) }
+                    Column(Modifier.weight(2f).verticalScroll(rememberScrollState())) { QueueList(state.queue, actions, termsRefused) }
                 }
             } else {
                 Column(
@@ -168,7 +176,7 @@ fun UploadScreen(state: UploadUiState, titles: List<String>, actions: UploadActi
                 ) {
                     Form(state, titles, actions)
                     Spacer(Modifier.height(FanousTokens.Spacing.xl))
-                    QueueList(state.queue, actions)
+                    QueueList(state.queue, actions, termsRefused)
                 }
             }
         }
@@ -414,12 +422,12 @@ private fun Picker(
 }
 
 @Composable
-private fun QueueList(items: List<UploadItem>, actions: UploadActions) {
+private fun QueueList(items: List<UploadItem>, actions: UploadActions, termsRefused: Set<String>) {
     var confirmCancel by remember { mutableStateOf<UploadItem?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md), modifier = Modifier.testTag("upload-queue")) {
         Heading(stringResource(R.string.upload_queue))
         if (items.isEmpty()) Text(stringResource(R.string.upload_queue_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        items.forEach { item -> QueueRow(item, actions, onCancel = { confirmCancel = item }) }
+        items.forEach { item -> QueueRow(item, actions, item.id in termsRefused, onCancel = { confirmCancel = item }) }
     }
     confirmCancel?.let { item ->
         ConfirmDialog(
@@ -436,7 +444,7 @@ private fun QueueList(items: List<UploadItem>, actions: UploadActions) {
 }
 
 @Composable
-private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> Unit) {
+private fun QueueRow(item: UploadItem, actions: UploadActions, termsRefused: Boolean, onCancel: () -> Unit) {
     val phase = stringResource(phaseLabel(item.phase))
     val percentText = percentLabel(item.fraction.toDouble())
     Column(
@@ -461,6 +469,14 @@ private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> U
                         },
                         modifier = Modifier.testTag("upload-phase-${item.id}")
                     )
+                    if (item.isRefused) {
+                        Text(
+                            stringResource(if (termsRefused) R.string.upload_refused_terms else R.string.upload_refused),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("upload-reason-${item.id}")
+                        )
+                    }
                 }
                 when (item.phase) {
                     UploadPhase.UPLOADING, UploadPhase.QUEUED, UploadPhase.WAITING -> IconButton(onClick = { actions.onPause(item.id) }) {
@@ -469,7 +485,10 @@ private fun QueueRow(item: UploadItem, actions: UploadActions, onCancel: () -> U
                     UploadPhase.PAUSED -> IconButton(onClick = { actions.onResume(item.id) }) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = aunString(R.string.upload_resume_cd, item.title))
                     }
-                    UploadPhase.FAILED -> IconButton(onClick = { actions.onRetry(item.id) }) {
+                    UploadPhase.FAILED -> IconButton(
+                        onClick = { actions.onRetry(item.id) },
+                        modifier = Modifier.testTag("upload-retry-${item.id}")
+                    ) {
                         Icon(Icons.Filled.Refresh, contentDescription = aunString(R.string.upload_retry_cd, item.title))
                     }
                     else -> Unit

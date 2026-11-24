@@ -82,6 +82,35 @@ class UploadScreenshotTest {
         UploadScreen(state, titles, actions)
     }
 
+    /** A refused upload says why: the Terms (known), or the server's refusal (reason not known). */
+    private fun refused(arabic: Boolean) = @Composable {
+        val (first, second) = if (arabic) "تذكير رمضان" to "السيرة: الهجرة" else "Ramadan reminder" to "Seerah: the Hijrah"
+        val queue = listOf(
+            UploadItem("q1", first, UploadPhase.FAILED, 0, 400_000_000, null, "forbidden: terms"),
+            UploadItem("q2", second, UploadPhase.FAILED, 0, 400_000_000, null, "forbidden: role")
+        )
+        UploadScreen(UploadUiState(queue = queue), emptyList(), actions, termsRefused = setOf("q1"))
+    }
+
+    private fun shootRefused(name: String, qualifiers: String, mode: ThemeMode, fontScale: Float = 1f) {
+        RuntimeEnvironment.setQualifiers(qualifiers)
+        RuntimeEnvironment.setFontScale(fontScale)
+        Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
+        val screen = refused(arabic = qualifiers.startsWith("ar"))
+        captureRoboImage("src/test/screenshots/$name.png") { AunTheme(mode = mode) { screen() } }
+    }
+
+    @Test fun refusedEnDark() = shootRefused("upload_refused_en_dark_phone", "en-ldltr-w411dp-h1600dp-port-xxhdpi", ThemeMode.DARK)
+
+    @Test fun refusedEnLight() = shootRefused("upload_refused_en_light_phone", "en-ldltr-w411dp-h1600dp-port-xxhdpi", ThemeMode.LIGHT)
+
+    @Test fun refusedArDark() = shootRefused("upload_refused_ar_dark_phone", "ar-ldrtl-w411dp-h1600dp-port-xxhdpi", ThemeMode.DARK)
+
+    @Test fun refusedArLight() = shootRefused("upload_refused_ar_light_phone", "ar-ldrtl-w411dp-h1600dp-port-xxhdpi", ThemeMode.LIGHT)
+
+    @Test fun refusedFont200ArLight() =
+        shootRefused("upload_refused_font200_ar_light_phone", "ar-ldrtl-w411dp-h2400dp-port-xxhdpi", ThemeMode.LIGHT, fontScale = 2f)
+
     private fun shoot(name: String, qualifiers: String, mode: ThemeMode) {
         RuntimeEnvironment.setQualifiers(qualifiers)
         Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
