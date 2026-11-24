@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import java.io.File
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -68,9 +69,12 @@ object StoreListingRules {
         return problems
     }
 
+    /** Said of an app, these claim it is made for children (owner decision E20-D1: 13 and over). */
+    private val CHILDREN = Regex("""\bfor\s+(kids|children)\b|(?<![\u0621-\u064A])[وف]?لل?(أطفال|اطفال|صغار)""")
+
     private fun banned(text: String): List<String> {
         val lower = text.lowercase()
-        return BANNED.filter { lower.contains(it) }
+        return BANNED.filter { lower.contains(it) } + CHILDREN.findAll(lower).map { it.value }
     }
 }
 
@@ -86,7 +90,8 @@ abstract class CheckStoreListingsTask : DefaultTask() {
             .filter { it.isDirectory && it.name == "play" && it.parentFile.parentFile.name == "src" }
             .toList()
         if (dirs.isEmpty()) throw GradleException("No store listings found (expected <app>/src/main/play/)")
-        val problems = dirs.flatMap { StoreListingRules.check(it) } + dataSafetySources(root.get().asFile)
+        val problems = dirs.flatMap { StoreListingRules.check(it) } + dataSafetySources(root.get().asFile) +
+            contentRatingProblems(root.get().asFile)
         if (problems.isNotEmpty()) throw GradleException("Store listings:\n" + problems.joinToString("\n") { "  - $it" })
         logger.lifecycle("Store listings OK: ${dirs.joinToString { it.relativeTo(root.get().asFile).path }}")
     }
@@ -101,6 +106,35 @@ internal fun dataSafetySources(root: File): List<String> {
             .filterNot { File(root, it).exists() }
             .map { "store/play/data-safety.csv cites $it, which no longer exists: re-check that answer" }
     }
+}
+
+private val RATED_APPS = setOf("viewer", "viewer-tv", "studio")
+
+/** `store/play/content-rating.json` (wiki E20 §4.1): every question answered for every public app, 13 and over, cited files exist. */
+internal fun contentRatingProblems(root: File): List<String> {
+    val name = "store/play/content-rating.json"
+    val file = File(root, name)
+    if (!file.isFile) return listOf("$name is missing")
+    val json = runCatching { JsonSlurper().parse(file) as Map<*, *> }.getOrElse { return listOf("$name is not valid JSON: ${it.message}") }
+    val questions = (json["questions"] as? List<*>).orEmpty().map { it.toString() }.toSet()
+    val apps = (json["apps"] as? Map<*, *>).orEmpty()
+    val problems = mutableListOf<String>()
+    if (questions.isEmpty()) problems += "$name: no questions"
+    if (apps.keys != RATED_APPS) problems += "$name: apps ${apps.keys} must be exactly $RATED_APPS"
+    apps.forEach { (app, value) ->
+        val entry = value as? Map<*, *> ?: emptyMap<Any, Any>()
+        val answers = (entry["answers"] as? Map<*, *>).orEmpty().entries.associate { it.key.toString() to it.value?.toString().orEmpty() }
+        (questions - answers.keys).forEach { problems += "$name: $app has no answer for $it" }
+        (answers.keys - questions).forEach { problems += "$name: $app answers $it, which is not a question" }
+        answers.filterValues { it.isBlank() }.keys.forEach { problems += "$name: $app has an empty answer for $it" }
+        if (answers["targetAudience"].orEmpty().split(',').any { (it.trim().takeWhile(Char::isDigit).toIntOrNull() ?: 0) < 13 }) {
+            problems += "$name: $app targets an audience under 13 (owner decision E20-D1: 13 and over)"
+        }
+        val sources = (entry["sources"] as? List<*>).orEmpty().map { it.toString() }
+        if (sources.isEmpty()) problems += "$name: $app cites no source"
+        sources.filterNot { File(root, it).exists() }.forEach { problems += "$name: $app cites $it, which no longer exists: re-check that answer" }
+    }
+    return problems
 }
 
 /** Root-project plugin: `./gradlew checkStoreListings` (run by CI's static checks). */

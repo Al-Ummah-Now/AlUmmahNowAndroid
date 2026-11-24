@@ -48,4 +48,39 @@ class StoreListingRulesTest {
         val p = play(good("en-US") + good("ar") + ("release-notes/ar/internal.txt" to "x".repeat(501)))
         assertTrue(StoreListingRules.check(p).single().contains("501 characters"))
     }
+
+    @Test fun `words that claim an app for children fail in both languages`() {
+        val en = play(good("en-US") + good("ar") + ("listings/en-US/short-description.txt" to "Videos for Kids"))
+        assertTrue(StoreListingRules.check(en).single().contains("for kids"))
+        val ar = play(good("en-US") + good("ar") + ("listings/ar/short-description.txt" to "مرئيات للأطفال"))
+        assertTrue(StoreListingRules.check(ar).single().contains("للأطفال"))
+        val fine = play(good("en-US") + good("ar") + ("listings/ar/short-description.txt" to "أخبار الأطفال"))
+        assertEquals(emptyList<String>(), StoreListingRules.check(fine))
+    }
+
+    private fun rating(json: String?): List<String> {
+        val root = Files.createTempDirectory("rating").toFile()
+        if (json != null) File(root, "store/play/content-rating.json").apply { parentFile.mkdirs() }.writeText(json)
+        File(root, "src.kt").writeText("")
+        return contentRatingProblems(root)
+    }
+
+    private fun app(answers: String = """"a":"no","targetAudience":"13-15,18+"""", source: String = "src.kt") =
+        """{"answers":{$answers},"sources":["$source"]}"""
+
+    private fun doc(viewer: String = app(), tv: String = app(), studio: String = app()) =
+        """{"questions":["a","targetAudience"],"apps":{"viewer":$viewer,"viewer-tv":$tv,"studio":$studio}}"""
+
+    @Test fun `complete content rating answers pass`() = assertEquals(emptyList<String>(), rating(doc()))
+
+    @Test fun `content rating answers are checked`() {
+        assertTrue(rating(null).single().contains("is missing"))
+        assertTrue(rating("{").single().contains("not valid JSON"))
+        assertTrue(rating(doc(viewer = app(""""targetAudience":"18+""""))).single().contains("viewer has no answer for a"))
+        assertTrue(rating(doc(tv = app(""""a":"no","b":"x","targetAudience":"18+""""))).single().contains("answers b"))
+        assertTrue(rating(doc(tv = app(""""a":"","targetAudience":"18+""""))).single().contains("empty answer for a"))
+        assertTrue(rating(doc(studio = app(""""a":"no","targetAudience":"9-12,13-15""""))).single().contains("under 13"))
+        assertTrue(rating(doc(studio = app(source = "gone.kt"))).single().contains("gone.kt"))
+        assertTrue(rating("""{"questions":["a","targetAudience"],"apps":{"viewer":${app()}}}""").single().contains("must be exactly"))
+    }
 }
