@@ -103,6 +103,7 @@ class LiveWatchViewModel(
     private var stateAt = Instant.EPOCH
     private var stateWait: Duration? = null
     private var chatDue = Instant.EPOCH
+    private var replayDue = Instant.EPOCH
     private var beatDue = Instant.EPOCH
     private val replay = mutableMapOf<Long, List<LiveChatMessage>>()
 
@@ -225,11 +226,13 @@ class LiveWatchViewModel(
         val found = modeOf(next.live)
         val mode = if (isGone && found == LiveMode.RECORDING) LiveMode.ENDED else found
         val chatGone = if (mode == LiveMode.RECORDING) !next.live.chatReplay else !next.live.chatEnabled
+        // The replay begins empty: what was written and pinned live is not what had been written by its first moment
+        val fresh = chatGone || (mode == LiveMode.RECORDING && next.mode != LiveMode.RECORDING)
         val shown = next.copy(
             mode = mode,
             viewers = next.live.viewers ?: next.viewers,
-            messages = if (chatGone) emptyList() else next.messages,
-            pinned = if (chatGone) null else next.pinned
+            messages = if (fresh) emptyList() else next.messages,
+            pinned = if (fresh) null else next.pinned
         )
         val startedAt = next.live.startedAt
         premiere = if (shown.isPremiere && mode == LiveMode.LIVE && startedAt != null) {
@@ -300,10 +303,10 @@ class LiveWatchViewModel(
         val window = positionMs / REPLAY_WINDOW_MS
         // The one before, so a seek does not open an empty chat, and the next, so it is there in time
         for (n in listOf(window, window + 1, window - 1)) {
-            if (n < 0 || n in replay || now() < chatDue) continue
+            if (n < 0 || n in replay || now() < replayDue) continue
             var refused: Duration? = null
             val list = readWindow(n) { refused = it }
-            if (list == null) chatDue = now() + (refused ?: CHAT_BACKOFF) else replay[n] = list
+            if (list == null) replayDue = now() + (refused ?: CHAT_BACKOFF) else replay[n] = list
         }
         var shown = emptyList<LiveChatMessage>()
         var n = window

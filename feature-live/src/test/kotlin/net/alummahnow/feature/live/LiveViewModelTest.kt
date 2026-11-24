@@ -322,6 +322,36 @@ class LiveViewModelTest {
         assertNull(list().event)
     }
 
+    @Test fun `an earlier choice that answers late is not shown`() = test {
+        val live = FakeLive()
+        val vm = LiveListViewModel(live) { clock.at }
+        val late = CompletableDeferred<Unit>()
+        live.listGate = LiveEventType.JUMUAH to late
+        vm.choose(LiveEventType.JUMUAH)
+        vm.choose(LiveEventType.HALQA)
+        late.complete(Unit)
+        runCurrent()
+        assertEquals(LiveEventType.HALQA, (vm.state.value as LiveListUiState.Content).list.event)
+    }
+
+    @Test fun `the replay begins without what was live and at its own time`() = test {
+        val live = FakeLive(onAir.copy(chatEnabled = true)).apply { pinned = LiveChatMessage("p", "A", "pinned", 0) }
+        val vm = model(live)
+        vm.tick(0)
+        assertEquals("p", vm.now.pinned?.id)
+        clock.advance(59)
+        // A live chat that could not be read waits a minute; the replay does not
+        live.chatFails = true
+        vm.tick(0)
+        clock.advance(1)
+        live.current = LiveState(LiveStatus.ENDED, vodUrl = "https://x.test/v.m3u8", chatReplay = true)
+        live.windows[0] = LiveChatPage(listOf(LiveChatMessage("a", "A", "x", 0)))
+        vm.tick(0)
+        assertEquals(LiveMode.RECORDING, vm.now.mode)
+        assertNull(vm.now.pinned)
+        assertEquals(listOf("a"), vm.now.messages.map { it.id })
+    }
+
     @Test fun `a failed refresh keeps the list, a failed first read says so`() = test {
         val live = FakeLive()
         val vm = LiveListViewModel(live) { clock.at }
