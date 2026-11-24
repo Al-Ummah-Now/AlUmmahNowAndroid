@@ -1,5 +1,7 @@
 package net.alummahnow.design.components
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +17,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import net.alummahnow.design.R
 
 /**
@@ -33,7 +37,12 @@ fun ConfirmDialog(
     val cancelFocus = remember { FocusRequester() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.semantics { paneTitle = title }.testTag("confirm-dialog"),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier
+            .padding(horizontal = 24.dp)
+            .widthIn(max = 420.dp)
+            .semantics { paneTitle = title }
+            .testTag("confirm-dialog"),
         title = { Text(title) },
         text = { Text(message) },
         dismissButton = {

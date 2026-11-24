@@ -21,6 +21,7 @@ data class LiveStream(
     val kind: LiveKind = LiveKind.LIVE,
     /** null while event tags are off. */
     val eventType: LiveEventType? = null,
+    val channelId: String? = null,
     val channelName: String? = null,
     val thumbnailUrl: String? = null,
     val scheduledStart: Instant? = null,
@@ -55,7 +56,8 @@ data class LiveChatMessage(
     val text: String,
     /** Milliseconds from the stream's start. */
     val offsetMs: Long,
-    val role: Role? = null
+    val role: Role? = null,
+    val userId: String? = null
 ) {
     enum class Role { OWNER, MODERATOR }
 }

@@ -168,6 +168,7 @@ private data class StreamDto(
     val description: String? = null,
     val kind: String? = null,
     val eventType: String? = null,
+    val channelId: String? = null,
     val channelName: String? = null,
     val thumbnailUrl: String? = null,
     val scheduledStartTime: String? = null,
@@ -180,6 +181,7 @@ private data class StreamDto(
         description = description,
         kind = enumOf<LiveKind>(kind) ?: LiveKind.LIVE,
         eventType = enumOf<LiveEventType>(eventType),
+        channelId = channelId?.ifBlank { null },
         channelName = channelName,
         thumbnailUrl = thumbnailUrl?.ifBlank { null },
         scheduledStart = instant(scheduledStartTime),
@@ -232,9 +234,10 @@ private data class MessageDto(
     val authorName: String,
     val text: String,
     val authorRole: String? = null,
-    val offsetMs: Long = 0
+    val offsetMs: Long = 0,
+    val userId: String? = null
 ) {
-    fun toMessage() = LiveChatMessage(id, authorName, text, offsetMs, enumOf<LiveChatMessage.Role>(authorRole))
+    fun toMessage() = LiveChatMessage(id, authorName, text, offsetMs, enumOf<LiveChatMessage.Role>(authorRole), userId?.ifBlank { null })
 }
 
 @Serializable

@@ -11,5 +11,12 @@
     <string name="settings_privacy_policy">سياسة الخصوصية</string>
     <string name="settings_terms_of_service">شروط الاستخدام</string>
     <string name="settings_no_browser">لا يوجد متصفح لفتح هذه الصفحة.</string>
+    <string name="settings_blocked_list">القنوات والمستخدمون المحظورون</string>
+    <string name="settings_blocked_empty">لا توجد قنوات أو مستخدمون محظورون.</string>
+    <string name="settings_blocked_kind_channel">قناة</string>
+    <string name="settings_blocked_kind_user">مستخدم في المحادثة</string>
+    <string name="settings_unblock">إلغاء الحظر</string>
+    <string name="settings_unblock_cd">إلغاء حظر %1$s</string>
+    <string name="settings_close">إغلاق</string>
     <string name="launcher_name">الأمة الآن</string>
 </resources>

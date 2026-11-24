@@ -1,6 +1,7 @@
 package net.alummahnow.feature.live
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +43,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
@@ -53,6 +55,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.window.core.layout.WindowSizeClass
+import net.alummahnow.core.bridge.live.LiveChatMessage
 import net.alummahnow.core.bridge.live.LiveEventType
 import net.alummahnow.core.bridge.live.LiveStream
 import net.alummahnow.design.components.ErrorState
@@ -65,6 +68,7 @@ import net.alummahnow.design.components.SectionHeader
 import net.alummahnow.design.components.fanousMaterial
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.design.format.isolate
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.player.MediaItems
 import net.alummahnow.player.ui.AunVideoPlayer
@@ -150,6 +154,15 @@ private fun EventFilter(chosen: LiveEventType?, onEvent: (LiveEventType?) -> Uni
 
 private fun eventLabel(event: LiveEventType?): Int = event?.label() ?: R.string.live_event_all
 
+/** Report and block actions shown in the live stream details and chat overflow menus. */
+data class LiveSafetyActions(
+    val onReportStream: (LiveStream) -> Unit,
+    val onReportChannel: (LiveStream) -> Unit,
+    val onBlockChannel: (LiveStream) -> Unit,
+    val onReportMessage: (LiveStream, LiveChatMessage) -> Unit,
+    val onBlockUser: (LiveChatMessage) -> Unit
+)
+
 /**
  * One live stream or premiere. [player] is the shared MediaController (null while connecting, or in screenshot tests).
  */
@@ -162,7 +175,10 @@ fun LiveWatchScreen(
     onToggleFullscreen: () -> Unit,
     onReturnToLive: () -> Unit,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    safety: LiveSafetyActions? = null,
+    isChannelBlocked: Boolean = false,
+    onUnblockChannel: (() -> Unit)? = null
 ) {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
@@ -170,22 +186,63 @@ fun LiveWatchScreen(
             is LiveWatchUiState.Error -> ErrorState(stringResource(state.kind.message), onRetry)
             is LiveWatchUiState.Content -> {
                 val content = state.content
-                if (player != null) PlayMediaEffect(player, content)
-                val isPlayerShown = content.mode == LiveMode.LIVE || content.mode == LiveMode.RECORDING
-                val top: @Composable (Modifier) -> Unit = { m ->
-                    if (isPlayerShown) {
-                        LivePlayer(player, content, isFullscreen, onToggleFullscreen, controls = !isInPictureInPicture, modifier = m)
-                    } else {
-                        Box(
-                            m.padding(FanousTokens.Spacing.lg).fanousMaterial(FanousMaterialKind.Card, MaterialTheme.shapes.large),
-                            contentAlignment = Alignment.Center
-                        ) { LiveNotice(content) }
+                LaunchedEffect(player, isChannelBlocked) {
+                    if (isChannelBlocked) {
+                        player?.stop()
+                        player?.clearMediaItems()
                     }
                 }
-                if (isPlayerShown && (isFullscreen || isInPictureInPicture)) {
-                    top(Modifier.fillMaxSize())
+                if (isChannelBlocked) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.systemBars)
+                            .padding(FanousTokens.Spacing.xl)
+                            .testTag("live-channel-blocked"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+                        ) {
+                            Text(
+                                if (content.stream.channelName.isNullOrBlank()) {
+                                    stringResource(R.string.live_channel_blocked_unnamed)
+                                } else {
+                                    aunString(R.string.live_channel_blocked, isolate(content.stream.channelName.orEmpty()))
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                            if (onUnblockChannel != null) {
+                                FanousButton(
+                                    stringResource(R.string.live_unblock),
+                                    onClick = onUnblockChannel,
+                                    kind = FanousButtonKind.Secondary,
+                                    modifier = Modifier.testTag("live-unblock-channel")
+                                )
+                            }
+                        }
+                    }
                 } else {
-                    LiveLayout(content, top, onReturnToLive)
+                    if (player != null) PlayMediaEffect(player, content)
+                    val isPlayerShown = content.mode == LiveMode.LIVE || content.mode == LiveMode.RECORDING
+                    val top: @Composable (Modifier) -> Unit = { m ->
+                        if (isPlayerShown) {
+                            LivePlayer(player, content, isFullscreen, onToggleFullscreen, controls = !isInPictureInPicture, modifier = m)
+                        } else {
+                            Box(
+                                m.padding(FanousTokens.Spacing.lg).fanousMaterial(FanousMaterialKind.Card, MaterialTheme.shapes.large),
+                                contentAlignment = Alignment.Center
+                            ) { LiveNotice(content) }
+                        }
+                    }
+                    if (isPlayerShown && (isFullscreen || isInPictureInPicture)) {
+                        top(Modifier.fillMaxSize())
+                    } else {
+                        LiveLayout(content, top, onReturnToLive, safety)
+                    }
                 }
             }
         }
@@ -214,7 +271,12 @@ fun RunLive(vm: LiveWatchViewModel, player: Player?) {
 }
 
 @Composable
-private fun LiveLayout(content: LiveWatchContent, top: @Composable (Modifier) -> Unit, onReturnToLive: () -> Unit) {
+private fun LiveLayout(
+    content: LiveWatchContent,
+    top: @Composable (Modifier) -> Unit,
+    onReturnToLive: () -> Unit,
+    safety: LiveSafetyActions?
+) {
     val details: @Composable () -> Unit = {
         Column(Modifier.padding(FanousTokens.Spacing.lg)) {
             if (content.isBehind) {
@@ -224,11 +286,11 @@ private fun LiveLayout(content: LiveWatchContent, top: @Composable (Modifier) ->
                     modifier = Modifier.align(Alignment.End).padding(bottom = FanousTokens.Spacing.sm).testTag("live-return")
                 )
             }
-            LiveDetails(content)
+            LiveDetails(content, safety = safety)
         }
     }
     val chat: @Composable (Modifier) -> Unit = { m ->
-        LiveChat(content, m.fanousMaterial(FanousMaterialKind.Card, MaterialTheme.shapes.large))
+        LiveChat(content, m.fanousMaterial(FanousMaterialKind.Card, MaterialTheme.shapes.large), safety = safety)
     }
     // Upright, even a large tablet has the chat under the player: beside it the video would be small
     val window = LocalWindowInfo.current.containerSize

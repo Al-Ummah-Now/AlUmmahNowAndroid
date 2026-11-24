@@ -2,4 +2,6 @@
 <resources>
     <string name="home_brand">الأمة الآن</string>
     <string name="home_settings">إعدادات العرض</string>
+    <string name="home_empty">لا توجد مرئيات لعرضها الآن.</string>
+    <string name="home_all_blocked">كل ما هنا من قنوات حظرتها على هذا الجهاز. يمكنك إلغاء الحظر من إعدادات العرض.</string>
 </resources>

@@ -2,4 +2,15 @@
 <resources>
     <string name="watch_chapters">الفصول</string>
     <string name="watch_related">التالي</string>
+    <string name="watch_more_actions">خيارات إضافية</string>
+    <string name="watch_report_video">الإبلاغ عن المرئي</string>
+    <string name="watch_report_channel">الإبلاغ عن القناة</string>
+    <string name="watch_block_channel">حظر القناة</string>
+    <string name="watch_block_channel_title">حظر %1$s؟</string>
+    <string name="watch_block_channel_body">ستُخفى مرئيات هذه القناة وبثوثها المباشرة على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من الإعدادات.</string>
+    <string name="watch_block_confirm">حظر</string>
+    <string name="watch_channel_blocked">مرئيات %1$s مخفية على هذا الجهاز.</string>
+    <string name="watch_unblock">إلغاء الحظر</string>
+    <string name="watch_channel_blocked_unnamed">مرئيات هذه القناة مخفية على هذا الجهاز.</string>
+    <string name="watch_block_channel_title_unnamed">حظر هذه القناة؟</string>
 </resources>

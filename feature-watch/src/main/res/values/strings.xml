@@ -2,4 +2,15 @@
 <resources>
     <string name="watch_chapters">Chapters</string>
     <string name="watch_related">Up next</string>
+    <string name="watch_more_actions">More actions</string>
+    <string name="watch_report_video">Report video</string>
+    <string name="watch_report_channel">Report channel</string>
+    <string name="watch_block_channel">Block channel</string>
+    <string name="watch_block_channel_title">Block %1$s?</string>
+    <string name="watch_block_channel_body">Videos and live streams from this channel will be hidden on this device. You can unblock it any time in Settings.</string>
+    <string name="watch_block_confirm">Block</string>
+    <string name="watch_channel_blocked">Videos from %1$s are hidden on this device.</string>
+    <string name="watch_unblock">Unblock</string>
+    <string name="watch_channel_blocked_unnamed">Videos from this channel are hidden on this device.</string>
+    <string name="watch_block_channel_title_unnamed">Block this channel?</string>
 </resources>

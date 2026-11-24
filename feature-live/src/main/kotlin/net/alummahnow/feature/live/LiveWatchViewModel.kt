@@ -91,6 +91,8 @@ class LiveWatchViewModel(
     private val streamId: String,
     private val live: LiveRepository,
     private val catalog: CatalogRepository,
+    /** Asked on every tick: nothing is read, counted or fetched for a stream whose channel is blocked here. */
+    private val isBlocked: (LiveStream) -> Boolean = { false },
     private val now: () -> Instant = Instant::now
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<LiveWatchUiState>(LiveWatchUiState.Loading)
@@ -105,6 +107,9 @@ class LiveWatchViewModel(
     private var chatDue = Instant.EPOCH
     private var replayDue = Instant.EPOCH
     private var beatDue = Instant.EPOCH
+
+    /** The stream's audience includes this viewer: told once when it stops. */
+    private var counted = false
     private val replay = mutableMapOf<Long, List<LiveChatMessage>>()
 
     private val content: LiveWatchContent? get() = (mutableState.value as? LiveWatchUiState.Content)?.content
@@ -154,8 +159,15 @@ class LiveWatchViewModel(
         } finally {
             // Counted at once on coming back
             beatDue = Instant.EPOCH
-            if (content?.mode == LiveMode.LIVE) withContext(NonCancellable) { quiet { live.beat(streamId, viewerId, leaving = true) } }
+            if (content?.mode == LiveMode.LIVE) withContext(NonCancellable) { leave() }
         }
+    }
+
+    /** Takes this viewer out of the audience, when they were in it. */
+    private suspend fun leave() {
+        if (!counted) return
+        counted = false
+        quiet { live.beat(streamId, viewerId, leaving = true) }
     }
 
     /** Where "Return to live" goes: a premiere's moment; null for a stream (its live edge). */
@@ -184,12 +196,24 @@ class LiveWatchViewModel(
     /** One second: the clock and whatever is due. Every wait begins when the answer is there, however long that took. */
     internal suspend fun tick(positionMs: Long?) {
         val before = content ?: return
+        if (isBlocked(before.stream)) {
+            leave()
+            // Everything is due at once after an unblock
+            stateAt = Instant.EPOCH
+            stateWait = null
+            chatDue = Instant.EPOCH
+            replayDue = Instant.EPOCH
+            beatDue = Instant.EPOCH
+            return
+        }
         update { it.copy(untilStartMs = countdown(it)) }
         if (Duration.between(stateAt, now()) >= stateInterval(content ?: before)) refreshState()
         val current = content ?: return
-        refreshChat(current, positionMs)
-        if (current.mode == LiveMode.LIVE && now() >= beatDue) {
+        // Asked again each time: it may have been blocked while an answer was on its way
+        if (!isBlocked(current.stream)) refreshChat(current, positionMs)
+        if (current.mode == LiveMode.LIVE && now() >= beatDue && !isBlocked(current.stream)) {
             var wait = BEAT
+            counted = true
             val count = quiet({ wait = it }) { live.beat(streamId, viewerId, leaving = false) }
             beatDue = now() + wait
             if (count != null) update { it.copy(viewers = count) }
@@ -256,6 +280,7 @@ class LiveWatchViewModel(
 
     /** The video is released a moment after the premiere starts: asked for again in 5 seconds until it is there. */
     private suspend fun loadPremiere(content: LiveWatchContent) {
+        if (isBlocked(content.stream)) return
         val id = content.live.premiereVideoId ?: return
         if (content.media != null || (content.mode != LiveMode.LIVE && content.mode != LiveMode.RECORDING)) return
         val video = try {
@@ -356,10 +381,14 @@ class LiveWatchViewModel(
         if (it is LiveWatchUiState.Content) it.copy(content = change(it.content)) else it
     }
 
-    class Factory(private val streamId: String, private val live: LiveRepository, private val catalog: CatalogRepository) :
-        ViewModelProvider.Factory {
+    class Factory(
+        private val streamId: String,
+        private val live: LiveRepository,
+        private val catalog: CatalogRepository,
+        private val isBlocked: (LiveStream) -> Boolean
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = LiveWatchViewModel(streamId, live, catalog) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = LiveWatchViewModel(streamId, live, catalog, isBlocked) as T
     }
 
     private companion object {

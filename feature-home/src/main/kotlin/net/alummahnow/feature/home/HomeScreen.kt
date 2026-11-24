@@ -2,9 +2,11 @@ package net.alummahnow.feature.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -30,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.window.core.layout.WindowSizeClass
@@ -64,7 +67,10 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     /** Between the header and the rails: what is live (feature-live). Draws nothing when there is none. */
-    liveRail: @Composable (cardWidth: Dp) -> Unit = {}
+    liveRail: @Composable (cardWidth: Dp) -> Unit = {},
+    hasLive: Boolean = false,
+    /** There was something to show, and all of it is from channels blocked on this device. */
+    allBlocked: Boolean = false
 ) {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
@@ -76,13 +82,29 @@ fun HomeScreen(
                 LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
                     item(key = "header") { HomeHeader(onOpenSettings) }
                     item(key = "live") { liveRail(cardWidth) }
-                    items(state.rails, key = { it.kind.name }) { rail ->
-                        VideoRail(
-                            title = stringResource(rail.kind.titleRes()),
-                            items = rail.videos.map { it.toCard(locale) },
-                            onItemClick = { onVideoClick(it.id) },
-                            cardWidth = cardWidth
-                        )
+                    if (state.rails.isEmpty() && !hasLive) {
+                        item(key = "empty") {
+                            Box(
+                                Modifier.fillMaxWidth().padding(FanousTokens.Spacing.xl),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    stringResource(if (allBlocked) R.string.home_all_blocked else R.string.home_empty),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        items(state.rails, key = { it.kind.name }) { rail ->
+                            VideoRail(
+                                title = stringResource(rail.kind.titleRes()),
+                                items = rail.videos.map { it.toCard(locale) },
+                                onItemClick = { onVideoClick(it.id) },
+                                cardWidth = cardWidth
+                            )
+                        }
                     }
                 }
             }

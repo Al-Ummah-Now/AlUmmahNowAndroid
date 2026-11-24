@@ -27,6 +27,20 @@
     <string name="live_chat_pinned">مثبّتة</string>
     <string name="live_chat_host">المضيف</string>
     <string name="live_chat_moderator">مشرف</string>
+    <string name="live_more_actions">خيارات إضافية</string>
+    <string name="live_more_actions_for">خيارات إضافية لـ %1$s</string>
+    <string name="live_report_stream">الإبلاغ عن البث المباشر</string>
+    <string name="live_report_channel">الإبلاغ عن القناة</string>
+    <string name="live_report_message">الإبلاغ عن الرسالة</string>
+    <string name="live_block_channel">حظر القناة</string>
+    <string name="live_block_user">حظر المستخدم</string>
+    <string name="live_block_confirm">حظر</string>
+    <string name="live_channel_blocked">بثوث %1$s مخفية على هذا الجهاز.</string>
+    <string name="live_unblock">إلغاء الحظر</string>
+    <string name="live_block_channel_title">حظر %1$s؟</string>
+    <string name="live_block_channel_body">ستُخفى مرئيات هذه القناة وبثوثها المباشرة على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من الإعدادات.</string>
+    <string name="live_block_user_title">حظر %1$s؟</string>
+    <string name="live_block_user_body">ستُخفى رسائل هذا المستخدم في محادثة البث المباشر على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من الإعدادات.</string>
     <string name="live_event_filter">الفعالية: %1$s</string>
     <string name="live_event_all">الكل</string>
     <string name="live_event_jumuah">الجمعة</string>
@@ -43,4 +57,6 @@
         <item quantity="many">يبدأ العرض الأول بعد %1$s يومًا</item>
         <item quantity="other">يبدأ العرض الأول بعد %1$s يوم</item>
     </plurals>
+    <string name="live_channel_blocked_unnamed">بثوث هذه القناة مخفية على هذا الجهاز.</string>
+    <string name="live_block_channel_title_unnamed">حظر هذه القناة؟</string>
 </resources>
