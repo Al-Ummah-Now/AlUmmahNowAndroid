@@ -53,7 +53,8 @@ fun CreatorTermsGate(
     onOpenUrl: (String) -> Unit,
     onAgree: () -> Unit,
     modifier: Modifier = Modifier,
-    initialChecked: Boolean = false
+    initialChecked: Boolean = false,
+    webHost: String = SupportLinks.DEFAULT_WEB_HOST
 ) {
     var checked by remember { mutableStateOf(initialChecked) }
     val lang = currentLocale().language
@@ -87,11 +88,11 @@ fun CreatorTermsGate(
             )
             Column(verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xs)) {
                 TextButton(
-                    onClick = { onOpenUrl(SupportLinks.termsUrl(lang)) },
+                    onClick = { onOpenUrl(SupportLinks.termsUrl(lang, webHost)) },
                     modifier = Modifier.testTag("creator-terms-link")
                 ) { Text(stringResource(R.string.studio_terms_of_service)) }
                 TextButton(
-                    onClick = { onOpenUrl(SupportLinks.communityGuidelinesUrl(lang)) },
+                    onClick = { onOpenUrl(SupportLinks.communityGuidelinesUrl(lang, webHost)) },
                     modifier = Modifier.testTag("creator-guidelines-link")
                 ) { Text(stringResource(R.string.studio_community_guidelines)) }
             }
@@ -174,7 +175,7 @@ fun CreatorTermsError(onRetry: () -> Unit, modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
         ) {
             Text(
-                stringResource(R.string.studio_terms_error),
+                stringResource(R.string.studio_terms_load_error),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

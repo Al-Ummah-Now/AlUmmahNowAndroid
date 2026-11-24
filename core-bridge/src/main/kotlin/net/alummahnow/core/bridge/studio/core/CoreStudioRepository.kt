@@ -104,15 +104,8 @@ class CoreStudioRepository(
         StudioMappers.channels(call("GET", "/api/channels", query = mapOf("scope" to "mine", "limit" to "100")))
     }
 
-    override suspend fun creatorAccess(): CreatorAccess {
-        val r = J.parse(call("GET", "/api/me/creator")).unwrap().obj() ?: JsonObject(emptyMap())
-        return CreatorAccess(
-            canUpload = r.b("canUpload") == true,
-            canCreateChannel = r.b("canCreateChannel") == true,
-            tierName = r.o("tier")?.s("name"),
-            termsAccepted = r.b("termsAccepted")
-        )
-    }
+    override suspend fun creatorAccess(): CreatorAccess =
+        StudioMappers.creatorAccess(call("GET", "/api/me/creator"))
 
     override suspend fun acceptCreatorTerms() {
         call("POST", "/api/me/creator/terms")

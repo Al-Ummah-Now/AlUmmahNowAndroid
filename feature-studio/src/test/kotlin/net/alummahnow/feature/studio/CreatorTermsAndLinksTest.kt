@@ -53,7 +53,7 @@ class CreatorTermsAndLinksTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
-    fun `SupportLinks resolves English and Arabic URLs`() {
+    fun `SupportLinks resolves English, Arabic, and QA host URLs`() {
         assertEquals("https://videos.alummahnow.net/en/help", SupportLinks.helpUrl("en"))
         assertEquals("https://videos.alummahnow.net/ar/help", SupportLinks.helpUrl("ar"))
         assertEquals("https://videos.alummahnow.net/en/contact", SupportLinks.contactUrl("en"))
@@ -63,10 +63,13 @@ class CreatorTermsAndLinksTest {
         assertEquals("https://www.alummahnow.net/en/terms/", SupportLinks.termsUrl("en"))
         assertEquals("https://www.alummahnow.net/ar/terms/", SupportLinks.termsUrl("ar"))
         assertEquals("https://videos.alummahnow.net/ar/community-guidelines", SupportLinks.communityGuidelinesUrl("ar"))
+        assertEquals("https://videos.qa.alummahnow.net/en/help", SupportLinks.helpUrl("en", "videos.qa.alummahnow.net"))
+        assertEquals("https://www.qa.alummahnow.net/ar/privacy/", SupportLinks.privacyUrl("ar", "videos.qa.alummahnow.net"))
+        assertEquals("https://www.qa.alummahnow.net/en/terms/", SupportLinks.termsUrl("en", "videos.qa.alummahnow.net"))
     }
 
     @Test
-    fun `CreatorTermsViewModel fails closed on loading, error, and null termsAccepted, and unlocks only on POST success`() = runTest {
+    fun `CreatorTermsViewModel handles error, null compatibility, resume refresh, and POST`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
         try {
@@ -78,18 +81,21 @@ class CreatorTermsAndLinksTest {
             advanceUntilIdle()
             assertEquals(CreatorTermsUiState.Failed, vm.state.value)
 
-            // Null termsAccepted also fails closed to Required
+            // Explicit false gates Upload
             repo.creatorAccessError = null
-            repo.termsAccepted = null
+            repo.termsAccepted = false
             vm.load()
             advanceUntilIdle()
             assertTrue(vm.state.value is CreatorTermsUiState.Required)
 
-            // Failed POST keeps Required with errorRes
-            repo.termsAccepted = false
-            repo.acceptTermsError = CoreError.Http(503)
-            vm.load()
+            // ON_RESUME refresh while Required does not flash Loading
+            vm.refresh()
+            assertTrue(vm.state.value is CreatorTermsUiState.Required)
             advanceUntilIdle()
+            assertTrue(vm.state.value is CreatorTermsUiState.Required)
+
+            // Failed POST keeps Required with errorRes
+            repo.acceptTermsError = CoreError.Http(503)
             vm.accept()
             advanceUntilIdle()
             val afterFail = vm.state.value as CreatorTermsUiState.Required
@@ -102,6 +108,12 @@ class CreatorTermsAndLinksTest {
             advanceUntilIdle()
             assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
             assertEquals(2, repo.acceptTermsCalls)
+
+            // Older server omitting termsAccepted (null) falls through to Accepted
+            val compatRepo = FakeRepository().apply { termsAccepted = null }
+            val compatVm = CreatorTermsViewModel(compatRepo)
+            advanceUntilIdle()
+            assertEquals(CreatorTermsUiState.Accepted, compatVm.state.value)
         } finally {
             Dispatchers.resetMain()
         }

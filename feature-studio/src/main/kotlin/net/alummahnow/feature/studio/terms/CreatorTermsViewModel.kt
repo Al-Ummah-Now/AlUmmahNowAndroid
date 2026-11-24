@@ -34,21 +34,26 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
         load()
     }
 
-    /** Reads creator access; fails closed to [CreatorTermsUiState.Failed] on error unless already accepted. */
+    /**
+     * Reads creator access; fails closed to [CreatorTermsUiState.Failed] on network/API error unless already accepted.
+     * An older server that omits `termsAccepted` (`null`) falls through to [CreatorTermsUiState.Accepted] so creators
+     * are never locked out before the server PR deploys; only an explicit `false` shows the gate.
+     */
     fun load() {
-        val wasAccepted = mutableState.value == CreatorTermsUiState.Accepted
-        if (!wasAccepted) mutableState.value = CreatorTermsUiState.Loading
+        val current = mutableState.value
+        val keepVisible = current == CreatorTermsUiState.Accepted || current is CreatorTermsUiState.Required
+        if (!keepVisible) mutableState.value = CreatorTermsUiState.Loading
         viewModelScope.launch {
             attempt("studio", "creator-terms-load") { repository.creatorAccess() }.fold(
                 onSuccess = { access ->
-                    mutableState.value = if (access.termsAccepted == true) {
-                        CreatorTermsUiState.Accepted
+                    mutableState.value = if (access.termsAccepted == false) {
+                        (mutableState.value as? CreatorTermsUiState.Required) ?: CreatorTermsUiState.Required()
                     } else {
-                        CreatorTermsUiState.Required()
+                        CreatorTermsUiState.Accepted
                     }
                 },
                 onFailure = {
-                    if (!wasAccepted) mutableState.value = CreatorTermsUiState.Failed
+                    if (!keepVisible) mutableState.value = CreatorTermsUiState.Failed
                 }
             )
         }

@@ -34,7 +34,8 @@ fun DisplaySettingsSheet(
     onTheme: (ThemeMode) -> Unit,
     onLanguage: (String?) -> Unit,
     onDismiss: () -> Unit,
-    onOpenUrl: ((String) -> Unit)? = null
+    onOpenUrl: ((String) -> Unit)? = null,
+    webHost: String = SupportLinks.DEFAULT_WEB_HOST
 ) {
     val langCode = language ?: currentLocale().language
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -54,19 +55,19 @@ fun DisplaySettingsSheet(
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 LinkRow(stringResource(R.string.settings_help), "settings-help") {
                     onDismiss()
-                    onOpenUrl(SupportLinks.helpUrl(langCode))
+                    onOpenUrl(SupportLinks.helpUrl(langCode, webHost))
                 }
                 LinkRow(stringResource(R.string.settings_contact), "settings-contact") {
                     onDismiss()
-                    onOpenUrl(SupportLinks.contactUrl(langCode))
+                    onOpenUrl(SupportLinks.contactUrl(langCode, webHost))
                 }
                 LinkRow(stringResource(R.string.settings_privacy_policy), "settings-privacy") {
                     onDismiss()
-                    onOpenUrl(SupportLinks.privacyUrl(langCode))
+                    onOpenUrl(SupportLinks.privacyUrl(langCode, webHost))
                 }
                 LinkRow(stringResource(R.string.settings_terms_of_service), "settings-terms") {
                     onDismiss()
-                    onOpenUrl(SupportLinks.termsUrl(langCode))
+                    onOpenUrl(SupportLinks.termsUrl(langCode, webHost))
                 }
             }
         }

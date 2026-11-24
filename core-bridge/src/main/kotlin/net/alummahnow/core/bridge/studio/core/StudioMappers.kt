@@ -8,6 +8,7 @@ import net.alummahnow.core.bridge.studio.BulkResult
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.core.bridge.studio.ChannelRole
 import net.alummahnow.core.bridge.studio.ContentStatus
+import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.core.bridge.studio.DailyMetric
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.StudioPlaylist
@@ -47,6 +48,17 @@ object StudioMappers {
         val root = J.parse(body)
         val list = root.unwrap().arr() ?: root.obj()?.a("data") ?: return emptyList()
         return list.mapNotNull { it.obj()?.let(::channel) }
+    }
+
+    /** `GET /api/me/creator` → [CreatorAccess]; omits `termsAccepted` as `null` when the server predates #1931. */
+    fun creatorAccess(body: String): CreatorAccess {
+        val r = J.parse(body).unwrap().obj() ?: JsonObject(emptyMap())
+        return CreatorAccess(
+            canUpload = r.b("canUpload") == true,
+            canCreateChannel = r.b("canCreateChannel") == true,
+            tierName = r.o("tier")?.s("name"),
+            termsAccepted = r.b("termsAccepted")
+        )
     }
 
     /** Studio status from a video's fields (same order as the server's `studioStatusOf`). */

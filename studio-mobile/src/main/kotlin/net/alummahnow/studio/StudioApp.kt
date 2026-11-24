@@ -199,6 +199,7 @@ fun StudioApp(
                 pendingLink = null
             }
             val key = "${current.userId}-${selected.id}"
+            var pendingEditorExport by remember(key) { mutableStateOf<PickedFile?>(null) }
             val content: ContentViewModel = viewModel(key = "content-$key") { ContentViewModel(container.repository, selected.id) }
             // Per account and channel, so a switch reads features again; re-read whenever the app is back in front.
             val featuresModel: StudioFeaturesViewModel =
@@ -243,11 +244,17 @@ fun StudioApp(
                                     saving = ts.saving,
                                     error = ts.errorRes?.let { resources.getString(it) },
                                     onOpenUrl = ::openExternalLink,
-                                    onAgree = termsModel::accept
+                                    onAgree = termsModel::accept,
+                                    webHost = BuildConfig.WEB_HOST
                                 )
                                 CreatorTermsUiState.Accepted -> {
                                     val upload: UploadViewModel = viewModel(key = "upload-$key") {
                                         UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                                    }
+                                    LaunchedEffect(pendingEditorExport) {
+                                        val pending = pendingEditorExport ?: return@LaunchedEffect
+                                        upload.addFiles(listOf(pending))
+                                        pendingEditorExport = null
                                     }
                                     UploadRoute(upload)
                                 }
@@ -267,11 +274,14 @@ fun StudioApp(
                             val upload: UploadViewModel = viewModel(key = "upload-$key") {
                                 UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
                             }
-                            // Upload this video only when the Upload tab is there for this person (and Terms accepted).
+                            // Hold the exported file if Terms are not accepted yet so it queues once accepted.
                             val send: ((String, String, Long) -> Unit)? = if (StudioTab.UPLOAD in tabs) {
                                 { uri, name, size ->
+                                    val file = PickedFile(uri, name, size, "video/mp4")
                                     if (termsState == CreatorTermsUiState.Accepted) {
-                                        upload.addFiles(listOf(PickedFile(uri, name, size, "video/mp4")))
+                                        upload.addFiles(listOf(file))
+                                    } else {
+                                        pendingEditorExport = file
                                     }
                                     tab = StudioTab.UPLOAD
                                 }
@@ -326,7 +336,8 @@ fun StudioApp(
             } else {
                 null
             },
-            onOpenUrl = ::openExternalLink
+            onOpenUrl = ::openExternalLink,
+            webHost = BuildConfig.WEB_HOST
         )
     }
 }

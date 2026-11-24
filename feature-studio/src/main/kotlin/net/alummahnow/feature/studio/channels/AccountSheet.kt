@@ -69,7 +69,8 @@ fun AccountSheet(
     onSwitchChannel: () -> Unit,
     onDismiss: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
-    onOpenUrl: ((String) -> Unit)? = null
+    onOpenUrl: ((String) -> Unit)? = null,
+    webHost: String = SupportLinks.DEFAULT_WEB_HOST
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
     ModalBottomSheet(
@@ -87,7 +88,8 @@ fun AccountSheet(
             onSwitchChannel = onSwitchChannel,
             onDismiss = onDismiss,
             onAddPasskey = onAddPasskey,
-            onOpenUrl = onOpenUrl
+            onOpenUrl = onOpenUrl,
+            webHost = webHost
         )
     }
     confirmSignOut?.let { a ->
@@ -115,7 +117,8 @@ internal fun AccountSheetContent(
     onSwitchChannel: () -> Unit,
     onDismiss: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
-    onOpenUrl: ((String) -> Unit)? = null
+    onOpenUrl: ((String) -> Unit)? = null,
+    webHost: String = SupportLinks.DEFAULT_WEB_HOST
 ) {
     val lang = currentLocale().language
     Column(
@@ -192,7 +195,7 @@ internal fun AccountSheetContent(
                 subtitle = null,
                 modifier = Modifier.clickable(role = Role.Button) {
                     onDismiss()
-                    onOpenUrl(SupportLinks.helpUrl(lang))
+                    onOpenUrl(SupportLinks.helpUrl(lang, webHost))
                 }.testTag("studio-help")
             )
             SheetRow(
@@ -207,7 +210,7 @@ internal fun AccountSheetContent(
                 subtitle = null,
                 modifier = Modifier.clickable(role = Role.Button) {
                     onDismiss()
-                    onOpenUrl(SupportLinks.contactUrl(lang))
+                    onOpenUrl(SupportLinks.contactUrl(lang, webHost))
                 }.testTag("studio-contact")
             )
             SheetRow(
@@ -222,7 +225,7 @@ internal fun AccountSheetContent(
                 subtitle = null,
                 modifier = Modifier.clickable(role = Role.Button) {
                     onDismiss()
-                    onOpenUrl(SupportLinks.privacyUrl(lang))
+                    onOpenUrl(SupportLinks.privacyUrl(lang, webHost))
                 }.testTag("studio-privacy")
             )
             SheetRow(
@@ -237,7 +240,7 @@ internal fun AccountSheetContent(
                 subtitle = null,
                 modifier = Modifier.clickable(role = Role.Button) {
                     onDismiss()
-                    onOpenUrl(SupportLinks.termsUrl(lang))
+                    onOpenUrl(SupportLinks.termsUrl(lang, webHost))
                 }.testTag("studio-terms")
             )
         }

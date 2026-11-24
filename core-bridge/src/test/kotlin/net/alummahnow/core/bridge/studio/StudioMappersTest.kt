@@ -101,4 +101,25 @@ class StudioMappersTest {
         assertTrue(BulkChanges().isEmpty)
         assertFalse(BulkChanges(addTags = listOf("x")).isEmpty)
     }
+
+    @Test
+    fun `creatorAccess decodes termsAccepted true false and omitted`() {
+        val accepted = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"canCreateChannel":true,"tier":{"name":"Creator"},"termsAccepted":true}}"""
+        )
+        assertTrue(accepted.canUpload)
+        assertTrue(accepted.canCreateChannel)
+        assertEquals("Creator", accepted.tierName)
+        assertEquals(true, accepted.termsAccepted)
+
+        val required = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"canCreateChannel":false,"termsAccepted":false}}"""
+        )
+        assertEquals(false, required.termsAccepted)
+
+        val legacy = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"canCreateChannel":true}}"""
+        )
+        assertNull(legacy.termsAccepted)
+    }
 }
