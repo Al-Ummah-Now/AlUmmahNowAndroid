@@ -17,5 +17,7 @@ testing only and has no public rating.
 | Restrict Minor Access | Off | Off | For adult-only apps |
 | Store category | Video Players & Editors | Same | Not Social |
 
-Before a writing feature ships in an app, Play's user-generated content policy needs, in that app: the Terms accepted before
-the first post, reporting of videos, comments and users, and blocking of users.
+Play's user-generated content policy covers apps that *show* content from users, not only apps where people write. The
+viewer shows creators' videos and channels, so it needs reporting of videos and channels and blocking in the app before
+production (#61). Before a writing feature ships in an app, it also needs the Terms accepted before the first post and
+reporting of comments, messages and users.
