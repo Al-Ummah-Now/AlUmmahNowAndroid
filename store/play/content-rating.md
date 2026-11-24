@@ -19,5 +19,6 @@ testing only and has no public rating.
 
 Play's user-generated content policy covers apps that *show* content from users, not only apps where people write. The
 viewer shows creators' videos and channels, so it needs reporting of videos and channels and blocking in the app before
-production (#61). Before a writing feature ships in an app, it also needs the Terms accepted before the first post and
-reporting of comments, messages and users.
+production (#61). Studio, where people upload videos and create channels, needs the Terms accepted before the first
+upload today (#65). Before a writing feature (comments, chat, posts) ships in an app, that app also needs the Terms
+accepted before the first post and reporting of comments, messages and users.
