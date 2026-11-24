@@ -301,6 +301,19 @@ class LiveViewModelTest {
         assertEquals(listOf("a", "b", "c"), vm.now.messages.map { it.id })
     }
 
+    @Test fun `the replay follows the server's pace`() = test {
+        val live = FakeLive(LiveState(LiveStatus.ENDED, vodUrl = "https://x.test/v.m3u8", chatReplay = true))
+        live.windows[0] = LiveChatPage(listOf(LiveChatMessage("a", "A", "x", 0)), pollAfterMs = 30_000)
+        val vm = model(live)
+        vm.tick(0)
+        clock.advance(29)
+        vm.tick(0)
+        assertEquals(listOf(0L), live.windowReads)
+        clock.advance(1)
+        vm.tick(0)
+        assertEquals(listOf(0L, 60_000L), live.windowReads)
+    }
+
     @Test fun `the list shows what comes next and only with its switches`() = test {
         val live = FakeLive()
         live.lists[LiveStatus.LIVE] = listOf(LiveStream("on", "", LiveStatus.LIVE))
