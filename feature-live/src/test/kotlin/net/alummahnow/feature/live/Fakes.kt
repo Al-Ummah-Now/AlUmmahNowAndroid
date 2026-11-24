@@ -28,6 +28,10 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
     var askedEvent: LiveEventType? = null
     var fails = false
     var chatFails = false
+    var chatPollAfter: Long? = null
+
+    /** Every read is refused with this `Retry-After`. */
+    var retryAfter: Long? = null
 
     override suspend fun features() = features
 
@@ -42,19 +46,26 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
     override suspend fun state(id: String): LiveState {
         stateReads++
         stateGate?.await()
+        refuse()
         return current
     }
 
     override suspend fun chat(id: String): LiveChatPage {
         chatReads++
+        refuse()
         if (chatFails) throw CoreError.Http(503)
-        return LiveChatPage(listOf(LiveChatMessage("m", "A", "x", 0)))
+        return LiveChatPage(listOf(LiveChatMessage("m", "A", "x", 0)), pollAfterMs = chatPollAfter)
+    }
+
+    private fun refuse() {
+        retryAfter?.let { throw CoreError.Http(429, it) }
     }
 
     override suspend fun chatReplay(id: String, fromMs: Long, toMs: Long) = windows[fromMs] ?: LiveChatPage(emptyList())
 
     override suspend fun beat(id: String, viewerId: String, leaving: Boolean): Long? {
         beats += leaving
+        refuse()
         return 5
     }
 }

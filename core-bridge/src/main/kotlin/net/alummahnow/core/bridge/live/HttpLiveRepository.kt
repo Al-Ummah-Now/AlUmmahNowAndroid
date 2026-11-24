@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import net.alummahnow.core.bridge.AunLog
@@ -24,6 +25,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 
 /** The public live endpoints of api-videos, until the Rust core has them. */
 class HttpLiveRepository(
@@ -84,15 +86,12 @@ class HttpLiveRepository(
         }
     ).toPage()
 
-    override suspend fun beat(id: String, viewerId: String, leaving: Boolean): Long? = try {
+    override suspend fun beat(id: String, viewerId: String, leaving: Boolean): Long? {
         val body = buildJsonObject {
             put("viewerId", viewerId)
             put("leaving", leaving)
         }.toString().toRequestBody("text/plain".toMediaType())
-        decode<Viewers>(call(url("api/live-streams", id, "viewers"), body)).viewers
-    } catch (e: CoreError) {
-        AunLog.i("live", "viewer not counted", "error" to e.message)
-        null
+        return decode<Viewers>(call(url("api/live-streams", id, "viewers"), body)).viewers
     }
 
     private fun url(path: String, vararg segments: String, query: HttpUrl.Builder.() -> Unit = {}): HttpUrl =
@@ -115,18 +114,33 @@ class HttpLiveRepository(
             client.newCall(request).execute().use { response ->
                 when {
                     response.code == 404 -> throw CoreError.NotFound(url.encodedPath)
-                    !response.isSuccessful -> throw CoreError.Http(response.code)
+                    !response.isSuccessful -> throw CoreError.Http(response.code, response.retryAfterMs())
                     else -> response.body.string()
                 }
             }
         } catch (e: IOException) {
             AunLog.w("live", "network error", "path" to url.encodedPath, "error" to e.message)
             throw CoreError.Network(e)
+        } catch (e: NumberFormatException) {
+            // OkHttp reads a 503's Retry-After as an Int
+            AunLog.w("live", "unreadable Retry-After", "path" to url.encodedPath, "error" to e.message)
+            throw CoreError.Http(HTTP_UNAVAILABLE)
         }
     }
 
     private companion object {
         const val LIST_LIMIT = 50
+        const val HTTP_TOO_MANY = 429
+        const val HTTP_UNAVAILABLE = 503
+        const val MS = 1_000L
+
+        /** More seconds than any answer means; keeps the arithmetic whole. */
+        const val MAX_SECONDS = 86_400L
+
+        fun Response.retryAfterMs(): Long? {
+            if (code != HTTP_TOO_MANY && code != HTTP_UNAVAILABLE) return null
+            return header("Retry-After")?.trim()?.toLongOrNull()?.takeIf { it >= 0 }?.let { minOf(it, MAX_SECONDS) * MS }
+        }
     }
 }
 
@@ -186,7 +200,8 @@ private data class StateDto(
     val eventType: String? = null,
     val viewers: Long? = null,
     val serverNow: Double? = null,
-    val chat: ChatFlags = ChatFlags()
+    val chat: ChatFlags = ChatFlags(),
+    val pollAfterMs: JsonElement? = null
 ) {
     fun toState(offsetMs: Long): LiveState? = LiveState(
         status = enumOf<LiveStatus>(status) ?: return null,
@@ -202,7 +217,8 @@ private data class StateDto(
         viewers = viewers,
         chatEnabled = chat.enabled,
         chatReplay = chat.replay,
-        clockOffsetMs = offsetMs
+        clockOffsetMs = offsetMs,
+        pollAfterMs = pollAfter(pollAfterMs)
     )
 }
 
@@ -221,10 +237,15 @@ private data class MessageDto(
 private data class ChatDto(
     val messages: List<MessageDto> = emptyList(),
     val pinned: MessageDto? = null,
-    val truncated: Boolean = false
+    val truncated: Boolean = false,
+    val pollAfterMs: JsonElement? = null
 ) {
-    fun toPage() = LiveChatPage(messages.map { it.toMessage() }, pinned?.toMessage(), truncated)
+    fun toPage() = LiveChatPage(messages.map { it.toMessage() }, pinned?.toMessage(), truncated, pollAfter(pollAfterMs))
 }
+
+/** A whole answer is never lost to a bad value here: what is not a number is as if it were absent. */
+private fun pollAfter(value: JsonElement?): Long? =
+    (value as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull?.takeIf { it.isFinite() && it > 0 }?.toLong()
 
 /** The server's lower-case value, or null when this app does not know it. */
 private inline fun <reified E : Enum<E>> enumOf(value: String?): E? =

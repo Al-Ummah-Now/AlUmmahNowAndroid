@@ -44,7 +44,9 @@ data class LiveState(
     val chatEnabled: Boolean = false,
     val chatReplay: Boolean = false,
     /** How far the server's clock is ahead of the device's. */
-    val clockOffsetMs: Long = 0
+    val clockOffsetMs: Long = 0,
+    /** When the server wants this read again; null when it does not say. */
+    val pollAfterMs: Long? = null
 )
 
 data class LiveChatMessage(
@@ -58,8 +60,13 @@ data class LiveChatMessage(
     enum class Role { OWNER, MODERATOR }
 }
 
-/** [truncated]: a replay window holds more than one answer. */
-data class LiveChatPage(val messages: List<LiveChatMessage>, val pinned: LiveChatMessage? = null, val truncated: Boolean = false)
+/** [truncated]: a replay window holds more than one answer. [pollAfterMs]: when the server wants the chat read again. */
+data class LiveChatPage(
+    val messages: List<LiveChatMessage>,
+    val pinned: LiveChatMessage? = null,
+    val truncated: Boolean = false,
+    val pollAfterMs: Long? = null
+)
 
 /** What viewers are offered; everything off when it cannot be read. */
 data class LiveFeatures(
@@ -87,6 +94,6 @@ interface LiveRepository {
     /** The messages of a recording between two moments, at most 60 seconds apart. */
     suspend fun chatReplay(id: String, fromMs: Long, toMs: Long): LiveChatPage
 
-    /** Counts this screen among those watching, and answers how many there are; null when that is unknown. */
+    /** Counts this screen among those watching, and answers how many there are; null when the server does not know. */
     suspend fun beat(id: String, viewerId: String, leaving: Boolean): Long?
 }
