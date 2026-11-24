@@ -49,6 +49,7 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.auth.AuthState
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
+import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.displayLocale
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.home.HomeScreen
@@ -175,8 +176,7 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
     var eventCalendarEnabled by remember { mutableStateOf(false) }
     var quietHoursEnabled by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
-    val pushLocale = AppLanguage.current(context)
-        ?: context.resources.configuration.locales[0]?.language.orEmpty().ifBlank { "en" }
+    val pushLocale = AppLanguage.current(context) ?: currentLocale().language.ifBlank { "en" }
     val pushPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             scope.launch {
