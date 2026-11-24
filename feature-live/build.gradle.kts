@@ -4,13 +4,18 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
-android { namespace = "net.alummahnow.feature.live" }
+android {
+    namespace = "net.alummahnow.feature.live"
+    // A paused player for the screenshot tests (the player UI in its settled state).
+    sourceSets.getByName("test").kotlin.directories.add("../player/src/test/fixtures")
+}
 
 dependencies {
     implementation(project(":core-bridge"))
     implementation(project(":design"))
-    implementation(libs.camera.camera2)
-    implementation(libs.camera.lifecycle)
+    implementation(project(":player"))
+    implementation(libs.compose.adaptive)
+    implementation(libs.compose.adaptive.layout)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     testImplementation(libs.junit)

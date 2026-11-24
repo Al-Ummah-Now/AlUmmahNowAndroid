@@ -50,14 +50,17 @@
                 <data android:path="/app/auth/callback" />
                 <data android:pathPrefix="/en/video/" />
                 <data android:pathPrefix="/en/shorts/" />
+                <data android:pathPrefix="/en/live/" />
                 <data android:pathPrefix="/en/playlist/" />
                 <data android:pathPrefix="/en/post/" />
                 <data android:pathPrefix="/ar/video/" />
                 <data android:pathPrefix="/ar/shorts/" />
+                <data android:pathPrefix="/ar/live/" />
                 <data android:pathPrefix="/ar/playlist/" />
                 <data android:pathPrefix="/ar/post/" />
                 <data android:pathPrefix="/video/" />
                 <data android:pathPrefix="/shorts/" />
+                <data android:pathPrefix="/live/" />
                 <data android:pathPrefix="/playlist/" />
                 <data android:pathPrefix="/post/" />
                 <data android:pathPattern="/en/@.*" />

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="live_title">Live</string>
+    <string name="live_see_all">See all</string>
+    <string name="live_now">Live</string>
+    <string name="live_on_air">On air</string>
+    <string name="live_coming">Upcoming</string>
+    <string name="live_empty">Nothing is live right now.</string>
+    <string name="live_watching">Watching now: %1$s</string>
+    <string name="live_premiere">Premiere</string>
+    <string name="live_return">Return to live</string>
+    <string name="live_soon">Starting soon</string>
+    <string name="live_soon_body">It plays here as soon as it starts.</string>
+    <string name="live_scheduled_for">Scheduled for %1$s</string>
+    <string name="live_ended">This live stream has ended.</string>
+    <string name="live_recording_preparing">The recording is being prepared. Check back soon.</string>
+    <string name="live_cancelled">This live stream was canceled.</string>
+    <string name="live_premiere_in">Premieres in</string>
+    <string name="live_premiere_starting">Starting now…</string>
+    <string name="live_premiere_together">Everyone watches it together, from the same moment.</string>
+    <string name="live_premiere_ended">This premiere has ended. Its video isn’t available.</string>
+    <string name="live_premiere_cancelled">This premiere was canceled.</string>
+    <string name="live_chat">Live chat</string>
+    <string name="live_chat_replay">Chat replay</string>
+    <string name="live_chat_empty">No messages yet.</string>
+    <string name="live_chat_replay_empty">Messages appear here as the recording plays.</string>
+    <string name="live_chat_pinned">Pinned</string>
+    <string name="live_chat_host">Host</string>
+    <string name="live_chat_moderator">Moderator</string>
+    <string name="live_event_filter">Event: %1$s</string>
+    <string name="live_event_all">All</string>
+    <string name="live_event_jumuah">Jumu’ah</string>
+    <string name="live_event_taraweeh">Taraweeh</string>
+    <string name="live_event_conference">Conference</string>
+    <string name="live_event_halqa">Halqa</string>
+    <string name="notification_liveSoon" tools:ignore="UnusedResources">%1$s: %2$s starts soon</string>
+    <string name="notification_premiereCancelled" tools:ignore="UnusedResources">“%1$s” couldn’t be shown. The video is unchanged.</string>
+    <plurals name="live_premiere_in_days">
+        <item quantity="one">Premieres in %1$s day</item>
+        <item quantity="other">Premieres in %1$s days</item>
+    </plurals>
+</resources>

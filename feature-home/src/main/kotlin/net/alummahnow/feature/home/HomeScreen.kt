@@ -62,7 +62,9 @@ fun HomeScreen(
     onVideoClick: (String) -> Unit,
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Between the header and the rails: what is live (feature-live). Draws nothing when there is none. */
+    liveRail: @Composable (cardWidth: Dp) -> Unit = {}
 ) {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
@@ -73,6 +75,7 @@ fun HomeScreen(
                 val cardWidth = railCardWidth()
                 LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
                     item(key = "header") { HomeHeader(onOpenSettings) }
+                    item(key = "live") { liveRail(cardWidth) }
                     items(state.rails, key = { it.kind.name }) { rail ->
                         VideoRail(
                             title = stringResource(rail.kind.titleRes()),

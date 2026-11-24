@@ -8,7 +8,7 @@ import java.net.URLDecoder
  * An in-app destination for a link to the videos site (Android App Links) or a custom-scheme link.
  *
  * The site paths each app claims are fixed by the server's `assetlinks.json` table (NAT-REL contract):
- * viewer: `/app/auth/callback`, `/{en,ar}/video/…`, `/shorts/…`, `/playlist/…`, `/post/…`, `/@…` (each also
+ * viewer: `/app/auth/callback`, `/{en,ar}/video/…`, `/shorts/…`, `/live/…`, `/playlist/…`, `/post/…`, `/@…` (each also
  * without the locale prefix); Studio: `/app/studio/…` and `/{en,ar}/studio/…`.
  */
 sealed interface AppLink {
@@ -17,6 +17,7 @@ sealed interface AppLink {
 
     data class Video(val id: String, override val lang: String? = null) : AppLink
     data class Short(val id: String, override val lang: String? = null) : AppLink
+    data class Live(val id: String, override val lang: String? = null) : AppLink
     data class Playlist(val id: String, override val lang: String? = null) : AppLink
     data class Post(val id: String, override val lang: String? = null) : AppLink
 
@@ -85,6 +86,7 @@ object AppLinkParser {
             id == null -> null
             head == "video" -> AppLink.Video(id, lang)
             head == "shorts" -> AppLink.Short(id, lang)
+            head == "live" -> AppLink.Live(id, lang)
             head == "playlist" -> AppLink.Playlist(id, lang)
             head == "post" -> AppLink.Post(id, lang)
             else -> null
