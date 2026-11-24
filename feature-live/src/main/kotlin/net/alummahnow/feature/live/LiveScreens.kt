@@ -59,6 +59,7 @@ import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.components.LanternLoader
 import net.alummahnow.design.components.SectionHeader
 import net.alummahnow.design.components.fanousMaterial
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.player.MediaItems
@@ -123,7 +124,7 @@ private fun EventFilter(chosen: LiveEventType?, onEvent: (LiveEventType?) -> Uni
     var open by remember { mutableStateOf(false) }
     Box(Modifier.padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.sm)) {
         FanousButton(
-            stringResource(R.string.live_event_filter, stringResource(eventLabel(chosen))),
+            aunString(R.string.live_event_filter, stringResource(eventLabel(chosen))),
             onClick = { open = true },
             kind = FanousButtonKind.Secondary,
             modifier = Modifier.testTag("live-event-filter")
