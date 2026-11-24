@@ -151,6 +151,43 @@ class CreatorTermsAndLinksTest {
     }
 
     @Test
+    fun `requireTerms bumps generation so an earlier in-flight load cannot reopen Accepted`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val staleLoad = CompletableDeferred<CreatorAccess>()
+            var calls = 0
+            val baseRepo = FakeRepository()
+            val repo = object : net.alummahnow.core.bridge.studio.StudioRepository by baseRepo {
+                override suspend fun creatorAccess(): CreatorAccess {
+                    calls++
+                    return if (calls == 2) {
+                        staleLoad.await()
+                    } else {
+                        CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = true)
+                    }
+                }
+            }
+            val vm = CreatorTermsViewModel(repo)
+            advanceUntilIdle()
+            assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+
+            // Start a background refresh, then requireTerms() before that refresh resolves.
+            vm.refresh()
+            advanceUntilIdle()
+            vm.requireTerms()
+            assertTrue(vm.state.value is CreatorTermsUiState.Required)
+
+            // Resolving the stale refresh with termsAccepted=true must NOT clear Required.
+            staleLoad.complete(CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = true))
+            advanceUntilIdle()
+            assertTrue(vm.state.value is CreatorTermsUiState.Required)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `CreatorTermsViewModel ignores refresh while saving and ignores stale load after accept`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)

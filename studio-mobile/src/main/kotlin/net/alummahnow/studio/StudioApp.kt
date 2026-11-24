@@ -38,6 +38,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.io.File
+import java.net.URI
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
@@ -154,9 +156,11 @@ fun StudioApp(
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { termsModel.refresh() }
     val termsState by termsModel.state.collectAsStateWithLifecycle()
+    val appContext = LocalContext.current.applicationContext
     // Scoped to the active account (so an account switch never leaks files) and keyed by channelId (so channel
     // switches, multiple exports, and process recreation all keep queued editor exports until Terms are accepted).
-    var pendingEditorExports by rememberSaveable(current.userId, stateSaver = PendingExportsSaver) {
+    val exportsSaver = remember(current.userId) { pendingExportsSaver(current.userId) }
+    var pendingEditorExports by rememberSaveable(current.userId, stateSaver = exportsSaver) {
         mutableStateOf<Map<String, List<PickedFile>>>(emptyMap())
     }
 
@@ -259,18 +263,11 @@ fun StudioApp(
                                         pendingEditorExports = pendingEditorExports - selected.id
                                     }
                                 }
-                                val uploadState by upload.state.collectAsStateWithLifecycle()
-                                LaunchedEffect(uploadState.queue) {
-                                    if (uploadState.queue.any { it.error?.contains("terms_required", ignoreCase = true) == true }) {
-                                        termsModel.requireTerms()
-                                    }
-                                }
                                 UploadRoute(upload)
                             }
                         }
                         StudioTab.ANALYTICS -> AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
                         StudioTab.EDITOR -> {
-                            val appContext = LocalContext.current.applicationContext
                             val editor: EditorViewModel = viewModel(key = "editor-$key") {
                                 EditorViewModel(
                                     RetrieverDurationProbe(appContext),
@@ -312,6 +309,8 @@ fun StudioApp(
             channel = selected,
             onSwitchAccount = {
                 sheetOpen = false
+                clearPendingEditorExportFiles(editorExportDir(appContext), pendingEditorExports)
+                pendingEditorExports = emptyMap()
                 runCatching { session.switchTo(it) }.onFailure { e -> AunLog.e("auth", "switch failed", e) }
             },
             onAddAccount = {
@@ -320,6 +319,10 @@ fun StudioApp(
             },
             onSignOut = { userId ->
                 sheetOpen = false
+                if (userId == current.userId) {
+                    clearPendingEditorExportFiles(editorExportDir(appContext), pendingEditorExports)
+                    pendingEditorExports = emptyMap()
+                }
                 scope.launch {
                     attempt("auth", "sign-out") { session.signOut(userId) }.fold(
                         onSuccess = { logoutUrl ->
@@ -390,14 +393,29 @@ internal fun enqueuePendingExport(
     return current + (channelId to (existing + file).distinctBy { it.uri })
 }
 
-/** Bundle-safe saver for pending editor exports keyed by channel ID. */
-internal val PendingExportsSaver: Saver<Map<String, List<PickedFile>>, ArrayList<ArrayList<String>>> = Saver(
+/** Deletes staged `file://` exports inside [exportDir] when switching or signing out of an account. */
+internal fun clearPendingEditorExportFiles(exportDir: File, exports: Map<String, List<PickedFile>>) {
+    val root = runCatching { exportDir.canonicalFile }.getOrNull() ?: return
+    exports.values.flatten().forEach { picked ->
+        runCatching {
+            val uri = URI(picked.uri)
+            if (uri.scheme == "file") {
+                val file = File(uri).canonicalFile
+                if (file.path.startsWith(root.path + File.separator)) file.delete()
+            }
+        }
+    }
+}
+
+/** Bundle-safe saver for pending editor exports keyed by channel ID and scoped to [userId]. */
+internal fun pendingExportsSaver(userId: String): Saver<Map<String, List<PickedFile>>, ArrayList<ArrayList<String>>> = Saver(
     save = { map ->
         ArrayList<ArrayList<String>>().apply {
             map.forEach { (channelId, files) ->
                 files.forEach { f ->
                     add(
                         arrayListOf(
+                            userId,
                             channelId,
                             f.uri,
                             f.name,
@@ -412,14 +430,14 @@ internal val PendingExportsSaver: Saver<Map<String, List<PickedFile>>, ArrayList
     restore = { rows ->
         buildMap<String, MutableList<PickedFile>> {
             rows.forEach { row ->
-                if (row.size >= 5) {
+                if (row.size >= 6 && row[0] == userId) {
                     val file = PickedFile(
-                        uri = row[1],
-                        name = row[2],
-                        sizeBytes = row[3].toLongOrNull() ?: 0L,
-                        mimeType = row[4].ifEmpty { null }
+                        uri = row[2],
+                        name = row[3],
+                        sizeBytes = row[4].toLongOrNull() ?: 0L,
+                        mimeType = row[5].ifEmpty { null }
                     )
-                    getOrPut(row[0]) { mutableListOf() }.add(file)
+                    getOrPut(row[1]) { mutableListOf() }.add(file)
                 }
             }
         }
