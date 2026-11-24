@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
@@ -16,9 +18,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -28,6 +32,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.SupportLinks
+import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.channels.AccountSheet
@@ -52,20 +57,25 @@ import org.robolectric.annotation.GraphicsMode
 class CreatorTermsAndLinksTest {
     @get:Rule val compose = createComposeRule()
 
+    private val prodHost = "videos.alummahnow.net"
+    private val qaHost = "videos.qa.alummahnow.net"
+
     @Test
     fun `SupportLinks resolves English, Arabic, and QA host URLs`() {
-        assertEquals("https://videos.alummahnow.net/en/help", SupportLinks.helpUrl("en"))
-        assertEquals("https://videos.alummahnow.net/ar/help", SupportLinks.helpUrl("ar"))
-        assertEquals("https://videos.alummahnow.net/en/contact", SupportLinks.contactUrl("en"))
-        assertEquals("https://videos.alummahnow.net/ar/contact", SupportLinks.contactUrl("ar"))
-        assertEquals("https://www.alummahnow.net/en/privacy/", SupportLinks.privacyUrl("en"))
-        assertEquals("https://www.alummahnow.net/ar/privacy/", SupportLinks.privacyUrl("ar"))
-        assertEquals("https://www.alummahnow.net/en/terms/", SupportLinks.termsUrl("en"))
-        assertEquals("https://www.alummahnow.net/ar/terms/", SupportLinks.termsUrl("ar"))
-        assertEquals("https://videos.alummahnow.net/ar/community-guidelines", SupportLinks.communityGuidelinesUrl("ar"))
-        assertEquals("https://videos.qa.alummahnow.net/en/help", SupportLinks.helpUrl("en", "videos.qa.alummahnow.net"))
-        assertEquals("https://www.qa.alummahnow.net/ar/privacy/", SupportLinks.privacyUrl("ar", "videos.qa.alummahnow.net"))
-        assertEquals("https://www.qa.alummahnow.net/en/terms/", SupportLinks.termsUrl("en", "videos.qa.alummahnow.net"))
+        assertEquals("https://videos.alummahnow.net/en/help", SupportLinks.helpUrl("en", prodHost))
+        assertEquals("https://videos.alummahnow.net/ar/help", SupportLinks.helpUrl("ar", prodHost))
+        assertEquals("https://videos.alummahnow.net/en/contact", SupportLinks.contactUrl("en", prodHost))
+        assertEquals("https://videos.alummahnow.net/ar/contact", SupportLinks.contactUrl("ar", prodHost))
+        assertEquals("https://www.alummahnow.net/en/privacy/", SupportLinks.privacyUrl("en", prodHost))
+        assertEquals("https://www.alummahnow.net/ar/privacy/", SupportLinks.privacyUrl("ar", prodHost))
+        assertEquals("https://www.alummahnow.net/en/terms/", SupportLinks.termsUrl("en", prodHost))
+        assertEquals("https://www.alummahnow.net/ar/terms/", SupportLinks.termsUrl("ar", prodHost))
+        assertEquals("https://videos.alummahnow.net/ar/community-guidelines", SupportLinks.communityGuidelinesUrl("ar", prodHost))
+        assertEquals("https://videos.qa.alummahnow.net/en/help", SupportLinks.helpUrl("en", qaHost))
+        assertEquals("https://videos.qa.alummahnow.net/ar/contact", SupportLinks.contactUrl("ar", qaHost))
+        assertEquals("https://videos.qa.alummahnow.net/en/community-guidelines", SupportLinks.communityGuidelinesUrl("en", qaHost))
+        assertEquals("https://www.qa.alummahnow.net/ar/privacy/", SupportLinks.privacyUrl("ar", qaHost))
+        assertEquals("https://www.qa.alummahnow.net/en/terms/", SupportLinks.termsUrl("en", qaHost))
     }
 
     @Test
@@ -94,7 +104,7 @@ class CreatorTermsAndLinksTest {
             advanceUntilIdle()
             assertTrue(vm.state.value is CreatorTermsUiState.Required)
 
-            // Failed POST keeps Required with errorRes
+            // Failed POST (503 and 404) keeps Required with errorRes
             repo.acceptTermsError = CoreError.Http(503)
             vm.accept()
             advanceUntilIdle()
@@ -102,18 +112,81 @@ class CreatorTermsAndLinksTest {
             assertEquals(R.string.studio_terms_error, afterFail.errorRes)
             assertEquals(false, afterFail.saving)
 
+            repo.acceptTermsError = CoreError.NotFound("Not Found")
+            vm.accept()
+            advanceUntilIdle()
+            val after404 = vm.state.value as CreatorTermsUiState.Required
+            assertEquals(R.string.studio_terms_error, after404.errorRes)
+            assertEquals(false, after404.saving)
+
             // Successful POST transitions to Accepted
             repo.acceptTermsError = null
             vm.accept()
             advanceUntilIdle()
             assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
-            assertEquals(2, repo.acceptTermsCalls)
+            assertEquals(3, repo.acceptTermsCalls)
+
+            // Mid-session server terms bump: Accepted -> Required on refresh()
+            repo.termsAccepted = false
+            vm.refresh()
+            advanceUntilIdle()
+            assertTrue(vm.state.value is CreatorTermsUiState.Required)
+
+            // Server 403 terms_required on upload reopens gate via requireTerms()
+            repo.termsAccepted = true
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+            vm.requireTerms()
+            assertTrue(vm.state.value is CreatorTermsUiState.Required)
 
             // Older server omitting termsAccepted (null) falls through to Accepted
             val compatRepo = FakeRepository().apply { termsAccepted = null }
             val compatVm = CreatorTermsViewModel(compatRepo)
             advanceUntilIdle()
             assertEquals(CreatorTermsUiState.Accepted, compatVm.state.value)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `CreatorTermsViewModel ignores refresh while saving and ignores stale load after accept`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val staleLoad = CompletableDeferred<CreatorAccess>()
+            var loadCount = 0
+            val baseRepo = FakeRepository()
+            val repo = object : net.alummahnow.core.bridge.studio.StudioRepository by baseRepo {
+                override suspend fun creatorAccess(): CreatorAccess {
+                    loadCount++
+                    return if (loadCount == 2) {
+                        staleLoad.await()
+                    } else {
+                        CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = false)
+                    }
+                }
+            }
+            val vm = CreatorTermsViewModel(repo)
+            advanceUntilIdle()
+            assertTrue(vm.state.value is CreatorTermsUiState.Required)
+
+            // Start a background refresh that will resolve late with false
+            vm.refresh()
+            assertEquals(1, loadCount) // queued on dispatcher
+            // Immediately accept; refresh() while saving is a no-op
+            vm.accept()
+            val savingState = vm.state.value as CreatorTermsUiState.Required
+            assertTrue(savingState.saving)
+            vm.refresh() // ignored while saving
+            advanceUntilIdle()
+            assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+
+            // Stale load from before accept completes with termsAccepted = false -> must NOT revert Accepted
+            staleLoad.complete(CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = false))
+            advanceUntilIdle()
+            assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
         } finally {
             Dispatchers.resetMain()
         }
@@ -130,7 +203,8 @@ class CreatorTermsAndLinksTest {
                     saving = false,
                     error = null,
                     onOpenUrl = { opened += it },
-                    onAgree = { agreed++ }
+                    onAgree = { agreed++ },
+                    webHost = prodHost
                 )
             }
         }
@@ -164,7 +238,8 @@ class CreatorTermsAndLinksTest {
                     onSignOut = {},
                     onSwitchChannel = {},
                     onDismiss = {},
-                    onOpenUrl = { opened += it }
+                    onOpenUrl = { opened += it },
+                    webHost = prodHost
                 )
             }
         }
@@ -186,15 +261,22 @@ class CreatorTermsAndLinksTest {
     // --- Screenshots ---
 
     private val gate = @androidx.compose.runtime.Composable {
-        CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {})
+        CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {}, webHost = prodHost)
+    }
+
+    private val gateFont200 = @androidx.compose.runtime.Composable {
+        val current = LocalDensity.current
+        CompositionLocalProvider(LocalDensity provides Density(current.density, fontScale = 2f)) {
+            CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {}, webHost = prodHost)
+        }
     }
 
     private val gateChecked = @androidx.compose.runtime.Composable {
-        CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {}, initialChecked = true)
+        CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {}, webHost = prodHost, initialChecked = true)
     }
 
     private val gateSaving = @androidx.compose.runtime.Composable {
-        CreatorTermsGate(saving = true, error = null, onOpenUrl = {}, onAgree = {}, initialChecked = true)
+        CreatorTermsGate(saving = true, error = null, onOpenUrl = {}, onAgree = {}, webHost = prodHost, initialChecked = true)
     }
 
     private val gateError = @androidx.compose.runtime.Composable {
@@ -203,6 +285,7 @@ class CreatorTermsAndLinksTest {
             error = androidx.compose.ui.res.stringResource(R.string.studio_terms_error),
             onOpenUrl = {},
             onAgree = {},
+            webHost = prodHost,
             initialChecked = true
         )
     }
@@ -229,7 +312,8 @@ class CreatorTermsAndLinksTest {
                     onRequestSignOut = {},
                     onSwitchChannel = {},
                     onDismiss = {},
-                    onOpenUrl = {}
+                    onOpenUrl = {},
+                    webHost = prodHost
                 )
             }
         }
@@ -262,6 +346,16 @@ class CreatorTermsAndLinksTest {
     @Test fun creatorTermsGateErrorArLight() = shoot("creator_terms_gate_error", Lang.AR, ThemeMode.LIGHT, content = gateError)
 
     @Test fun creatorTermsGateFailedEnDark() = shoot("creator_terms_gate_failed", Lang.EN, ThemeMode.DARK, content = gateFailed)
+
+    @Test fun creatorTermsGateFailedEnLight() = shoot("creator_terms_gate_failed", Lang.EN, ThemeMode.LIGHT, content = gateFailed)
+
+    @Test fun creatorTermsGateFailedArDark() = shoot("creator_terms_gate_failed", Lang.AR, ThemeMode.DARK, content = gateFailed)
+
+    @Test fun creatorTermsGateFailedArLight() = shoot("creator_terms_gate_failed", Lang.AR, ThemeMode.LIGHT, content = gateFailed)
+
+    @Test fun creatorTermsGateFont200EnDark() = shoot("creator_terms_gate_font200", Lang.EN, ThemeMode.DARK, content = gateFont200)
+
+    @Test fun creatorTermsGateFont200ArLight() = shoot("creator_terms_gate_font200", Lang.AR, ThemeMode.LIGHT, content = gateFont200)
 
     @Test fun accountSheetLinksEnDark() = shoot("account_sheet_links", Lang.EN, ThemeMode.DARK, content = accountSheetWithLinks)
 

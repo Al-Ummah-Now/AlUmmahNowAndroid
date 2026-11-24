@@ -5,25 +5,29 @@ package net.alummahnow.core.bridge
  * (Play UGC and User Data policies; App Store 1.2 and 5.1.1(i)).
  */
 object SupportLinks {
-    const val DEFAULT_WEB_HOST: String = "videos.alummahnow.net"
-
     private fun locale(language: String): String = if (language.lowercase().startsWith("ar")) "ar" else "en"
 
     private fun wwwHost(webHost: String): String =
-        if (webHost.contains(".qa.", ignoreCase = true)) "www.qa.alummahnow.net" else "www.alummahnow.net"
+        if (webHost.equals("videos.qa.alummahnow.net", ignoreCase = true) ||
+            webHost.endsWith(".qa.alummahnow.net", ignoreCase = true)
+        ) {
+            "www.qa.alummahnow.net"
+        } else {
+            "www.alummahnow.net"
+        }
 
-    fun helpUrl(language: String, webHost: String = DEFAULT_WEB_HOST): String =
+    fun helpUrl(language: String, webHost: String): String =
         "https://$webHost/${locale(language)}/help"
 
-    fun contactUrl(language: String, webHost: String = DEFAULT_WEB_HOST): String =
+    fun contactUrl(language: String, webHost: String): String =
         "https://$webHost/${locale(language)}/contact"
 
-    fun communityGuidelinesUrl(language: String, webHost: String = DEFAULT_WEB_HOST): String =
+    fun communityGuidelinesUrl(language: String, webHost: String): String =
         "https://$webHost/${locale(language)}/community-guidelines"
 
-    fun privacyUrl(language: String, webHost: String = DEFAULT_WEB_HOST): String =
+    fun privacyUrl(language: String, webHost: String): String =
         "https://${wwwHost(webHost)}/${locale(language)}/privacy/"
 
-    fun termsUrl(language: String, webHost: String = DEFAULT_WEB_HOST): String =
+    fun termsUrl(language: String, webHost: String): String =
         "https://${wwwHost(webHost)}/${locale(language)}/terms/"
 }
