@@ -106,7 +106,16 @@ class CoreStudioRepository(
 
     override suspend fun creatorAccess(): CreatorAccess {
         val r = J.parse(call("GET", "/api/me/creator")).unwrap().obj() ?: JsonObject(emptyMap())
-        return CreatorAccess(r.b("canUpload") == true, r.b("canCreateChannel") == true, r.o("tier")?.s("name"))
+        return CreatorAccess(
+            canUpload = r.b("canUpload") == true,
+            canCreateChannel = r.b("canCreateChannel") == true,
+            tierName = r.o("tier")?.s("name"),
+            termsAccepted = r.b("termsAccepted")
+        )
+    }
+
+    override suspend fun acceptCreatorTerms() {
+        call("POST", "/api/me/creator/terms")
     }
 
     override suspend fun features(channelId: String?): UserFeatures =

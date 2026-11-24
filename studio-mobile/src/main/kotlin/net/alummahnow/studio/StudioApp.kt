@@ -78,6 +78,7 @@ import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
 import net.alummahnow.feature.studio.studioText
+import net.alummahnow.feature.studio.terms.CreatorTermsGate
 import net.alummahnow.feature.upload.PickedFile
 import net.alummahnow.feature.upload.UploadRoute
 import net.alummahnow.feature.upload.UploadViewModel
@@ -143,6 +144,12 @@ fun StudioApp(
     val snackbar = remember { SnackbarHostState() }
     val resources = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
+    var termsAccepted by remember(current.userId) { mutableStateOf<Boolean?>(null) }
+    var savingTerms by remember(current.userId) { mutableStateOf(false) }
+    var termsError by remember(current.userId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(current.userId) {
+        termsAccepted = runCatching { container.repository.creatorAccess().termsAccepted }.getOrNull()
+    }
     val selected = (channelsState as? ChannelsUiState.Content)?.selected
     LaunchedEffect(pendingLink, channelsState) {
         val link = pendingLink ?: return@LaunchedEffect
@@ -218,10 +225,39 @@ fun StudioApp(
                     when (t) {
                         StudioTab.CONTENT -> ContentRoute(content, onEdit = { editing = it })
                         StudioTab.UPLOAD -> {
-                            val upload: UploadViewModel = viewModel(key = "upload-$key") {
-                                UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                            if (termsAccepted == false) {
+                                CreatorTermsGate(
+                                    saving = savingTerms,
+                                    error = termsError,
+                                    onOpenUrl = { openInBrowser(it) },
+                                    onAgree = {
+                                        if (savingTerms) return@CreatorTermsGate
+                                        savingTerms = true
+                                        termsError = null
+                                        scope.launch {
+                                            try {
+                                                attempt("studio", "accept-terms") {
+                                                    container.repository.acceptCreatorTerms()
+                                                }.fold(
+                                                    onSuccess = { termsAccepted = true },
+                                                    onFailure = {
+                                                        termsError = resources.getString(
+                                                            net.alummahnow.feature.studio.R.string.studio_terms_error
+                                                        )
+                                                    }
+                                                )
+                                            } finally {
+                                                savingTerms = false
+                                            }
+                                        }
+                                    }
+                                )
+                            } else {
+                                val upload: UploadViewModel = viewModel(key = "upload-$key") {
+                                    UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                                }
+                                UploadRoute(upload)
                             }
-                            UploadRoute(upload)
                         }
                         StudioTab.ANALYTICS -> AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
                         StudioTab.EDITOR -> {
@@ -293,7 +329,8 @@ fun StudioApp(
                 }
             } else {
                 null
-            }
+            },
+            onOpenUrl = { openInBrowser(it) }
         )
     }
 }

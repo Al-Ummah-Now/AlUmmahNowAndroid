@@ -6,5 +6,9 @@
     <string name="settings_theme_light">الرَّق (فاتح)</string>
     <string name="settings_language">اللغة</string>
     <string name="settings_language_system">مطابقة الجهاز</string>
+    <string name="settings_help">المساعدة</string>
+    <string name="settings_contact">تواصل معنا</string>
+    <string name="settings_privacy_policy">سياسة الخصوصية</string>
+    <string name="settings_terms_of_service">شروط الخدمة</string>
     <string name="launcher_name">الأمة الآن</string>
 </resources>

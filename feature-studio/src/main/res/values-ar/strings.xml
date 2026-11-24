@@ -162,4 +162,15 @@
         <item quantity="other">%1$d تعليق بانتظار المراجعة.</item>
     </plurals>
     <string name="studio_dashboard_section_failed">تعذّر تحميل هذا القسم.</string>
+    <string name="studio_help">المساعدة</string>
+    <string name="studio_contact">تواصل معنا</string>
+    <string name="studio_privacy_policy">سياسة الخصوصية</string>
+    <string name="studio_terms_of_service">شروط الخدمة</string>
+    <string name="studio_community_guidelines">إرشادات المجتمع</string>
+    <string name="studio_terms_title">الموافقة على الشروط قبل الرفع</string>
+    <string name="studio_terms_body">قبل رفع أول مرئي لك، يرجى مراجعة شروط الخدمة وإرشادات المجتمع والموافقة عليها.</string>
+    <string name="studio_terms_checkbox">قرأتُ شروط الخدمة وإرشادات المجتمع وأوافق عليهما.</string>
+    <string name="studio_terms_agree">أوافق وأتابع</string>
+    <string name="studio_terms_saving">جارٍ الحفظ…</string>
+    <string name="studio_terms_error">تعذّر حفظ موافقتك. حاول مرة أخرى.</string>
 </resources>
