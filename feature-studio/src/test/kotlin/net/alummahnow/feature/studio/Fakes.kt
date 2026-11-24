@@ -127,6 +127,10 @@ class FakeRepository : StudioRepository {
     var countsError: Exception? = null
     var countsMissing = false
     var canUpload = true
+    var termsAccepted: Boolean? = true
+    var creatorAccessError: Exception? = null
+    var acceptTermsError: Exception? = null
+    var acceptTermsCalls = 0
     val bulkCalls = mutableListOf<Pair<List<String>, BulkChanges>>()
     val queries = mutableListOf<ContentQuery>()
 
@@ -135,7 +139,16 @@ class FakeRepository : StudioRepository {
         return channels
     }
 
-    override suspend fun creatorAccess() = CreatorAccess(canUpload = canUpload, canCreateChannel = false, tierName = "Creator")
+    override suspend fun creatorAccess(): CreatorAccess {
+        creatorAccessError?.let { throw it }
+        return CreatorAccess(canUpload = canUpload, canCreateChannel = false, tierName = "Creator", termsAccepted = termsAccepted)
+    }
+
+    override suspend fun acceptCreatorTerms() {
+        acceptTermsCalls++
+        acceptTermsError?.let { throw it }
+        termsAccepted = true
+    }
 
     override suspend fun features(channelId: String?): UserFeatures {
         featuresCalls++

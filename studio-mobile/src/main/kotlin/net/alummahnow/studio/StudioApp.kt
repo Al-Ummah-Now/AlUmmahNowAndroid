@@ -78,7 +78,11 @@ import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
 import net.alummahnow.feature.studio.studioText
+import net.alummahnow.feature.studio.terms.CreatorTermsError
 import net.alummahnow.feature.studio.terms.CreatorTermsGate
+import net.alummahnow.feature.studio.terms.CreatorTermsLoading
+import net.alummahnow.feature.studio.terms.CreatorTermsUiState
+import net.alummahnow.feature.studio.terms.CreatorTermsViewModel
 import net.alummahnow.feature.upload.PickedFile
 import net.alummahnow.feature.upload.UploadRoute
 import net.alummahnow.feature.upload.UploadViewModel
@@ -144,11 +148,18 @@ fun StudioApp(
     val snackbar = remember { SnackbarHostState() }
     val resources = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
-    var termsAccepted by remember(current.userId) { mutableStateOf<Boolean?>(null) }
-    var savingTerms by remember(current.userId) { mutableStateOf(false) }
-    var termsError by remember(current.userId) { mutableStateOf<String?>(null) }
-    LaunchedEffect(current.userId) {
-        termsAccepted = runCatching { container.repository.creatorAccess().termsAccepted }.getOrNull()
+    val termsModel: CreatorTermsViewModel = viewModel(key = "terms-${current.userId}") {
+        CreatorTermsViewModel(container.repository)
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { termsModel.refresh() }
+    val termsState by termsModel.state.collectAsStateWithLifecycle()
+
+    fun openExternalLink(url: String) {
+        if (!openInBrowser(url)) {
+            scope.launch {
+                snackbar.showSnackbar(resources.getString(net.alummahnow.feature.studio.R.string.studio_signin_no_browser))
+            }
+        }
     }
     val selected = (channelsState as? ChannelsUiState.Content)?.selected
     LaunchedEffect(pendingLink, channelsState) {
@@ -225,38 +236,21 @@ fun StudioApp(
                     when (t) {
                         StudioTab.CONTENT -> ContentRoute(content, onEdit = { editing = it })
                         StudioTab.UPLOAD -> {
-                            if (termsAccepted == false) {
-                                CreatorTermsGate(
-                                    saving = savingTerms,
-                                    error = termsError,
-                                    onOpenUrl = { openInBrowser(it) },
-                                    onAgree = {
-                                        if (savingTerms) return@CreatorTermsGate
-                                        savingTerms = true
-                                        termsError = null
-                                        scope.launch {
-                                            try {
-                                                attempt("studio", "accept-terms") {
-                                                    container.repository.acceptCreatorTerms()
-                                                }.fold(
-                                                    onSuccess = { termsAccepted = true },
-                                                    onFailure = {
-                                                        termsError = resources.getString(
-                                                            net.alummahnow.feature.studio.R.string.studio_terms_error
-                                                        )
-                                                    }
-                                                )
-                                            } finally {
-                                                savingTerms = false
-                                            }
-                                        }
-                                    }
+                            when (val ts = termsState) {
+                                CreatorTermsUiState.Loading -> CreatorTermsLoading()
+                                CreatorTermsUiState.Failed -> CreatorTermsError(onRetry = termsModel::load)
+                                is CreatorTermsUiState.Required -> CreatorTermsGate(
+                                    saving = ts.saving,
+                                    error = ts.errorRes?.let { resources.getString(it) },
+                                    onOpenUrl = ::openExternalLink,
+                                    onAgree = termsModel::accept
                                 )
-                            } else {
-                                val upload: UploadViewModel = viewModel(key = "upload-$key") {
-                                    UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                                CreatorTermsUiState.Accepted -> {
+                                    val upload: UploadViewModel = viewModel(key = "upload-$key") {
+                                        UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                                    }
+                                    UploadRoute(upload)
                                 }
-                                UploadRoute(upload)
                             }
                         }
                         StudioTab.ANALYTICS -> AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
@@ -273,10 +267,12 @@ fun StudioApp(
                             val upload: UploadViewModel = viewModel(key = "upload-$key") {
                                 UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
                             }
-                            // Upload this video only when the Upload tab is there for this person.
+                            // Upload this video only when the Upload tab is there for this person (and Terms accepted).
                             val send: ((String, String, Long) -> Unit)? = if (StudioTab.UPLOAD in tabs) {
                                 { uri, name, size ->
-                                    upload.addFiles(listOf(PickedFile(uri, name, size, "video/mp4")))
+                                    if (termsState == CreatorTermsUiState.Accepted) {
+                                        upload.addFiles(listOf(PickedFile(uri, name, size, "video/mp4")))
+                                    }
                                     tab = StudioTab.UPLOAD
                                 }
                             } else {
@@ -330,7 +326,7 @@ fun StudioApp(
             } else {
                 null
             },
-            onOpenUrl = { openInBrowser(it) }
+            onOpenUrl = ::openExternalLink
         )
     }
 }

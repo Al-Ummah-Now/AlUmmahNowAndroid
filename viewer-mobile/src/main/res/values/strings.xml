@@ -10,6 +10,7 @@
     <string name="settings_contact">Contact us</string>
     <string name="settings_privacy_policy">Privacy policy</string>
     <string name="settings_terms_of_service">Terms of Service</string>
+    <string name="settings_no_browser">No browser is available to open this page.</string>
     <!-- Launcher (home screen) name; the store listing and app_name keep the full name (owner, 2026-11-20). -->
     <string name="launcher_name">Ummah Now</string>
 </resources>

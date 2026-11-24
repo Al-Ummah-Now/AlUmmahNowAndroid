@@ -105,18 +105,23 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Opens [url] in the browser by package, so the verified App Link does not resolve straight back to this app.
-     * Does nothing when no browser is installed.
+     * Returns false when no browser is installed.
      */
-    private fun openInBrowser(url: String) {
+    internal fun openInBrowser(url: String): Boolean {
         val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://${BuildConfig.WEB_HOST}/"))
         val browser = packageManager.queryIntentActivities(probe, 0)
             .map { it.activityInfo.packageName }
             .firstOrNull { it != packageName }
-            ?: return AunLog.w("links", "no browser for link")
-        try {
+            ?: run {
+                AunLog.w("links", "no browser for link")
+                return false
+            }
+        return try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(browser))
+            true
         } catch (e: ActivityNotFoundException) {
             AunLog.w("links", "browser refused link", "type" to e.javaClass.simpleName)
+            false
         }
     }
 
@@ -240,8 +245,14 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
             onLanguage = { AppLanguage.set(context, it) },
             onDismiss = { settingsOpen = false },
             onOpenUrl = { url ->
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                val activity = context as? MainActivity
+                val opened = activity?.openInBrowser(url) == true
+                if (!opened) {
+                    android.widget.Toast.makeText(
+                        context,
+                        R.string.settings_no_browser,
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         )

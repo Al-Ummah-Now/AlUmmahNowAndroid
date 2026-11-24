@@ -1,6 +1,5 @@
 package net.alummahnow.feature.studio.terms
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,8 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import net.alummahnow.core.bridge.SupportLinks
@@ -49,9 +52,10 @@ fun CreatorTermsGate(
     error: String?,
     onOpenUrl: (String) -> Unit,
     onAgree: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialChecked: Boolean = false
 ) {
-    var checked by remember { mutableStateOf(false) }
+    var checked by remember { mutableStateOf(initialChecked) }
     val lang = currentLocale().language
     Box(
         modifier = modifier
@@ -94,7 +98,12 @@ fun CreatorTermsGate(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = !saving, role = Role.Checkbox) { checked = !checked }
+                    .toggleable(
+                        value = checked,
+                        enabled = !saving,
+                        role = Role.Checkbox,
+                        onValueChange = { checked = it }
+                    )
                     .padding(vertical = FanousTokens.Spacing.xs)
                     .testTag("creator-terms-checkbox"),
                 verticalAlignment = Alignment.CenterVertically,
@@ -112,7 +121,9 @@ fun CreatorTermsGate(
                     error,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.testTag("creator-terms-error")
+                    modifier = Modifier
+                        .testTag("creator-terms-error")
+                        .semantics { liveRegion = LiveRegionMode.Assertive }
                 )
             }
             FanousButton(
@@ -123,6 +134,55 @@ fun CreatorTermsGate(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("creator-terms-agree")
+            )
+        }
+    }
+}
+
+/** Shown while Creator Terms acceptance status is loading (fail closed). */
+@Composable
+fun CreatorTermsLoading(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .fanousMaterial(FanousMaterialKind.Page, RectangleShape)
+            .testTag("creator-terms-loading"),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator()
+    }
+}
+
+/** Shown when Creator Terms acceptance status could not be loaded (fail closed with Retry). */
+@Composable
+fun CreatorTermsError(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .fanousMaterial(FanousMaterialKind.Page, RectangleShape)
+            .padding(FanousTokens.Spacing.lg)
+            .testTag("creator-terms-failed"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .fanousMaterial(FanousMaterialKind.Card, RoundedCornerShape(FanousTokens.Radius.xl))
+                .padding(FanousTokens.Spacing.xl),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+        ) {
+            Text(
+                stringResource(R.string.studio_terms_error),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            FanousButton(
+                text = stringResource(net.alummahnow.design.R.string.aun_retry),
+                onClick = onRetry,
+                kind = FanousButtonKind.Primary,
+                modifier = Modifier.testTag("creator-terms-retry")
             )
         }
     }

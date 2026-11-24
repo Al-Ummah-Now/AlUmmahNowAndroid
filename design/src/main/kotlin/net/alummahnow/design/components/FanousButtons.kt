@@ -64,7 +64,8 @@ fun FanousButton(
     val surface = when (kind) {
         FanousButtonKind.Primary -> {
             val fill = if (pressed) f.material.primaryPress else f.material.primary
-            Modifier.fanousLayers(fill, CircleShape, shadows = f.material.primaryEdge)
+            val shadows = if (enabled) f.material.primaryEdge else emptyList()
+            Modifier.fanousLayers(fill, CircleShape, shadows = shadows)
         }
         FanousButtonKind.Ghost -> pressedFill
         else -> pressedFill.border(1.dp, outline.color, CircleShape)
