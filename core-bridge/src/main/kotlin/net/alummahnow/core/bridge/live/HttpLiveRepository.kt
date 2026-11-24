@@ -114,7 +114,7 @@ class HttpLiveRepository(
             client.newCall(request).execute().use { response ->
                 when {
                     response.code == 404 -> throw CoreError.NotFound(url.encodedPath)
-                    !response.isSuccessful -> throw CoreError.Http(response.code, response.retryAfterMs())
+                    !response.isSuccessful -> throw CoreError.Http(response.code, response.retryAfterMs(nowMs()))
                     else -> response.body.string()
                 }
             }
@@ -137,9 +137,13 @@ class HttpLiveRepository(
         /** More seconds than any answer means; keeps the arithmetic whole. */
         const val MAX_SECONDS = 86_400L
 
-        fun Response.retryAfterMs(): Long? {
+        /** Seconds, or a date: from the answer's own `Date`, so a device's clock that is wrong does not matter. */
+        fun Response.retryAfterMs(nowMs: Long): Long? {
             if (code != HTTP_TOO_MANY && code != HTTP_UNAVAILABLE) return null
-            return header("Retry-After")?.trim()?.toLongOrNull()?.takeIf { it >= 0 }?.let { minOf(it, MAX_SECONDS) * MS }
+            val seconds = header("Retry-After")?.trim()?.toLongOrNull()
+            if (seconds != null) return seconds.takeIf { it >= 0 }?.let { minOf(it, MAX_SECONDS) * MS }
+            val at = headers.getDate("Retry-After")?.time ?: return null
+            return (at - (headers.getDate("Date")?.time ?: nowMs)).coerceIn(0, MAX_SECONDS * MS)
         }
     }
 }
