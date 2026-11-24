@@ -1,0 +1,90 @@
+package net.alummahnow.feature.live
+
+import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.catalog.CatalogRepository
+import net.alummahnow.core.bridge.live.LiveChatMessage
+import net.alummahnow.core.bridge.live.LiveChatPage
+import net.alummahnow.core.bridge.live.LiveEventType
+import net.alummahnow.core.bridge.live.LiveFeatures
+import net.alummahnow.core.bridge.live.LiveRepository
+import net.alummahnow.core.bridge.live.LiveState
+import net.alummahnow.core.bridge.live.LiveStatus
+import net.alummahnow.core.bridge.live.LiveStream
+import net.alummahnow.core.bridge.model.LocalizedText
+import net.alummahnow.core.bridge.model.Rail
+import net.alummahnow.core.bridge.model.VideoDetail
+import net.alummahnow.core.bridge.model.VideoSummary
+
+internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)) : LiveRepository {
+    var features = LiveFeatures(chat = true, premieres = true, events = true)
+    val lists = mutableMapOf<LiveStatus, List<LiveStream>>()
+    val windows = mutableMapOf<Long, LiveChatPage>()
+    var stateReads = 0
+    var chatReads = 0
+    val beats = mutableListOf<Boolean>()
+    var stateGate: CompletableDeferred<Unit>? = null
+    var askedEvent: LiveEventType? = null
+    var fails = false
+    var chatFails = false
+
+    override suspend fun features() = features
+
+    override suspend fun streams(status: LiveStatus, event: LiveEventType?): List<LiveStream> {
+        if (fails) throw CoreError.Http(503)
+        askedEvent = event
+        return lists[status].orEmpty()
+    }
+
+    override suspend fun stream(id: String) = LiveStream(id, "T", current.status)
+
+    override suspend fun state(id: String): LiveState {
+        stateReads++
+        stateGate?.await()
+        return current
+    }
+
+    override suspend fun chat(id: String): LiveChatPage {
+        chatReads++
+        if (chatFails) throw CoreError.Http(503)
+        return LiveChatPage(listOf(LiveChatMessage("m", "A", "x", 0)))
+    }
+
+    override suspend fun chatReplay(id: String, fromMs: Long, toMs: Long) = windows[fromMs] ?: LiveChatPage(emptyList())
+
+    override suspend fun beat(id: String, viewerId: String, leaving: Boolean): Long? {
+        beats += leaving
+        return 5
+    }
+}
+
+internal class FakeCatalog(private val videos: Set<String> = setOf("v1")) : CatalogRepository {
+    override suspend fun homeRails(): List<Rail> = emptyList()
+
+    override suspend fun video(id: String): VideoDetail {
+        if (id !in videos) throw CoreError.NotFound(id)
+        return VideoDetail(
+            summary = VideoSummary(id, LocalizedText.of("V"), null, 600, 0, null, null, null, null),
+            description = LocalizedText.of(""),
+            playUrl = "https://x.test/v.m3u8",
+            availableResolutions = emptyList(),
+            chapters = emptyList(),
+            subtitles = emptyList(),
+            likes = 0,
+            tags = emptyList(),
+            isLive = false,
+            isReady = true
+        )
+    }
+
+    override suspend fun related(video: VideoDetail, limit: Int): List<VideoSummary> = emptyList()
+
+    override suspend fun search(query: String, limit: Int): List<VideoSummary> = emptyList()
+}
+
+internal class TestClock(var at: Instant = Instant.parse("2026-11-24T18:00:00Z")) {
+    fun advance(seconds: Long) {
+        at = at.plusSeconds(seconds)
+    }
+}

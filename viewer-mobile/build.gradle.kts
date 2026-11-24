@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":design"))
     implementation(project(":player"))
     implementation(project(":feature-home"))
+    implementation(project(":feature-live"))
     implementation(project(":feature-watch"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

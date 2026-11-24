@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="live_title">البث المباشر</string>
+    <string name="live_see_all">عرض الكل</string>
+    <string name="live_now">مباشر</string>
+    <string name="live_on_air">على الهواء</string>
+    <string name="live_coming">القادم</string>
+    <string name="live_empty">لا يوجد بث مباشر الآن.</string>
+    <string name="live_watching">المشاهدون الآن: %1$s</string>
+    <string name="live_premiere">عرض أول</string>
+    <string name="live_return">العودة إلى المباشر</string>
+    <string name="live_soon">يبدأ قريبًا</string>
+    <string name="live_soon_body">سيُعرض هنا فور بدئه.</string>
+    <string name="live_scheduled_for">موعده %1$s</string>
+    <string name="live_ended">انتهى هذا البث المباشر.</string>
+    <string name="live_recording_preparing">يجري تجهيز التسجيل. عُد بعد قليل.</string>
+    <string name="live_cancelled">أُلغي هذا البث المباشر.</string>
+    <string name="live_premiere_in">يبدأ العرض الأول بعد</string>
+    <string name="live_premiere_starting">يبدأ الآن…</string>
+    <string name="live_premiere_together">يشاهده الجميع معًا من اللحظة نفسها.</string>
+    <string name="live_premiere_ended">انتهى هذا العرض الأول، والمرئي غير متاح.</string>
+    <string name="live_premiere_cancelled">أُلغي هذا العرض الأول.</string>
+    <string name="live_chat">محادثة البث المباشر</string>
+    <string name="live_chat_replay">إعادة المحادثة</string>
+    <string name="live_chat_empty">لا رسائل بعد.</string>
+    <string name="live_chat_replay_empty">تظهر الرسائل هنا مع تشغيل التسجيل.</string>
+    <string name="live_chat_pinned">مثبّتة</string>
+    <string name="live_chat_host">المضيف</string>
+    <string name="live_chat_moderator">مشرف</string>
+    <string name="live_event_filter">الفعالية: %1$s</string>
+    <string name="live_event_all">الكل</string>
+    <string name="live_event_jumuah">الجمعة</string>
+    <string name="live_event_taraweeh">التراويح</string>
+    <string name="live_event_conference">مؤتمر</string>
+    <string name="live_event_halqa">حلقة علم</string>
+    <string name="notification_liveSoon" tools:ignore="UnusedResources">%1$s: يبدأ «%2$s» قريبًا</string>
+    <string name="notification_premiereCancelled" tools:ignore="UnusedResources">تعذّر عرض «%1$s». لم يتغيّر المرئي.</string>
+    <plurals name="live_premiere_in_days">
+        <item quantity="zero">العرض الأول اليوم</item>
+        <item quantity="one">يبدأ العرض الأول بعد يوم واحد</item>
+        <item quantity="two">يبدأ العرض الأول بعد يومين</item>
+        <item quantity="few">يبدأ العرض الأول بعد %1$s أيام</item>
+        <item quantity="many">يبدأ العرض الأول بعد %1$s يومًا</item>
+        <item quantity="other">يبدأ العرض الأول بعد %1$s يوم</item>
+    </plurals>
+</resources>

@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -29,7 +30,10 @@ import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.navigation.NavType
@@ -47,6 +51,15 @@ import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.home.HomeScreen
 import net.alummahnow.feature.home.HomeViewModel
+import net.alummahnow.feature.live.LiveListScreen
+import net.alummahnow.feature.live.LiveListUiState
+import net.alummahnow.feature.live.LiveListViewModel
+import net.alummahnow.feature.live.LiveRail
+import net.alummahnow.feature.live.LiveWatchScreen
+import net.alummahnow.feature.live.LiveWatchUiState
+import net.alummahnow.feature.live.LiveWatchViewModel
+import net.alummahnow.feature.live.applyTo
+import net.alummahnow.feature.live.readingOf
 import net.alummahnow.feature.watch.WatchScreen
 import net.alummahnow.feature.watch.WatchViewModel
 import net.alummahnow.player.ui.rememberMediaController
@@ -56,7 +69,7 @@ class MainActivity : ComponentActivity() {
     private var pipEligible = false
     private val inPip = mutableStateOf(false)
 
-    /** Videos and Shorts opened from a link (App Links or `alummahnow://watch/{id}`), delivered once each. */
+    /** Routes opened from a link (App Links or `alummahnow://watch/{id}`), delivered once each. */
     private val links = Channel<String>(Channel.BUFFERED)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,8 +98,9 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         val url = intent?.data?.toString() ?: return
         when (val link = AppLinkParser.parse(url, BuildConfig.WEB_HOST)) {
-            is AppLink.Video -> links.trySend(link.id)
-            is AppLink.Short -> links.trySend(link.id)
+            is AppLink.Video -> links.trySend(Routes.watch(link.id))
+            is AppLink.Short -> links.trySend(Routes.watch(link.id))
+            is AppLink.Live -> links.trySend(Routes.live(link.id))
             // No native screen for these yet: show the page on the site instead of a dead end.
             is AppLink.Playlist, is AppLink.Post, is AppLink.Channel -> openInBrowser(url)
             // The viewer has no sign-in; the app simply opens.
@@ -145,15 +159,18 @@ object Routes {
     const val HOME = "home"
     const val WATCH = "watch/{id}"
     fun watch(id: String) = "watch/$id"
+    const val LIVE_LIST = "live"
+    const val LIVE = "live/{id}"
+    fun live(id: String) = "live/$id"
 }
 
 @Composable
 private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<String>, onPipEligible: (Boolean) -> Unit) {
     val nav = rememberNavController()
     LaunchedEffect(nav) {
-        links.collect { id ->
+        links.collect { route ->
             // Ids are validated by AppLinkParser; a route that still fails is logged, never a crash.
-            runCatching { nav.navigate(Routes.watch(id)) { launchSingleTop = true } }
+            runCatching { nav.navigate(route) { launchSingleTop = true } }
                 .onFailure { AunLog.w("links", "link not routed", "type" to it.javaClass.simpleName) }
         }
     }
@@ -166,9 +183,25 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
         composable(Routes.HOME) {
             val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory(container.catalog))
             val state by vm.state.collectAsStateWithLifecycle()
-            HomeScreen(state, onVideoClick = {
-                nav.navigate(Routes.watch(it))
-            }, onRetry = vm::load, onOpenSettings = { settingsOpen = true })
+            val liveVm: LiveListViewModel = viewModel(factory = LiveListViewModel.Factory(container.live))
+            val live by liveVm.state.collectAsStateWithLifecycle()
+            HomeScreen(
+                state,
+                onVideoClick = { nav.navigate(Routes.watch(it)) },
+                onRetry = {
+                    vm.load()
+                    liveVm.load()
+                },
+                onOpenSettings = { settingsOpen = true },
+                liveRail = { width ->
+                    LiveRail(
+                        (live as? LiveListUiState.Content)?.list?.all.orEmpty(),
+                        onOpen = { nav.navigate(Routes.live(it)) },
+                        onSeeAll = { nav.navigate(Routes.LIVE_LIST) },
+                        cardWidth = width
+                    )
+                }
+            )
         }
         composable(
             Routes.WATCH,
@@ -194,6 +227,14 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
                 onRetry = vm::load
             )
         }
+        composable(Routes.LIVE_LIST) {
+            val vm: LiveListViewModel = viewModel(factory = LiveListViewModel.Factory(container.live))
+            val state by vm.state.collectAsStateWithLifecycle()
+            LiveListScreen(state, onOpen = { nav.navigate(Routes.live(it)) }, onEvent = vm::choose, onRetry = vm::load)
+        }
+        composable(Routes.LIVE, arguments = listOf(navArgument("id") { type = NavType.StringType })) { entry ->
+            LiveWatchRoute(container, entry.arguments?.getString("id").orEmpty(), inPip, onPipEligible)
+        }
     }
     if (settingsOpen) {
         DisplaySettingsSheet(
@@ -205,6 +246,45 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
             onDismiss = { settingsOpen = false }
         )
     }
+}
+
+@Composable
+private fun LiveWatchRoute(container: AppContainer, id: String, inPip: Boolean, onPipEligible: (Boolean) -> Unit) {
+    val vm: LiveWatchViewModel = viewModel(key = id, factory = LiveWatchViewModel.Factory(id, container.live, container.catalog))
+    val state by vm.state.collectAsStateWithLifecycle()
+    val player by rememberMediaController()
+    var fullscreen by remember { mutableStateOf(false) }
+    val activity = LocalActivity.current as? MainActivity
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    PipEligibility(player, onPipEligible)
+    LaunchedEffect(fullscreen) { activity?.setFullscreen(fullscreen) }
+    BackHandler(enabled = fullscreen) { fullscreen = false }
+    DisposableEffect(Unit) { onDispose { activity?.setFullscreen(false) } }
+    // The clock, the polls and the premiere's moment, while the screen is on
+    LaunchedEffect(vm, player) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            vm.run(
+                reading = {
+                    val content = (vm.state.value as? LiveWatchUiState.Content)?.content
+                    player?.let { p -> content?.let { readingOf(p, it) } }
+                },
+                apply = { actions -> player?.let { applyTo(it, actions) } }
+            )
+        }
+    }
+    LiveWatchScreen(
+        state = state,
+        player = player,
+        isFullscreen = fullscreen,
+        isInPictureInPicture = inPip,
+        onToggleFullscreen = { fullscreen = !fullscreen },
+        onReturnToLive = {
+            val moment = vm.returnToLive()
+            player?.let { if (moment == null) it.seekToDefaultPosition() else it.seekTo(moment) }
+            player?.play()
+        },
+        onRetry = vm::load
+    )
 }
 
 /** Keeps PiP eligibility in sync with playback while the watch page is shown. */

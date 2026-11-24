@@ -17,6 +17,9 @@ class AppLinkParserTest {
     @Test fun `shorts, playlist and post`() {
         assertEquals(AppLink.Short("s1", "ar"), parse("/ar/shorts/s1"))
         assertEquals(AppLink.Short("s1"), parse("/shorts/s1/"))
+        assertEquals(AppLink.Live("l1", "en"), parse("/en/live/l1"))
+        assertEquals(AppLink.Live("l1"), parse("/live/l1"))
+        assertNull(parse("/live"))
         assertEquals(AppLink.Playlist("p1", "en"), parse("/en/playlist/p1"))
         assertEquals(AppLink.Post("x1", "ar"), parse("/ar/post/x1"))
         assertEquals(AppLink.Post("x1"), parse("/post/x1"))
