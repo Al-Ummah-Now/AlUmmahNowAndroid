@@ -1,0 +1,21 @@
+{
+  "about": "Play Console → Policy → App content, per app (wiki E20 §4.1, owner decision E20-D1). Entered by hand. ./gradlew checkStoreListings checks every answer is present and every cited file exists. Review at each release and when a feature adds user content, chat, location, purchases or ads. Human-readable: store/play/content-rating.md.",
+  "questions": ["iarcCategory", "usersInteract", "sharesLocation", "digitalPurchases", "unrestrictedInternet", "violence", "graphicViolence", "sexualContent", "language", "controlledSubstances", "gambling", "targetAudience", "appealsToChildren", "restrictMinorAccess", "ads", "category"],
+  "apps": {
+    "viewer": {
+      "package": "net.alummahnow.app",
+      "answers": { "iarcCategory": "Entertainment: video streaming", "usersInteract": "no", "sharesLocation": "no", "digitalPurchases": "no", "unrestrictedInternet": "no", "violence": "infrequent", "graphicViolence": "no", "sexualContent": "no", "language": "no", "controlledSubstances": "references", "gambling": "no", "targetAudience": "13-15,16-17,18+", "appealsToChildren": "no", "restrictMinorAccess": "off", "ads": "no", "category": "Video Players & Editors" },
+      "sources": ["viewer-mobile/src/main/AndroidManifest.xml", "viewer-mobile/src/main/kotlin/net/alummahnow/viewer/AppContainer.kt"]
+    },
+    "viewer-tv": {
+      "package": "net.alummahnow.tv",
+      "answers": { "iarcCategory": "Entertainment: video streaming", "usersInteract": "no", "sharesLocation": "no", "digitalPurchases": "no", "unrestrictedInternet": "no", "violence": "infrequent", "graphicViolence": "no", "sexualContent": "no", "language": "no", "controlledSubstances": "references", "gambling": "no", "targetAudience": "13-15,16-17,18+", "appealsToChildren": "no", "restrictMinorAccess": "off", "ads": "no", "category": "Video Players & Editors" },
+      "sources": ["viewer-tv/src/main/AndroidManifest.xml"]
+    },
+    "studio": {
+      "package": "net.alummahnow.studio",
+      "answers": { "iarcCategory": "Utility: content creation", "usersInteract": "yes", "sharesLocation": "no", "digitalPurchases": "no", "unrestrictedInternet": "no", "violence": "no", "graphicViolence": "no", "sexualContent": "no", "language": "no", "controlledSubstances": "no", "gambling": "no", "targetAudience": "13-15,16-17,18+", "appealsToChildren": "no", "restrictMinorAccess": "off", "ads": "no", "category": "Video Players & Editors" },
+      "sources": ["studio-mobile/src/main/AndroidManifest.xml", "feature-upload/src/main/kotlin/net/alummahnow/feature/upload/UploadScreen.kt"]
+    }
+  }
+}
