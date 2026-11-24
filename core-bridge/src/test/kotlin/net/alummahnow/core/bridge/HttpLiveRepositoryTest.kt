@@ -110,8 +110,11 @@ class HttpLiveRepositoryTest {
     }
 
     @Test fun `a refusal says when to ask again`() = runTest {
-        suspend fun refused(code: Int, header: String?): Long? {
-            server.enqueue(MockResponse.Builder().code(code).apply { if (header != null) addHeader("Retry-After", header) }.build())
+        suspend fun refused(code: Int, header: String?, date: String? = null): Long? {
+            val answer = MockResponse.Builder().code(code)
+            if (header != null) answer.addHeader("Retry-After", header)
+            if (date != null) answer.addHeader("Date", date)
+            server.enqueue(answer.build())
             return (runCatching { repo.chat("s") }.exceptionOrNull() as CoreError.Http).retryAfterMs
         }
         assertEquals(30_000L, refused(429, "30"))
@@ -122,5 +125,14 @@ class HttpLiveRepositoryTest {
         assertNull(refused(503, null))
         assertNull(refused(429, "soon"))
         assertNull(refused(500, "30"))
+        // A date, from the answer's own; without one, from the device's clock
+        val noon = "Tue, 24 Nov 2026 12:00:00 GMT"
+        assertEquals(45_000L, refused(429, "Tue, 24 Nov 2026 12:00:45 GMT", noon))
+        assertEquals(45_000L, refused(503, "Tue, 24 Nov 2026 12:00:45 GMT", noon))
+        assertEquals(0L, refused(429, "Tue, 24 Nov 2026 11:00:00 GMT", noon))
+        assertEquals(86_400_000L, refused(429, "Tue, 24 Nov 2099 12:00:00 GMT", noon))
+        nowMs = 1_795_521_570_000
+        assertEquals(30_000L, refused(429, noon))
+        assertNull(refused(429, "Tue, 24 Nov", noon))
     }
 }
