@@ -13,7 +13,7 @@ question ids, which change; fill the form from the tables below (about five minu
 |---|---|---|
 | Does your app collect or share any of the required user data types? | Viewer and TV: **No**. Studio and Admin: **Yes** | tables below |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** | every base URL is `https://` (`build-logic/convention/src/main/kotlin/AndroidApplicationConventionPlugin.kt`); Admin traffic refuses plain HTTP on every hop (`core-bridge/.../admin/PrivateHttp.kt`) |
-| Do you provide a way for users to request that their data is deleted? | **Yes**: the account deletion page (owner pastes its URL, see `docs/RELEASE.md`) | accounts live on the Auth server, not in the app |
+| Do you provide a way for users to request that their data is deleted? | **Yes**: the account deletion page (owner pastes its URL, see `docs/RELEASE.md`; the page is AlUmmahNowAuth#532, and Studio's in-app path is #62) | accounts live on the Auth server, not in the app |
 | Data shared with third parties? | **No** for every type. Bunny / Cloudflare store and deliver media for us (service providers, which Play does not count as sharing) | — |
 | Crash logs, diagnostics, analytics, advertising ID | **Not collected** by any app: logging goes to the device log only (`core-bridge/.../AunLog.kt`); no analytics, crash-reporting or ads SDK in `gradle/libs.versions.toml` | — |
 | Location, contacts, messages, audio, calendar, health, financial info | **Not collected** | no such permissions in any `AndroidManifest.xml` |
