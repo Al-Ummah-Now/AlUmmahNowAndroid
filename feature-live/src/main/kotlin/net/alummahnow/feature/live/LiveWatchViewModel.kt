@@ -99,8 +99,9 @@ class LiveWatchViewModel(
     private var premiere: PremiereClock? = null
     private var isGone = false
     private var stateAt = Instant.EPOCH
+    private var stateWait: Duration? = null
     private var chatDue = Instant.EPOCH
-    private var beatAt = Instant.EPOCH
+    private var beatDue = Instant.EPOCH
     private val replay = mutableMapOf<Long, List<LiveChatMessage>>()
 
     private val content: LiveWatchContent? get() = (mutableState.value as? LiveWatchUiState.Content)?.content
@@ -116,7 +117,9 @@ class LiveWatchViewModel(
                 coroutineScope {
                     val stream = async { live.stream(streamId) }
                     val liveState = async { live.state(streamId) }
-                    show(LiveWatchContent(stream.await(), liveState.await(), LiveMode.SOON))
+                    val read = liveState.await()
+                    stateWait = pollAfter(read.pollAfterMs)
+                    show(LiveWatchContent(stream.await(), read, LiveMode.SOON))
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -147,8 +150,8 @@ class LiveWatchViewModel(
             }
         } finally {
             // Counted at once on coming back
-            beatAt = Instant.EPOCH
-            if (content?.mode == LiveMode.LIVE) withContext(NonCancellable) { live.beat(streamId, viewerId, leaving = true) }
+            beatDue = Instant.EPOCH
+            if (content?.mode == LiveMode.LIVE) withContext(NonCancellable) { quiet { live.beat(streamId, viewerId, leaving = true) } }
         }
     }
 
@@ -183,13 +186,20 @@ class LiveWatchViewModel(
         if (Duration.between(stateAt, moment) >= stateInterval(content ?: before)) refreshState()
         val current = content ?: return
         refreshChat(current, moment, positionMs)
-        if (current.mode == LiveMode.LIVE && Duration.between(beatAt, moment) >= BEAT) {
-            beatAt = moment
-            live.beat(streamId, viewerId, leaving = false)?.let { count -> update { it.copy(viewers = count) } }
+        if (current.mode == LiveMode.LIVE && moment >= beatDue) {
+            beatDue = moment + BEAT
+            val count = quiet({ beatDue = now() + it }) { live.beat(streamId, viewerId, leaving = false) }
+            if (count != null) update { it.copy(viewers = count) }
         }
     }
 
-    private fun stateInterval(content: LiveWatchContent): Duration = when (content.mode) {
+    /** The server's wait when it gave one, else this app's; nothing is asked of what will not change. */
+    private fun stateInterval(content: LiveWatchContent): Duration {
+        val own = ownInterval(content)
+        return if (own == FOREVER) own else stateWait ?: own
+    }
+
+    private fun ownInterval(content: LiveWatchContent): Duration = when (content.mode) {
         LiveMode.LIVE -> if (content.media == null) DUE_POLL else LIVE_POLL
         // A premiere's time has come: it starts within the minute
         LiveMode.SOON -> if ((content.untilStartMs ?: 1) <= 0) DUE_POLL else SOON_POLL
@@ -199,7 +209,9 @@ class LiveWatchViewModel(
 
     private suspend fun refreshState() {
         stateAt = now()
-        val liveState = quiet { live.state(streamId) } ?: return
+        stateWait = null
+        val liveState = quiet({ stateWait = it }) { live.state(streamId) } ?: return
+        stateWait = pollAfter(liveState.pollAfterMs)
         content?.let { show(it.copy(live = liveState)) }
     }
 
@@ -261,11 +273,11 @@ class LiveWatchViewModel(
             return
         }
         if (moment < chatDue) return
-        val page = quiet { live.chat(streamId) }
+        var refused: Duration? = null
+        val page = quiet({ refused = it }) { live.chat(streamId) }
         chatDue = moment + when {
-            page == null -> CHAT_BACKOFF
-            content.mode == LiveMode.LIVE -> CHAT_POLL
-            else -> CHAT_SOON_POLL
+            page == null -> refused ?: CHAT_BACKOFF
+            else -> pollAfter(page.pollAfterMs) ?: if (content.mode == LiveMode.LIVE) CHAT_POLL else CHAT_SOON_POLL
         }
         if (page != null) update { it.copy(messages = page.messages, pinned = page.pinned) }
     }
@@ -276,8 +288,9 @@ class LiveWatchViewModel(
         // The one before, so a seek does not open an empty chat, and the next, so it is there in time
         for (n in listOf(window, window + 1, window - 1)) {
             if (n < 0 || n in replay || now() < chatDue) continue
-            val list = readWindow(n)
-            if (list == null) chatDue = now() + CHAT_BACKOFF else replay[n] = list
+            var refused: Duration? = null
+            val list = readWindow(n) { refused = it }
+            if (list == null) chatDue = now() + (refused ?: CHAT_BACKOFF) else replay[n] = list
         }
         var shown = emptyList<LiveChatMessage>()
         var n = window
@@ -289,13 +302,13 @@ class LiveWatchViewModel(
         update { it.copy(messages = shown.takeLast(SHOWN)) }
     }
 
-    /** null when it could not be read; asked for again at the next tick. */
-    private suspend fun readWindow(n: Long): List<LiveChatMessage>? {
+    /** null when it could not be read; asked for again after a while. */
+    private suspend fun readWindow(n: Long, refused: (Duration) -> Unit): List<LiveChatMessage>? {
         var from = n * REPLAY_WINDOW_MS
         val to = from + REPLAY_WINDOW_MS
         val all = linkedMapOf<String, LiveChatMessage>()
         repeat(REPLAY_PAGES) {
-            val page: LiveChatPage = quiet { live.chatReplay(streamId, from, to) } ?: return null
+            val page: LiveChatPage = quiet(refused) { live.chatReplay(streamId, from, to) } ?: return null
             page.messages.filter { it.offsetMs < to }.forEach { all[it.id] = it }
             val last = page.messages.lastOrNull()
             if (!page.truncated || last == null || last.offsetMs <= from) return sorted(all)
@@ -306,10 +319,12 @@ class LiveWatchViewModel(
 
     private fun sorted(all: Map<String, LiveChatMessage>) = all.values.sortedWith(compareBy({ it.offsetMs }, { it.id }))
 
-    private suspend fun <T> quiet(block: suspend () -> T): T? = try {
+    /** [refused]: the server said when to ask again. */
+    private suspend fun <T> quiet(refused: (Duration) -> Unit = {}, block: suspend () -> T): T? = try {
         block()
     } catch (e: CoreError) {
         AunLog.i("live", "not read", "id" to streamId, "error" to e.message)
+        pollAfter((e as? CoreError.Http)?.retryAfterMs)?.let(refused)
         null
     }
 

@@ -90,11 +90,37 @@ class HttpLiveRepositoryTest {
         assertEquals("fromMs=60000&toMs=120000", server.takeRequest().url.encodedQuery)
     }
 
-    @Test fun `counts the viewer, and answers nothing when that fails`() = runTest {
+    @Test fun `counts the viewer`() = runTest {
         answer("""{"result":{"viewers":7}}""")
         assertEquals(7L, repo.beat("s", "v", leaving = false))
         assertEquals("POST", server.takeRequest().method)
         answer("", code = 500)
-        assertNull(repo.beat("s", "v", leaving = true))
+        assertTrue(runCatching { repo.beat("s", "v", leaving = true) }.exceptionOrNull() is CoreError.Http)
+    }
+
+    @Test fun `reads when to ask again, and a bad value is as if absent`() = runTest {
+        answer("""{"result":{"messages":[],"pollAfterMs":30000}}""")
+        assertEquals(30_000L, repo.chat("s").pollAfterMs)
+        for (bad in listOf("\"30000\"", "null", "{}", "0", "-5", "1e999")) {
+            answer("""{"result":{"status":"live","pollAfterMs":$bad}}""")
+            assertNull(bad, repo.state("s").pollAfterMs)
+        }
+        answer("""{"result":{"status":"live","pollAfterMs":12000.5}}""")
+        assertEquals(12_000L, repo.state("s").pollAfterMs)
+    }
+
+    @Test fun `a refusal says when to ask again`() = runTest {
+        suspend fun refused(code: Int, header: String?): Long? {
+            server.enqueue(MockResponse.Builder().code(code).apply { if (header != null) addHeader("Retry-After", header) }.build())
+            return (runCatching { repo.chat("s") }.exceptionOrNull() as CoreError.Http).retryAfterMs
+        }
+        assertEquals(30_000L, refused(429, "30"))
+        assertEquals(86_400_000L, refused(503, "999999"))
+        assertEquals(86_400_000L, refused(429, "99999999999"))
+        // OkHttp itself cannot read this one: refused, not crashed
+        assertNull(refused(503, "99999999999"))
+        assertNull(refused(503, null))
+        assertNull(refused(429, "soon"))
+        assertNull(refused(500, "30"))
     }
 }

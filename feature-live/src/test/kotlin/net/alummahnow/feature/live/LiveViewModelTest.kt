@@ -188,6 +188,51 @@ class LiveViewModelTest {
         assertEquals(2, live.chatReads)
     }
 
+    @Test fun `the server says when to ask again`() = test {
+        val live = FakeLive(onAir.copy(chatEnabled = true, pollAfterMs = 120_000)).apply { chatPollAfter = 30_000 }
+        val vm = model(live)
+        vm.tick(0)
+        clock.advance(29)
+        vm.tick(0)
+        assertEquals(1, live.chatReads)
+        clock.advance(1)
+        vm.tick(0)
+        assertEquals(2, live.chatReads)
+        // The state's own 60 seconds are over
+        clock.advance(89)
+        vm.tick(0)
+        assertEquals(1, live.stateReads)
+        clock.advance(1)
+        live.current = onAir.copy(chatEnabled = true)
+        vm.tick(0)
+        assertEquals(2, live.stateReads)
+        // It says nothing any more: this app's interval again
+        clock.advance(60)
+        vm.tick(0)
+        assertEquals(3, live.stateReads)
+    }
+
+    @Test fun `a refusal says when to ask again`() = test {
+        val live = FakeLive(onAir.copy(chatEnabled = true))
+        val vm = model(live)
+        live.retryAfter = 200_000
+        vm.tick(0)
+        clock.advance(60)
+        vm.tick(0)
+        val asked = listOf(live.stateReads, live.chatReads, live.beats.size)
+        clock.advance(139)
+        vm.tick(0)
+        assertEquals(asked, listOf(live.stateReads, live.chatReads, live.beats.size))
+        clock.advance(61)
+        vm.tick(0)
+        assertEquals(asked.map { it + 1 }, listOf(live.stateReads, live.chatReads, live.beats.size))
+    }
+
+    @Test fun `what the server says is kept between 5 seconds and 10 minutes`() {
+        assertNull(pollAfter(null))
+        assertEquals(listOf(5L, 5L, 7L, 600L), listOf(-1L, 1L, 7_000L, Long.MAX_VALUE).map { pollAfter(it)?.seconds })
+    }
+
     @Test fun `the replay is what had been written by then`() = test {
         val live = FakeLive(LiveState(LiveStatus.ENDED, vodUrl = "https://x.test/v.m3u8", chatReplay = true))
         live.windows[0] = LiveChatPage(listOf(LiveChatMessage("a", "A", "x", 0), LiveChatMessage("b", "A", "y", 5_000)))
