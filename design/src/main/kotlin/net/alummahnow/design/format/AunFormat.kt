@@ -172,6 +172,23 @@ object AunFormat {
     /** A position in a video: 42_000 ms → "0:42" / "٠:٤٢". */
     fun timecode(ms: Long, locale: Locale): String = duration(ms / MS_PER_SECOND, locale)
 
+    /**
+     * Capped notification badge count (`null` when `<= 0`, `"1"`..`"9"` / `"١"`..`"٩"`, `"9+"` / `"٩+"` when `>= 10`).
+     */
+    fun badgeCap9(count: Int, locale: Locale): String? = when {
+        count <= 0 -> null
+        count > BADGE_CAP -> "${digits(BADGE_CAP.toString(), locale)}+"
+        else -> digits(count.toString(), locale)
+    }
+
+    /** Clock minute from midnight (`0..1439`) as `"22:00"` / `"٢٢:٠٠"`. */
+    fun minuteOfDay(minute: Int, locale: Locale): String {
+        val clamped = ((minute % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
+        val h = (clamped / MINUTES_PER_HOUR).toString().padStart(2, '0')
+        val m = (clamped % MINUTES_PER_HOUR).toString().padStart(2, '0')
+        return digits("$h:$m", locale)
+    }
+
     enum class Scale { NONE, THOUSAND, MILLION, BILLION }
 
     /**
@@ -302,6 +319,9 @@ object AunFormat {
     private const val SECONDS_PER_MINUTE = 60L
     private const val SECONDS_PER_HOUR = 3600L
     private const val MS_PER_SECOND = 1000L
+    private const val MINUTES_PER_HOUR = 60
+    private const val MINUTES_PER_DAY = 1440
+    private const val BADGE_CAP = 9
     private const val ONE_SCALE = 1.0
     private const val HUNDRED = 100L
     private const val TAMYIZ_MIN = 11L

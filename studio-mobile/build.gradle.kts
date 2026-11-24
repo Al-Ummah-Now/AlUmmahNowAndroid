@@ -5,12 +5,17 @@ plugins {
     alias(libs.plugins.play.publisher)
 }
 
+val firebaseConfigured = listOf("google-services.json", "src/qa/google-services.json", "src/prod/google-services.json")
+    .any { file(it).exists() }
+if (firebaseConfigured) apply(plugin = "com.google.gms.google-services")
+
 android {
     namespace = "net.alummahnow.studio"
     defaultConfig {
         applicationId = "net.alummahnow.studio"
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = (project.findProperty("versionName") as String?) ?: "0.1.0"
+        buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
         // QA seed account for the instrumented QA flow (CI passes the password from a secret; skipped when absent).
         testInstrumentationRunnerArguments["qaEmail"] = "qa-creator@delivered.resend.dev"
         System.getenv("QA_SEED_PASSWORD")?.takeIf { it.isNotBlank() }?.let { testInstrumentationRunnerArguments["qaPassword"] = it }
@@ -52,6 +57,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.work.runtime)
+    implementation(libs.firebase.messaging)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)

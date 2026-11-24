@@ -13,7 +13,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +45,7 @@ import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.components.VideoCardData
 import net.alummahnow.design.components.VideoRail
+import net.alummahnow.design.format.badgeCap9Label
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.FanousTokens
 
@@ -62,7 +67,10 @@ fun HomeScreen(
     onVideoClick: (String) -> Unit,
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    notificationBadgeCount: Int = 0,
+    onOpenNotifications: (() -> Unit)? = null,
+    onOpenEvents: (() -> Unit)? = null
 ) {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
@@ -72,7 +80,14 @@ fun HomeScreen(
                 val locale = currentLocale()
                 val cardWidth = railCardWidth()
                 LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
-                    item(key = "header") { HomeHeader(onOpenSettings) }
+                    item(key = "header") {
+                        HomeHeader(
+                            onOpenSettings = onOpenSettings,
+                            notificationBadgeCount = notificationBadgeCount,
+                            onOpenNotifications = onOpenNotifications,
+                            onOpenEvents = onOpenEvents
+                        )
+                    }
                     items(state.rails, key = { it.kind.name }) { rail ->
                         VideoRail(
                             title = stringResource(rail.kind.titleRes()),
@@ -88,7 +103,12 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader(onOpenSettings: () -> Unit) {
+private fun HomeHeader(
+    onOpenSettings: () -> Unit,
+    notificationBadgeCount: Int = 0,
+    onOpenNotifications: (() -> Unit)? = null,
+    onOpenEvents: (() -> Unit)? = null
+) {
     Row(
         Modifier.padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
@@ -101,6 +121,33 @@ private fun HomeHeader(onOpenSettings: () -> Unit) {
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f).semantics { heading() }
         )
+        if (onOpenEvents != null) {
+            IconButton(onClick = onOpenEvents) {
+                Icon(
+                    Icons.Filled.CalendarMonth,
+                    contentDescription = stringResource(DesignR.string.aun_events),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+        if (onOpenNotifications != null) {
+            val badgeText = badgeCap9Label(notificationBadgeCount)
+            IconButton(onClick = onOpenNotifications) {
+                BadgedBox(
+                    badge = {
+                        if (badgeText != null) {
+                            Badge { Text(badgeText) }
+                        }
+                    }
+                ) {
+                    Icon(
+                        Icons.Filled.Notifications,
+                        contentDescription = stringResource(DesignR.string.aun_notifications),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
+        }
         IconButton(onClick = onOpenSettings) {
             Icon(
                 Icons.Filled.Tune,

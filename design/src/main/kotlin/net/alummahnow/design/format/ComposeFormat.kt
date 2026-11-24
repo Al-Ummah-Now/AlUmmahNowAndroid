@@ -157,6 +157,12 @@ fun viewsLabel(views: Long): String {
 @Composable
 fun durationLabel(seconds: Long): String = AunFormat.duration(seconds, currentLocale())
 
+@Composable
+fun badgeCap9Label(count: Int): String? = AunFormat.badgeCap9(count, currentLocale())
+
+@Composable
+fun minuteOfDayLabel(minute: Int): String = AunFormat.minuteOfDay(minute, currentLocale())
+
 /** Numeric text assembled elsewhere (already in Arabic numerals 0–9) shown with the app's digits. */
 @Composable
 fun localizedDigits(text: String): String = AunFormat.digits(text, currentLocale())
