@@ -39,6 +39,7 @@ dependencies {
     implementation(libs.compose.material3.window.size)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(libs.media3.exoplayer)
     testImplementation(libs.roborazzi)
     testImplementation(libs.androidx.test.junit)
     testImplementation(libs.roborazzi.compose)

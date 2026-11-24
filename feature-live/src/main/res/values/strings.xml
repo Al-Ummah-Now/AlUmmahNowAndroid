@@ -27,6 +27,20 @@
     <string name="live_chat_pinned">Pinned</string>
     <string name="live_chat_host">Host</string>
     <string name="live_chat_moderator">Moderator</string>
+    <string name="live_more_actions">More actions</string>
+    <string name="live_more_actions_for">More actions for %1$s</string>
+    <string name="live_report_stream">Report live stream</string>
+    <string name="live_report_channel">Report channel</string>
+    <string name="live_report_message">Report message</string>
+    <string name="live_block_channel">Block channel</string>
+    <string name="live_block_user">Block user</string>
+    <string name="live_block_confirm">Block</string>
+    <string name="live_channel_blocked">Streams from %1$s are hidden on this device.</string>
+    <string name="live_unblock">Unblock</string>
+    <string name="live_block_channel_title">Block %1$s?</string>
+    <string name="live_block_channel_body">Videos and live streams from this channel will be hidden on this device. You can unblock it any time in Settings.</string>
+    <string name="live_block_user_title">Block %1$s?</string>
+    <string name="live_block_user_body">Live chat messages from this user will be hidden on this device. You can unblock them any time in Settings.</string>
     <string name="live_event_filter">Event: %1$s</string>
     <string name="live_event_all">All</string>
     <string name="live_event_jumuah">Jumu’ah</string>
@@ -39,4 +53,6 @@
         <item quantity="one">Premieres in %1$s day</item>
         <item quantity="other">Premieres in %1$s days</item>
     </plurals>
+    <string name="live_channel_blocked_unnamed">Streams from this channel are hidden on this device.</string>
+    <string name="live_block_channel_title_unnamed">Block this channel?</string>
 </resources>

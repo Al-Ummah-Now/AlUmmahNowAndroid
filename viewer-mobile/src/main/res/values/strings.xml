@@ -11,6 +11,13 @@
     <string name="settings_privacy_policy">Privacy policy</string>
     <string name="settings_terms_of_service">Terms of Service</string>
     <string name="settings_no_browser">No browser is available to open this page.</string>
+    <string name="settings_blocked_list">Blocked channels and users</string>
+    <string name="settings_blocked_empty">No blocked channels or users.</string>
+    <string name="settings_blocked_kind_channel">Channel</string>
+    <string name="settings_blocked_kind_user">Live chat user</string>
+    <string name="settings_unblock">Unblock</string>
+    <string name="settings_unblock_cd">Unblock %1$s</string>
+    <string name="settings_close">Close</string>
     <!-- Launcher (home screen) name; the store listing and app_name keep the full name (owner, 2026-11-20). -->
     <string name="launcher_name">Ummah Now</string>
 </resources>

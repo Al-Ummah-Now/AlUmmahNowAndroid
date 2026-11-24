@@ -2,4 +2,6 @@
 <resources>
     <string name="home_brand">Al Ummah Now</string>
     <string name="home_settings">Display settings</string>
+    <string name="home_empty">No videos to show right now.</string>
+    <string name="home_all_blocked">Everything here is from channels you\'ve blocked on this device. You can unblock them in Display settings.</string>
 </resources>

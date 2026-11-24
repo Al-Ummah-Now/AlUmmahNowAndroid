@@ -18,7 +18,13 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,9 +40,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -45,20 +53,32 @@ import java.util.Locale
 import net.alummahnow.core.bridge.model.Chapter
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.model.VideoSummary
+import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.components.ErrorState
+import net.alummahnow.design.components.FanousButton
+import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.components.LanternLoader
 import net.alummahnow.design.components.SectionHeader
 import net.alummahnow.design.components.VideoCard
 import net.alummahnow.design.components.VideoCardData
 import net.alummahnow.design.components.VideoPoster
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.durationLabel
+import net.alummahnow.design.format.isolate
 import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.viewsLabel
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.player.MediaItems
 import net.alummahnow.player.ui.AunVideoPlayer
+
+/** Report and block actions shown in the watch screen's overflow menu when supplied by the app. */
+data class WatchSafetyActions(
+    val onReportVideo: (VideoDetail) -> Unit,
+    val onReportChannel: (VideoDetail) -> Unit,
+    val onBlockChannel: (VideoDetail) -> Unit
+)
 
 /**
  * Watch page (spec 12.3). [player] is the shared MediaController (null while connecting, or in previews
@@ -73,28 +93,80 @@ fun WatchScreen(
     onToggleFullscreen: () -> Unit,
     onVideoClick: (String) -> Unit,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    safety: WatchSafetyActions? = null,
+    isChannelBlocked: Boolean = false,
+    onUnblockChannel: (() -> Unit)? = null
 ) {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
             WatchUiState.Loading -> FullScreenLoading()
             is WatchUiState.Error -> ErrorState(stringResource(state.kind.message), onRetry)
             is WatchUiState.Content -> {
-                if (player != null) PlayVideoEffect(player, state.video)
-                val playerBox: @Composable (Modifier) -> Unit = { m ->
-                    PlayerArea(
-                        player,
-                        state.video.summary.thumbnailUrl,
-                        isFullscreen,
-                        onToggleFullscreen,
-                        controls = !isInPictureInPicture,
-                        modifier = m
+                LaunchedEffect(player, isChannelBlocked) {
+                    if (isChannelBlocked) {
+                        player?.stop()
+                        player?.clearMediaItems()
+                    }
+                }
+                if (isChannelBlocked) {
+                    BlockedChannelView(
+                        channelName = state.video.summary.channelName?.takeIf { it.isNotBlank() },
+                        onUnblock = onUnblockChannel
                     )
+                } else {
+                    if (player != null) PlayVideoEffect(player, state.video)
+                    val playerBox: @Composable (Modifier) -> Unit = { m ->
+                        PlayerArea(
+                            player,
+                            state.video.summary.thumbnailUrl,
+                            isFullscreen,
+                            onToggleFullscreen,
+                            controls = !isInPictureInPicture,
+                            modifier = m
+                        )
+                    }
+                    when {
+                        isInPictureInPicture || isFullscreen -> playerBox(Modifier.fillMaxSize())
+                        else -> WatchLayout(state, player, playerBox, onVideoClick, safety)
+                    }
                 }
-                when {
-                    isInPictureInPicture || isFullscreen -> playerBox(Modifier.fillMaxSize())
-                    else -> WatchLayout(state, player, playerBox, onVideoClick)
-                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BlockedChannelView(channelName: String?, onUnblock: (() -> Unit)?) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .padding(FanousTokens.Spacing.xl)
+            .testTag("watch-channel-blocked"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+        ) {
+            Text(
+                if (channelName != null) {
+                    aunString(R.string.watch_channel_blocked, isolate(channelName))
+                } else {
+                    stringResource(R.string.watch_channel_blocked_unnamed)
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            if (onUnblock != null) {
+                FanousButton(
+                    stringResource(R.string.watch_unblock),
+                    onClick = onUnblock,
+                    kind = FanousButtonKind.Secondary,
+                    modifier = Modifier.testTag("watch-unblock-channel")
+                )
             }
         }
     }
@@ -149,7 +221,8 @@ private fun WatchLayout(
     state: WatchUiState.Content,
     player: Player?,
     playerBox: @Composable (Modifier) -> Unit,
-    onVideoClick: (String) -> Unit
+    onVideoClick: (String) -> Unit,
+    safety: WatchSafetyActions?
 ) {
     val locale = currentLocale()
     var seekRequest by remember { mutableStateOf<Long?>(null) }
@@ -162,7 +235,7 @@ private fun WatchLayout(
         Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             LazyColumn(Modifier.weight(0.64f)) {
                 item { playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) }
-                details(state.video, locale, onChapter)
+                details(state.video, locale, onChapter, safety)
             }
             LazyColumn(Modifier.weight(0.36f).padding(horizontal = FanousTokens.Spacing.sm)) {
                 related(state.related, locale, onVideoClick)
@@ -172,48 +245,20 @@ private fun WatchLayout(
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
             playerBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
             LazyColumn(Modifier.fillMaxSize()) {
-                details(state.video, locale, onChapter)
+                details(state.video, locale, onChapter, safety)
                 related(state.related, locale, onVideoClick)
             }
         }
     }
 }
 
-private fun LazyListScope.details(video: VideoDetail, locale: Locale, onChapter: (Chapter) -> Unit) {
-    item(key = "details") {
-        var expanded by rememberSaveable { mutableStateOf(false) }
-        Column(Modifier.padding(FanousTokens.Spacing.lg)) {
-            Text(
-                video.summary.title.resolve(locale),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.semantics { heading() }
-            )
-            Text(
-                joinMeta(video.summary.channelName, viewsLabel(video.summary.views)),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = FanousTokens.Spacing.xs)
-            )
-            val description = video.description.resolve(locale)
-            if (description.isNotBlank()) {
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = if (expanded) Int.MAX_VALUE else 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .padding(top = FanousTokens.Spacing.md)
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { expanded = !expanded }
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .padding(FanousTokens.Spacing.md)
-                )
-            }
-        }
-    }
+private fun LazyListScope.details(
+    video: VideoDetail,
+    locale: Locale,
+    onChapter: (Chapter) -> Unit,
+    safety: WatchSafetyActions?
+) {
+    item(key = "details") { WatchDetailsHeader(video, locale, safety) }
     if (video.chapters.isNotEmpty()) {
         item(key = "chapters-title") { SectionHeader(stringResource(R.string.watch_chapters)) }
         items(video.chapters, key = { "ch-" + it.id }) { chapter ->
@@ -237,6 +282,110 @@ private fun LazyListScope.details(video: VideoDetail, locale: Locale, onChapter:
             }
         }
         item(key = "chapters-divider") { HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.sm)) }
+    }
+}
+
+@Composable
+private fun WatchDetailsHeader(video: VideoDetail, locale: Locale, safety: WatchSafetyActions?) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.padding(FanousTokens.Spacing.lg)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Text(
+                video.summary.title.resolve(locale),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f).semantics { heading() }
+            )
+            if (safety != null) WatchSafetyMenu(video, safety)
+        }
+        Text(
+            joinMeta(video.summary.channelName, viewsLabel(video.summary.views)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = FanousTokens.Spacing.xs)
+        )
+        val description = video.description.resolve(locale)
+        if (description.isNotBlank()) {
+            Text(
+                description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(top = FanousTokens.Spacing.md)
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable { expanded = !expanded }
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(FanousTokens.Spacing.md)
+            )
+        }
+    }
+}
+
+@Composable
+private fun WatchSafetyMenu(video: VideoDetail, safety: WatchSafetyActions) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirmBlock by remember { mutableStateOf(false) }
+    val channelName = video.summary.channelName?.takeIf { it.isNotBlank() }
+    val hasChannelId = !video.summary.channelId.isNullOrBlank()
+    Box {
+        IconButton(
+            onClick = { menuOpen = true },
+            modifier = Modifier.testTag("watch-more-actions")
+        ) {
+            Icon(
+                Icons.Filled.MoreVert,
+                contentDescription = stringResource(R.string.watch_more_actions),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.watch_report_video)) },
+                onClick = {
+                    menuOpen = false
+                    safety.onReportVideo(video)
+                }
+            )
+            if (hasChannelId) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.watch_report_channel)) },
+                    modifier = Modifier.testTag("watch-report-channel-item"),
+                    onClick = {
+                        menuOpen = false
+                        safety.onReportChannel(video)
+                    }
+                )
+            }
+            if (channelName != null || hasChannelId) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.watch_block_channel)) },
+                    modifier = Modifier.testTag("watch-block-channel-item"),
+                    onClick = {
+                        menuOpen = false
+                        confirmBlock = true
+                    }
+                )
+            }
+        }
+    }
+    if (confirmBlock) {
+        ConfirmDialog(
+            title = if (channelName != null) {
+                aunString(R.string.watch_block_channel_title, isolate(channelName))
+            } else {
+                stringResource(R.string.watch_block_channel_title_unnamed)
+            },
+            message = stringResource(R.string.watch_block_channel_body),
+            confirmLabel = stringResource(R.string.watch_block_confirm),
+            onConfirm = {
+                confirmBlock = false
+                safety.onBlockChannel(video)
+            },
+            onDismiss = { confirmBlock = false }
+        )
     }
 }
 

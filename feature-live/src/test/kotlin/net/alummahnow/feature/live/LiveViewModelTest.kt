@@ -373,4 +373,63 @@ class LiveViewModelTest {
         assertTrue(vm.state.value is LiveListUiState.Content)
         assertEquals(LiveListUiState.Error(ErrorKind.GENERIC), LiveListViewModel(live) { clock.at }.state.value)
     }
+
+    private fun counts(live: FakeLive) = listOf(live.stateReads, live.chatReads, live.beats.count { !it })
+
+    @Test fun `a channel blocked from the start is never counted, polled or loaded, and all of it begins on unblock`() = test {
+        val live = FakeLive(premiere(LiveStatus.LIVE).copy(chatEnabled = true))
+        var blocked = true
+        val vm = LiveWatchViewModel("s", live, FakeCatalog(), { blocked }) { clock.at }
+        val asked = counts(live)
+        repeat(5) {
+            clock.advance(60)
+            vm.tick(null)
+        }
+        assertEquals(asked, counts(live))
+        assertTrue(live.beats.isEmpty())
+        assertNull(vm.now.media) // the premiere's video is not even asked for
+
+        blocked = false
+        vm.tick(null)
+        assertEquals(asked.map { it + 1 }, counts(live))
+        assertTrue(vm.now.media is LiveMedia.Premiere)
+    }
+
+    @Test fun `blocking while watching leaves the audience once and stops everything`() = test {
+        val live = FakeLive(onAir.copy(chatEnabled = true))
+        var blocked = false
+        val vm = LiveWatchViewModel("s", live, FakeCatalog(), { blocked }) { clock.at }
+        vm.tick(0)
+        val asked = counts(live)
+        blocked = true
+        repeat(3) {
+            clock.advance(60)
+            vm.tick(0)
+        }
+        assertEquals(asked, counts(live))
+        assertEquals(listOf(false, true), live.beats)
+        blocked = false
+        vm.tick(0)
+        assertEquals(asked.map { it + 1 }, counts(live))
+    }
+
+    @Test fun `a block that lands while the state is read stops the chat and the heartbeat that would follow`() = test {
+        val live = FakeLive(onAir.copy(chatEnabled = true))
+        var blocked = false
+        val vm = LiveWatchViewModel("s", live, FakeCatalog(), { blocked }) { clock.at }
+        val before = counts(live)
+        live.answering = { blocked = true }
+        clock.advance(120)
+        vm.tick(0)
+        assertEquals(listOf(before[0] + 1, before[1], before[2]), counts(live))
+    }
+
+    @Test fun `leaving a blocked stream that was never counted sends nothing`() = test {
+        val live = FakeLive(onAir)
+        val vm = LiveWatchViewModel("s", live, FakeCatalog(), { true }) { clock.at }
+        val job = launch { vm.run({ null }, {}) }
+        runCurrent()
+        job.cancelAndJoin()
+        assertTrue(live.beats.isEmpty())
+    }
 }

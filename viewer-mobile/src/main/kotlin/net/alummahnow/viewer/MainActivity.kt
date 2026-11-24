@@ -8,9 +8,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -45,17 +45,24 @@ import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
+import net.alummahnow.core.bridge.safety.ViewerReportUrls
+import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.home.HomeScreen
+import net.alummahnow.feature.home.HomeUiState
 import net.alummahnow.feature.home.HomeViewModel
 import net.alummahnow.feature.live.LiveListScreen
 import net.alummahnow.feature.live.LiveListUiState
 import net.alummahnow.feature.live.LiveListViewModel
 import net.alummahnow.feature.live.LiveRail
+import net.alummahnow.feature.live.LiveSafetyActions
 import net.alummahnow.feature.live.LiveWatchScreen
+import net.alummahnow.feature.live.LiveWatchUiState
 import net.alummahnow.feature.live.LiveWatchViewModel
 import net.alummahnow.feature.live.RunLive
+import net.alummahnow.feature.watch.WatchSafetyActions
 import net.alummahnow.feature.watch.WatchScreen
+import net.alummahnow.feature.watch.WatchUiState
 import net.alummahnow.feature.watch.WatchViewModel
 import net.alummahnow.player.ui.rememberMediaController
 
@@ -80,7 +87,14 @@ class MainActivity : ComponentActivity() {
             val deviceDark = isSystemInDarkTheme()
             LaunchedEffect(Unit) { container.displayPrefs.adoptDeviceMode(deviceDark) }
             AunTheme(mode = theme) {
-                ViewerNavHost(container, inPip.value, links.receiveAsFlow(), onPipEligible = ::setPipEligible)
+                ViewerNavHost(
+                    container,
+                    inPip.value,
+                    links.receiveAsFlow(),
+                    onPipEligible = ::setPipEligible,
+                    onFullscreen = ::setFullscreen,
+                    openInBrowser = ::openInBrowser
+                )
             }
         }
     }
@@ -165,7 +179,15 @@ object Routes {
 }
 
 @Composable
-private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<String>, onPipEligible: (Boolean) -> Unit) {
+internal fun ViewerNavHost(
+    container: ViewerContainer,
+    inPip: Boolean,
+    links: Flow<String>,
+    onPipEligible: (Boolean) -> Unit,
+    onFullscreen: (Boolean) -> Unit,
+    openInBrowser: (String) -> Boolean,
+    rememberPlayer: @Composable () -> Player? = { rememberMediaController().value }
+) {
     val nav = rememberNavController()
     LaunchedEffect(nav) {
         links.collect { route ->
@@ -175,9 +197,15 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
         }
     }
     val context = LocalContext.current
+    val locale = currentLocale()
     val scope = rememberCoroutineScope()
     var settingsOpen by remember { mutableStateOf(false) }
+    var blockedListOpen by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
+    val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
+    val openPage: (String) -> Unit = { url ->
+        if (!openInBrowser(url)) Toast.makeText(context, R.string.settings_no_browser, Toast.LENGTH_SHORT).show()
+    }
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
@@ -185,8 +213,16 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
             val state by vm.state.collectAsStateWithLifecycle()
             val liveVm: LiveListViewModel = viewModel(factory = LiveListViewModel.Factory(container.live))
             val live by liveVm.state.collectAsStateWithLifecycle()
+            val filteredState = remember(state, blockedEntries) {
+                when (val s = state) {
+                    is HomeUiState.Content -> s.copy(rails = container.blockStore.filterRails(s.rails))
+                    else -> s
+                }
+            }
+            val allLive = (live as? LiveListUiState.Content)?.list?.all.orEmpty()
+            val filteredLive = remember(live, blockedEntries) { container.blockStore.filterLiveStreams(allLive) }
             HomeScreen(
-                state,
+                filteredState,
                 onVideoClick = { nav.navigate(Routes.watch(it)) },
                 onRetry = {
                     vm.load()
@@ -195,12 +231,14 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
                 onOpenSettings = { settingsOpen = true },
                 liveRail = { width ->
                     LiveRail(
-                        (live as? LiveListUiState.Content)?.list?.all.orEmpty(),
+                        filteredLive,
                         onOpen = { nav.navigate(Routes.live(it)) },
                         onSeeAll = { nav.navigate(Routes.LIVE_LIST) },
                         cardWidth = width
                     )
-                }
+                },
+                hasLive = filteredLive.isNotEmpty(),
+                allBlocked = allLive.isNotEmpty() || (state as? HomeUiState.Content)?.rails?.any { it.videos.isNotEmpty() } == true
             )
         }
         composable(
@@ -210,30 +248,82 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
             val id = entry.arguments?.getString("id").orEmpty()
             val vm: WatchViewModel = viewModel(key = id, factory = WatchViewModel.Factory(container.catalog, id))
             val state by vm.state.collectAsStateWithLifecycle()
-            val player by rememberMediaController()
+            val filteredState = remember(state, blockedEntries) {
+                when (val s = state) {
+                    is WatchUiState.Content -> s.copy(related = container.blockStore.filterVideos(s.related))
+                    else -> s
+                }
+            }
+            val currentVideo = (filteredState as? WatchUiState.Content)?.video
+            val isChannelBlocked = remember(currentVideo, blockedEntries) {
+                currentVideo != null &&
+                    container.blockStore.isChannelBlocked(currentVideo.summary.channelId, currentVideo.summary.channelName)
+            }
+            val player = rememberPlayer()
             var fullscreen by remember { mutableStateOf(false) }
-            val activity = context as MainActivity
             PipEligibility(player, onPipEligible)
-            LaunchedEffect(fullscreen) { activity.setFullscreen(fullscreen) }
+            LaunchedEffect(fullscreen) { onFullscreen(fullscreen) }
             BackHandler(enabled = fullscreen) { fullscreen = false }
-            DisposableEffect(Unit) { onDispose { activity.setFullscreen(false) } }
+            DisposableEffect(Unit) { onDispose { onFullscreen(false) } }
+            val safety = remember(locale.language, player) {
+                WatchSafetyActions(
+                    onReportVideo = {
+                        openPage(ViewerReportUrls.videoUrl(it.id, locale.language, BuildConfig.WEB_HOST))
+                    },
+                    onReportChannel = {
+                        val channelId = it.summary.channelId?.takeIf { id -> id.isNotBlank() }
+                        if (channelId != null) {
+                            openPage(ViewerReportUrls.channelUrl(channelId, locale.language, BuildConfig.WEB_HOST))
+                        }
+                    },
+                    onBlockChannel = {
+                        player?.stop()
+                        player?.clearMediaItems()
+                        container.blockStore.blockChannel(it.summary.channelId, it.summary.channelName)
+                        nav.popBackStack()
+                    }
+                )
+            }
             WatchScreen(
-                state = state,
+                state = filteredState,
                 player = player,
                 isFullscreen = fullscreen,
                 isInPictureInPicture = inPip,
                 onToggleFullscreen = { fullscreen = !fullscreen },
                 onVideoClick = { nav.navigate(Routes.watch(it)) },
-                onRetry = vm::load
+                onRetry = vm::load,
+                safety = safety,
+                isChannelBlocked = isChannelBlocked,
+                onUnblockChannel = currentVideo?.summary?.let { s -> { container.blockStore.unblockChannel(s.channelId, s.channelName) } }
             )
         }
         composable(Routes.LIVE_LIST) {
             val vm: LiveListViewModel = viewModel(factory = LiveListViewModel.Factory(container.live))
             val state by vm.state.collectAsStateWithLifecycle()
-            LiveListScreen(state, onOpen = { nav.navigate(Routes.live(it)) }, onEvent = vm::choose, onRetry = vm::load)
+            val filteredState = remember(state, blockedEntries) {
+                when (val s = state) {
+                    is LiveListUiState.Content -> s.copy(
+                        list = s.list.copy(
+                            onAir = container.blockStore.filterLiveStreams(s.list.onAir),
+                            coming = container.blockStore.filterLiveStreams(s.list.coming)
+                        )
+                    )
+                    else -> s
+                }
+            }
+            LiveListScreen(filteredState, onOpen = { nav.navigate(Routes.live(it)) }, onEvent = vm::choose, onRetry = vm::load)
         }
         composable(Routes.LIVE, arguments = listOf(navArgument("id") { type = NavType.StringType })) { entry ->
-            LiveWatchRoute(container, entry.arguments?.getString("id").orEmpty(), inPip, onPipEligible)
+            LiveWatchRoute(
+                container = container,
+                id = entry.arguments?.getString("id").orEmpty(),
+                inPip = inPip,
+                onPipEligible = onPipEligible,
+                onFullscreen = onFullscreen,
+                openPage = openPage,
+                rememberPlayer = rememberPlayer,
+                onNavigateBack = { nav.popBackStack() }
+            )
         }
     }
     if (settingsOpen) {
@@ -244,36 +334,89 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
             onTheme = { scope.launch { container.displayPrefs.setTheme(it) } },
             onLanguage = { AppLanguage.set(context, it) },
             onDismiss = { settingsOpen = false },
-            onOpenUrl = { url ->
-                val activity = context as? MainActivity
-                val opened = activity?.openInBrowser(url) == true
-                if (!opened) {
-                    android.widget.Toast.makeText(
-                        context,
-                        R.string.settings_no_browser,
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                }
-            },
-            webHost = BuildConfig.WEB_HOST
+            onOpenUrl = openPage,
+            webHost = BuildConfig.WEB_HOST,
+            onOpenBlockedList = {
+                settingsOpen = false
+                blockedListOpen = true
+            }
+        )
+    }
+    if (blockedListOpen) {
+        BlockedListDialog(
+            entries = blockedEntries,
+            onUnblock = container.blockStore::unblock,
+            onDismiss = { blockedListOpen = false }
         )
     }
 }
 
 @Composable
-private fun LiveWatchRoute(container: AppContainer, id: String, inPip: Boolean, onPipEligible: (Boolean) -> Unit) {
-    val vm: LiveWatchViewModel = viewModel(key = id, factory = LiveWatchViewModel.Factory(id, container.live, container.catalog))
+private fun LiveWatchRoute(
+    container: ViewerContainer,
+    id: String,
+    inPip: Boolean,
+    onPipEligible: (Boolean) -> Unit,
+    onFullscreen: (Boolean) -> Unit,
+    openPage: (String) -> Unit,
+    rememberPlayer: @Composable () -> Player?,
+    onNavigateBack: () -> Unit
+) {
+    val factory = LiveWatchViewModel.Factory(id, container.live, container.catalog) {
+        container.blockStore.isChannelBlocked(it.channelId, it.channelName)
+    }
+    val vm: LiveWatchViewModel = viewModel(key = id, factory = factory)
     val state by vm.state.collectAsStateWithLifecycle()
-    val player by rememberMediaController()
+    val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
+    val filteredState = remember(state, blockedEntries) {
+        when (val s = state) {
+            is LiveWatchUiState.Content -> s.copy(
+                content = s.content.copy(
+                    messages = container.blockStore.filterMessages(s.content.messages),
+                    pinned = s.content.pinned?.takeUnless { container.blockStore.isChatUserBlocked(it.userId, it.authorName) }
+                )
+            )
+            else -> s
+        }
+    }
+    val currentStream = (filteredState as? LiveWatchUiState.Content)?.content?.stream
+    val isChannelBlocked = remember(currentStream, blockedEntries) {
+        currentStream != null &&
+            container.blockStore.isChannelBlocked(currentStream.channelId, currentStream.channelName)
+    }
+    val player = rememberPlayer()
     var fullscreen by remember { mutableStateOf(false) }
-    val activity = LocalActivity.current as? MainActivity
+    val locale = currentLocale()
     PipEligibility(player, onPipEligible)
-    LaunchedEffect(fullscreen) { activity?.setFullscreen(fullscreen) }
+    LaunchedEffect(fullscreen) { onFullscreen(fullscreen) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
-    DisposableEffect(Unit) { onDispose { activity?.setFullscreen(false) } }
+    DisposableEffect(Unit) { onDispose { onFullscreen(false) } }
     RunLive(vm, player)
+    val safety = remember(locale.language, player) {
+        LiveSafetyActions(
+            onReportStream = {
+                openPage(ViewerReportUrls.liveStreamUrl(it.id, locale.language, BuildConfig.WEB_HOST))
+            },
+            onReportChannel = {
+                val channelId = it.channelId?.takeIf { id -> id.isNotBlank() }
+                if (channelId != null) {
+                    openPage(ViewerReportUrls.channelUrl(channelId, locale.language, BuildConfig.WEB_HOST))
+                }
+            },
+            onBlockChannel = {
+                player?.stop()
+                player?.clearMediaItems()
+                container.blockStore.blockChannel(it.channelId, it.channelName)
+                onNavigateBack()
+            },
+            onReportMessage = { stream, msg ->
+                openPage(ViewerReportUrls.liveChatUrl(stream.id, msg.id, locale.language, BuildConfig.WEB_HOST))
+            },
+            onBlockUser = { container.blockStore.blockChatUser(it.userId, it.authorName) }
+        )
+    }
     LiveWatchScreen(
-        state = state,
+        state = filteredState,
         player = player,
         isFullscreen = fullscreen,
         isInPictureInPicture = inPip,
@@ -283,7 +426,10 @@ private fun LiveWatchRoute(container: AppContainer, id: String, inPip: Boolean, 
             player?.let { if (moment == null) it.seekToDefaultPosition() else it.seekTo(moment) }
             player?.play()
         },
-        onRetry = vm::load
+        onRetry = vm::load,
+        safety = safety,
+        isChannelBlocked = isChannelBlocked,
+        onUnblockChannel = currentStream?.let { s -> { container.blockStore.unblockChannel(s.channelId, s.channelName) } }
     )
 }
 

@@ -20,14 +20,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -48,6 +56,7 @@ import net.alummahnow.core.bridge.live.LiveEventType
 import net.alummahnow.core.bridge.live.LiveKind
 import net.alummahnow.core.bridge.live.LiveStatus
 import net.alummahnow.core.bridge.live.LiveStream
+import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.components.FanousButton
 import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.components.SectionHeader
@@ -56,6 +65,7 @@ import net.alummahnow.design.format.aunPlural
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.dateTimeLabel
 import net.alummahnow.design.format.durationLabel
+import net.alummahnow.design.format.isolate
 import net.alummahnow.design.format.joinMeta
 import net.alummahnow.design.format.numberLabel
 import net.alummahnow.design.theme.FanousTokens
@@ -234,16 +244,69 @@ private fun NoticeText(text: String) = Text(
 
 /** Title, tags, and how many are watching. */
 @Composable
-internal fun LiveDetails(content: LiveWatchContent, modifier: Modifier = Modifier) {
+internal fun LiveDetails(
+    content: LiveWatchContent,
+    modifier: Modifier = Modifier,
+    safety: LiveSafetyActions? = null
+) {
     val watching = content.viewers?.takeIf { content.mode == LiveMode.LIVE }?.let { aunString(R.string.live_watching, numberLabel(it)) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirmBlock by remember { mutableStateOf(false) }
+    val channelName = content.stream.channelName?.takeIf { it.isNotBlank() }
+    val hasChannelId = !content.stream.channelId.isNullOrBlank()
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xs)) {
         LiveTags(content.live.kind, content.live.eventType, content.mode == LiveMode.LIVE)
-        Text(
-            content.stream.title,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.semantics { heading() }.testTag("live-title")
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Text(
+                content.stream.title,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f).semantics { heading() }.testTag("live-title")
+            )
+            if (safety != null) {
+                Box {
+                    IconButton(
+                        onClick = { menuOpen = true },
+                        modifier = Modifier.testTag("live-more-actions")
+                    ) {
+                        Icon(
+                            Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.live_more_actions),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.live_report_stream)) },
+                            onClick = {
+                                menuOpen = false
+                                safety.onReportStream(content.stream)
+                            }
+                        )
+                        if (hasChannelId) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.live_report_channel)) },
+                                modifier = Modifier.testTag("live-report-channel-item"),
+                                onClick = {
+                                    menuOpen = false
+                                    safety.onReportChannel(content.stream)
+                                }
+                            )
+                        }
+                        if (channelName != null || hasChannelId) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.live_block_channel)) },
+                                modifier = Modifier.testTag("live-block-channel-item"),
+                                onClick = {
+                                    menuOpen = false
+                                    confirmBlock = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
         val meta = joinMeta(content.stream.channelName, watching)
         if (meta.isNotEmpty()) {
             Text(meta, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -252,11 +315,31 @@ internal fun LiveDetails(content: LiveWatchContent, modifier: Modifier = Modifie
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
         }
     }
+    if (confirmBlock && safety != null) {
+        ConfirmDialog(
+            title = if (channelName != null) {
+                aunString(R.string.live_block_channel_title, isolate(channelName))
+            } else {
+                stringResource(R.string.live_block_channel_title_unnamed)
+            },
+            message = stringResource(R.string.live_block_channel_body),
+            confirmLabel = stringResource(R.string.live_block_confirm),
+            onConfirm = {
+                confirmBlock = false
+                safety.onBlockChannel(content.stream)
+            },
+            onDismiss = { confirmBlock = false }
+        )
+    }
 }
 
 /** The messages beside a stream, or as they were beside its recording. Reading only. */
 @Composable
-internal fun LiveChat(content: LiveWatchContent, modifier: Modifier = Modifier) {
+internal fun LiveChat(
+    content: LiveWatchContent,
+    modifier: Modifier = Modifier,
+    safety: LiveSafetyActions? = null
+) {
     val replay = content.mode == LiveMode.RECORDING
     val list = rememberLazyListState()
     val last = content.messages.lastOrNull()?.id
@@ -274,7 +357,7 @@ internal fun LiveChat(content: LiveWatchContent, modifier: Modifier = Modifier) 
                 horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
             ) {
                 Icon(Icons.Outlined.PushPin, contentDescription = stringResource(R.string.live_chat_pinned))
-                Message(pinned, showTime = false)
+                Message(pinned, showTime = false, stream = content.stream, safety = safety)
             }
         }
         if (content.messages.isEmpty()) {
@@ -288,7 +371,7 @@ internal fun LiveChat(content: LiveWatchContent, modifier: Modifier = Modifier) 
                 contentPadding = PaddingValues(FanousTokens.Spacing.md),
                 verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
             ) {
-                items(content.messages, key = { it.id }) { Message(it, showTime = replay) }
+                items(content.messages, key = { it.id }) { Message(it, showTime = replay, stream = content.stream, safety = safety) }
             }
         }
     }
@@ -296,21 +379,73 @@ internal fun LiveChat(content: LiveWatchContent, modifier: Modifier = Modifier) 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Message(message: LiveChatMessage, showTime: Boolean) {
-    Column(
-        Modifier.semantics(mergeDescendants = true) {}.testTag("live-chat-message-${message.id}"),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-            if (showTime) MessageMeta(durationLabel(message.offsetMs / MS))
-            MessageMeta(message.authorName, FontWeight.SemiBold)
-            when (message.role) {
-                LiveChatMessage.Role.OWNER -> LiveTag(stringResource(R.string.live_chat_host))
-                LiveChatMessage.Role.MODERATOR -> LiveTag(stringResource(R.string.live_chat_moderator))
-                null -> Unit
+private fun Message(
+    message: LiveChatMessage,
+    showTime: Boolean,
+    stream: LiveStream,
+    safety: LiveSafetyActions?
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var confirmBlock by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Column(
+            Modifier.weight(1f).semantics(mergeDescendants = true) {}.testTag("live-chat-message-${message.id}"),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                if (showTime) MessageMeta(durationLabel(message.offsetMs / MS))
+                MessageMeta(message.authorName, FontWeight.SemiBold)
+                when (message.role) {
+                    LiveChatMessage.Role.OWNER -> LiveTag(stringResource(R.string.live_chat_host))
+                    LiveChatMessage.Role.MODERATOR -> LiveTag(stringResource(R.string.live_chat_moderator))
+                    null -> Unit
+                }
+            }
+            Text(message.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+        }
+        if (safety != null) {
+            Box {
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.testTag("live-chat-more-${message.id}")
+                ) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = aunString(R.string.live_more_actions_for, isolate(message.authorName)),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.live_report_message)) },
+                        onClick = {
+                            menuOpen = false
+                            safety.onReportMessage(stream, message)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.live_block_user)) },
+                        modifier = Modifier.testTag("live-block-user-item"),
+                        onClick = {
+                            menuOpen = false
+                            confirmBlock = true
+                        }
+                    )
+                }
             }
         }
-        Text(message.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+    if (confirmBlock && safety != null) {
+        ConfirmDialog(
+            title = aunString(R.string.live_block_user_title, isolate(message.authorName)),
+            message = stringResource(R.string.live_block_user_body),
+            confirmLabel = stringResource(R.string.live_block_confirm),
+            onConfirm = {
+                confirmBlock = false
+                safety.onBlockUser(message)
+            },
+            onDismiss = { confirmBlock = false }
+        )
     }
 }
 

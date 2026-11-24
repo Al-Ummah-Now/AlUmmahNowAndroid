@@ -35,6 +35,7 @@ fun DisplaySettingsSheet(
     onLanguage: (String?) -> Unit,
     onDismiss: () -> Unit,
     onOpenUrl: ((String) -> Unit)? = null,
+    onOpenBlockedList: (() -> Unit)? = null,
     webHost: String
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -46,6 +47,7 @@ fun DisplaySettingsSheet(
             onLanguage = onLanguage,
             onDismiss = onDismiss,
             onOpenUrl = onOpenUrl,
+            onOpenBlockedList = onOpenBlockedList,
             webHost = webHost
         )
     }
@@ -60,6 +62,7 @@ internal fun DisplaySettingsSheetContent(
     onLanguage: (String?) -> Unit,
     onDismiss: () -> Unit,
     onOpenUrl: ((String) -> Unit)? = null,
+    onOpenBlockedList: (() -> Unit)? = null,
     webHost: String
 ) {
     val langCode = language ?: currentLocale().language
@@ -74,6 +77,23 @@ internal fun DisplaySettingsSheetContent(
             // Language names are shown in their own script so either speaker can find theirs.
             Option("العربية", language == "ar") { onLanguage("ar") }
             Option("English", language == "en") { onLanguage("en") }
+        }
+        if (onOpenBlockedList != null) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button) { onOpenBlockedList() }
+                    .padding(horizontal = 24.dp, vertical = 14.dp)
+                    .testTag("settings-blocked-list"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.settings_blocked_list),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
         if (onOpenUrl != null) {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
