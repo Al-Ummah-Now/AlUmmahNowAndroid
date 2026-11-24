@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.live.LiveChatMessage
 import net.alummahnow.core.bridge.live.LiveChatPage
 import net.alummahnow.core.bridge.live.LiveEventType
@@ -226,6 +227,62 @@ class LiveViewModelTest {
         clock.advance(61)
         vm.tick(0)
         assertEquals(asked.map { it + 1 }, listOf(live.stateReads, live.chatReads, live.beats.size))
+    }
+
+    @Test fun `a wait begins when the answer is there`() = test {
+        val live = FakeLive(onAir.copy(chatEnabled = true))
+        val vm = model(live)
+        live.answering = { clock.advance(8) }
+        vm.tick(0)
+        clock.advance(60)
+        // The state, the chat and the beat, 8 seconds each
+        vm.tick(0)
+        live.answering = {}
+        val asked = listOf(live.stateReads, live.chatReads, live.beats.size)
+        suspend fun after(seconds: Long): List<Int> {
+            clock.advance(seconds)
+            vm.tick(0)
+            return listOf(live.stateReads, live.chatReads, live.beats.size)
+        }
+        // The chat's 10 seconds began 8 before the beat's 20, and the state's 60 8 before that
+        assertEquals(asked[1], after(1)[1])
+        assertEquals(asked[1] + 1, after(1)[1])
+        assertEquals(asked[2], after(17)[2])
+        assertEquals(asked[2] + 1, after(1)[2])
+        assertEquals(asked[0], after(23)[0])
+        assertEquals(asked[0] + 1, after(1)[0])
+    }
+
+    @Test fun `going to the background is not a failure`() = test {
+        val live = FakeLive(onAir.copy(chatEnabled = true))
+        val vm = model(live)
+        live.chatGate = CompletableDeferred()
+        val running = launch { vm.run({ null }, {}) }
+        runCurrent()
+        assertEquals(1, live.chatReads)
+        running.cancelAndJoin()
+        live.chatGate = null
+        vm.tick(0)
+        // Asked at once, not after a failure's minute
+        assertEquals(2, live.chatReads)
+        clock.advance(60)
+        live.stateGate = CompletableDeferred()
+        val again = launch { vm.run({ null }, {}) }
+        runCurrent()
+        assertEquals(2, live.stateReads)
+        again.cancelAndJoin()
+        live.stateGate = null
+        vm.tick(0)
+        assertEquals(3, live.stateReads)
+    }
+
+    @Test fun `a premiere's video that could not be read is asked for again`() = test {
+        val live = FakeLive(premiere(LiveStatus.ENDED))
+        val vm = LiveWatchViewModel("s", live, FakeCatalog(error = CoreError.Http(503))) { clock.at }
+        assertEquals(LiveMode.RECORDING, vm.now.mode)
+        clock.advance(15)
+        vm.tick(null)
+        assertEquals(2, live.stateReads)
     }
 
     @Test fun `what the server says is kept between 5 seconds and 10 minutes`() {

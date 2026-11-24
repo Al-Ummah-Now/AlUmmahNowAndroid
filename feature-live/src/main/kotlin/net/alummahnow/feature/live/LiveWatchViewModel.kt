@@ -10,7 +10,9 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -178,17 +180,17 @@ class LiveWatchViewModel(
         return actions
     }
 
-    /** One second: the clock and whatever is due. */
+    /** One second: the clock and whatever is due. Every wait begins when the answer is there, however long that took. */
     internal suspend fun tick(positionMs: Long?) {
         val before = content ?: return
         update { it.copy(untilStartMs = countdown(it)) }
-        val moment = now()
-        if (Duration.between(stateAt, moment) >= stateInterval(content ?: before)) refreshState()
+        if (Duration.between(stateAt, now()) >= stateInterval(content ?: before)) refreshState()
         val current = content ?: return
-        refreshChat(current, moment, positionMs)
-        if (current.mode == LiveMode.LIVE && moment >= beatDue) {
-            beatDue = moment + BEAT
-            val count = quiet({ beatDue = now() + it }) { live.beat(streamId, viewerId, leaving = false) }
+        refreshChat(current, positionMs)
+        if (current.mode == LiveMode.LIVE && now() >= beatDue) {
+            var wait = BEAT
+            val count = quiet({ wait = it }) { live.beat(streamId, viewerId, leaving = false) }
+            beatDue = now() + wait
             if (count != null) update { it.copy(viewers = count) }
         }
     }
@@ -204,14 +206,17 @@ class LiveWatchViewModel(
         // A premiere's time has come: it starts within the minute
         LiveMode.SOON -> if ((content.untilStartMs ?: 1) <= 0) DUE_POLL else SOON_POLL
         LiveMode.ENDED -> if (isGone) FOREVER else SOON_POLL
-        LiveMode.RECORDING, LiveMode.CANCELLED -> FOREVER
+        // A premiere's video that could not be read
+        LiveMode.RECORDING -> if (content.isPremiere && content.media == null) SOON_POLL else FOREVER
+        LiveMode.CANCELLED -> FOREVER
     }
 
     private suspend fun refreshState() {
+        var refused: Duration? = null
+        val liveState = quiet({ refused = it }) { live.state(streamId) }
         stateAt = now()
-        stateWait = null
-        val liveState = quiet({ stateWait = it }) { live.state(streamId) } ?: return
-        stateWait = pollAfter(liveState.pollAfterMs)
+        stateWait = if (liveState == null) refused else pollAfter(liveState.pollAfterMs)
+        if (liveState == null) return
         content?.let { show(it.copy(live = liveState)) }
     }
 
@@ -250,7 +255,15 @@ class LiveWatchViewModel(
     private suspend fun loadPremiere(content: LiveWatchContent) {
         val id = content.live.premiereVideoId ?: return
         if (content.media != null || (content.mode != LiveMode.LIVE && content.mode != LiveMode.RECORDING)) return
-        val video = quiet { catalog.video(id) }?.takeIf { it.isReady && it.playUrl != null }
+        val video = try {
+            catalog.video(id).takeIf { it.isReady && it.playUrl != null }
+        } catch (_: CoreError.NotFound) {
+            null
+        } catch (e: CoreError) {
+            // Not an answer: asked for again
+            AunLog.i("live", "premiere's video not read", "id" to streamId, "error" to e.message)
+            return
+        }
         when {
             video != null -> update { it.copy(media = LiveMedia.Premiere(video, premiere?.position(now()) ?: 0)) }
             content.mode == LiveMode.RECORDING -> {
@@ -266,16 +279,16 @@ class LiveWatchViewModel(
         return Duration.between(now(), start).toMillis() - content.live.clockOffsetMs
     }
 
-    private suspend fun refreshChat(content: LiveWatchContent, moment: Instant, positionMs: Long?) {
+    private suspend fun refreshChat(content: LiveWatchContent, positionMs: Long?) {
         if (!content.hasChat) return
         if (content.mode == LiveMode.RECORDING) {
             refreshReplay(positionMs ?: 0)
             return
         }
-        if (moment < chatDue) return
+        if (now() < chatDue) return
         var refused: Duration? = null
         val page = quiet({ refused = it }) { live.chat(streamId) }
-        chatDue = moment + when {
+        chatDue = now() + when {
             page == null -> refused ?: CHAT_BACKOFF
             else -> pollAfter(page.pollAfterMs) ?: if (content.mode == LiveMode.LIVE) CHAT_POLL else CHAT_SOON_POLL
         }
@@ -319,10 +332,11 @@ class LiveWatchViewModel(
 
     private fun sorted(all: Map<String, LiveChatMessage>) = all.values.sortedWith(compareBy({ it.offsetMs }, { it.id }))
 
-    /** [refused]: the server said when to ask again. */
+    /** [refused]: the server said when to ask again. Leaving the screen is not a failure: nothing of what is due changes. */
     private suspend fun <T> quiet(refused: (Duration) -> Unit = {}, block: suspend () -> T): T? = try {
         block()
     } catch (e: CoreError) {
+        currentCoroutineContext().ensureActive()
         AunLog.i("live", "not read", "id" to streamId, "error" to e.message)
         pollAfter((e as? CoreError.Http)?.retryAfterMs)?.let(refused)
         null
