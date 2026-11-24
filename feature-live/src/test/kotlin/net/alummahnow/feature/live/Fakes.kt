@@ -73,7 +73,12 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
         retryAfter?.let { throw CoreError.Http(429, it) }
     }
 
-    override suspend fun chatReplay(id: String, fromMs: Long, toMs: Long) = windows[fromMs] ?: LiveChatPage(emptyList())
+    val windowReads = mutableListOf<Long>()
+
+    override suspend fun chatReplay(id: String, fromMs: Long, toMs: Long): LiveChatPage {
+        windowReads += fromMs
+        return windows[fromMs] ?: LiveChatPage(emptyList())
+    }
 
     override suspend fun beat(id: String, viewerId: String, leaving: Boolean): Long? {
         beats += leaving

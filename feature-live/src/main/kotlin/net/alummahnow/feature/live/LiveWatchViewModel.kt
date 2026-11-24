@@ -263,6 +263,7 @@ class LiveWatchViewModel(
         } catch (_: CoreError.NotFound) {
             null
         } catch (e: CoreError) {
+            currentCoroutineContext().ensureActive()
             // Not an answer: asked for again
             AunLog.i("live", "premiere's video not read", "id" to streamId, "error" to e.message)
             return
@@ -304,9 +305,11 @@ class LiveWatchViewModel(
         // The one before, so a seek does not open an empty chat, and the next, so it is there in time
         for (n in listOf(window, window + 1, window - 1)) {
             if (n < 0 || n in replay || now() < replayDue) continue
-            var refused: Duration? = null
-            val list = readWindow(n) { refused = it }
-            if (list == null) replayDue = now() + (refused ?: CHAT_BACKOFF) else replay[n] = list
+            var wait: Duration? = null
+            val list = readWindow(n) { wait = it }
+            if (list != null) replay[n] = list
+            val due = wait ?: CHAT_BACKOFF.takeIf { list == null }
+            if (due != null) replayDue = now() + due
         }
         var shown = emptyList<LiveChatMessage>()
         var n = window
@@ -318,13 +321,17 @@ class LiveWatchViewModel(
         update { it.copy(messages = shown.takeLast(SHOWN)) }
     }
 
-    /** null when it could not be read; asked for again after a while. */
-    private suspend fun readWindow(n: Long, refused: (Duration) -> Unit): List<LiveChatMessage>? {
+    /**
+     * null when it could not be read; asked for again after a while. [wait]: what the server said of the next read, after
+     * an answer or a refusal; the rest of a window is one read in parts.
+     */
+    private suspend fun readWindow(n: Long, wait: (Duration) -> Unit): List<LiveChatMessage>? {
         var from = n * REPLAY_WINDOW_MS
         val to = from + REPLAY_WINDOW_MS
         val all = linkedMapOf<String, LiveChatMessage>()
         repeat(REPLAY_PAGES) {
-            val page: LiveChatPage = quiet(refused) { live.chatReplay(streamId, from, to) } ?: return null
+            val page: LiveChatPage = quiet(wait) { live.chatReplay(streamId, from, to) } ?: return null
+            pollAfter(page.pollAfterMs)?.let(wait)
             page.messages.filter { it.offsetMs < to }.forEach { all[it.id] = it }
             val last = page.messages.lastOrNull()
             if (!page.truncated || last == null || last.offsetMs <= from) return sorted(all)
