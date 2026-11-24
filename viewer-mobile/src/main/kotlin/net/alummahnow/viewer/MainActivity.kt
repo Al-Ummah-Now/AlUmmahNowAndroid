@@ -254,7 +254,8 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                 }
-            }
+            },
+            webHost = BuildConfig.WEB_HOST
         )
     }
 }
