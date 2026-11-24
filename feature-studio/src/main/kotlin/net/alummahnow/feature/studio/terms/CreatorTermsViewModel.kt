@@ -29,6 +29,7 @@ sealed interface CreatorTermsUiState {
 class CreatorTermsViewModel(private val repository: StudioRepository) : ViewModel() {
     private val mutableState = MutableStateFlow<CreatorTermsUiState>(CreatorTermsUiState.Loading)
     val state: StateFlow<CreatorTermsUiState> = mutableState.asStateFlow()
+    private var acceptGeneration = 0
 
     init {
         load()
@@ -43,17 +44,24 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
         val current = mutableState.value
         val keepVisible = current == CreatorTermsUiState.Accepted || current is CreatorTermsUiState.Required
         if (!keepVisible) mutableState.value = CreatorTermsUiState.Loading
+        val startGen = acceptGeneration
         viewModelScope.launch {
             attempt("studio", "creator-terms-load") { repository.creatorAccess() }.fold(
                 onSuccess = { access ->
+                    val latest = mutableState.value
+                    // Ignore a load started before an accept() completed, or while accept() is saving.
+                    if (startGen != acceptGeneration) return@fold
+                    if (latest is CreatorTermsUiState.Required && latest.saving) return@fold
                     mutableState.value = if (access.termsAccepted == false) {
-                        (mutableState.value as? CreatorTermsUiState.Required) ?: CreatorTermsUiState.Required()
+                        (latest as? CreatorTermsUiState.Required) ?: CreatorTermsUiState.Required()
                     } else {
                         CreatorTermsUiState.Accepted
                     }
                 },
                 onFailure = {
-                    if (!keepVisible) mutableState.value = CreatorTermsUiState.Failed
+                    if (startGen == acceptGeneration && !keepVisible) {
+                        mutableState.value = CreatorTermsUiState.Failed
+                    }
                 }
             )
         }
@@ -61,10 +69,16 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
 
     /** Re-checks on resume so a server-side version bump or acceptance on another device takes effect. */
     fun refresh() {
-        if (mutableState.value is CreatorTermsUiState.Required && (mutableState.value as CreatorTermsUiState.Required).saving) {
-            return
-        }
+        val current = mutableState.value
+        if (current is CreatorTermsUiState.Required && current.saving) return
         load()
+    }
+
+    /** Reopens the gate when an upload fails with `403 terms_required`. */
+    fun requireTerms() {
+        if (mutableState.value !is CreatorTermsUiState.Required) {
+            mutableState.value = CreatorTermsUiState.Required()
+        }
     }
 
     /** Records acceptance on the server and unlocks Upload only on success. */
@@ -74,7 +88,10 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
         mutableState.value = current.copy(saving = true, errorRes = null)
         viewModelScope.launch {
             attempt("studio", "accept-terms") { repository.acceptCreatorTerms() }.fold(
-                onSuccess = { mutableState.value = CreatorTermsUiState.Accepted },
+                onSuccess = {
+                    acceptGeneration++
+                    mutableState.value = CreatorTermsUiState.Accepted
+                },
                 onFailure = {
                     mutableState.value = CreatorTermsUiState.Required(
                         saving = false,

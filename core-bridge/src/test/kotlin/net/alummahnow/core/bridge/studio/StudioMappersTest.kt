@@ -121,5 +121,15 @@ class StudioMappersTest {
             """{"success":true,"result":{"canUpload":true,"canCreateChannel":true}}"""
         )
         assertNull(legacy.termsAccepted)
+
+        val malformedString = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"termsAccepted":"yes"}}"""
+        )
+        assertEquals(false, malformedString.termsAccepted)
+
+        val malformedNumber = StudioMappers.creatorAccess(
+            """{"success":true,"result":{"canUpload":true,"termsAccepted":1}}"""
+        )
+        assertEquals(false, malformedNumber.termsAccepted)
     }
 }

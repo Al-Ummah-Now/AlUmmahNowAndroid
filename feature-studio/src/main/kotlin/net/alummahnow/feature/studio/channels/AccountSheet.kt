@@ -70,7 +70,7 @@ fun AccountSheet(
     onDismiss: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
     onOpenUrl: ((String) -> Unit)? = null,
-    webHost: String = SupportLinks.DEFAULT_WEB_HOST
+    webHost: String
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
     ModalBottomSheet(
@@ -118,7 +118,7 @@ internal fun AccountSheetContent(
     onDismiss: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
     onOpenUrl: ((String) -> Unit)? = null,
-    webHost: String = SupportLinks.DEFAULT_WEB_HOST
+    webHost: String
 ) {
     val lang = currentLocale().language
     Column(

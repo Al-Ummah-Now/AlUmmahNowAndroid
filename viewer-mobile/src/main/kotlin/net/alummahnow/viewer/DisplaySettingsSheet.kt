@@ -35,40 +35,63 @@ fun DisplaySettingsSheet(
     onLanguage: (String?) -> Unit,
     onDismiss: () -> Unit,
     onOpenUrl: ((String) -> Unit)? = null,
-    webHost: String = SupportLinks.DEFAULT_WEB_HOST
+    webHost: String
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        DisplaySettingsSheetContent(
+            theme = theme,
+            language = language,
+            languageSwitchSupported = languageSwitchSupported,
+            onTheme = onTheme,
+            onLanguage = onLanguage,
+            onDismiss = onDismiss,
+            onOpenUrl = onOpenUrl,
+            webHost = webHost
+        )
+    }
+}
+
+@Composable
+internal fun DisplaySettingsSheetContent(
+    theme: ThemeMode?,
+    language: String?,
+    languageSwitchSupported: Boolean,
+    onTheme: (ThemeMode) -> Unit,
+    onLanguage: (String?) -> Unit,
+    onDismiss: () -> Unit,
+    onOpenUrl: ((String) -> Unit)? = null,
+    webHost: String
 ) {
     val langCode = language ?: currentLocale().language
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            Title(stringResource(R.string.settings_theme))
-            Option(stringResource(R.string.settings_theme_dark), theme == ThemeMode.DARK) { onTheme(ThemeMode.DARK) }
-            Option(stringResource(R.string.settings_theme_light), theme == ThemeMode.LIGHT) { onTheme(ThemeMode.LIGHT) }
-            if (languageSwitchSupported) {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                Title(stringResource(R.string.settings_language))
-                Option(stringResource(R.string.settings_language_system), language == null) { onLanguage(null) }
-                // Language names are shown in their own script so either speaker can find theirs.
-                Option("العربية", language == "ar") { onLanguage("ar") }
-                Option("English", language == "en") { onLanguage("en") }
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+        Title(stringResource(R.string.settings_theme))
+        Option(stringResource(R.string.settings_theme_dark), theme == ThemeMode.DARK) { onTheme(ThemeMode.DARK) }
+        Option(stringResource(R.string.settings_theme_light), theme == ThemeMode.LIGHT) { onTheme(ThemeMode.LIGHT) }
+        if (languageSwitchSupported) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Title(stringResource(R.string.settings_language))
+            Option(stringResource(R.string.settings_language_system), language == null) { onLanguage(null) }
+            // Language names are shown in their own script so either speaker can find theirs.
+            Option("العربية", language == "ar") { onLanguage("ar") }
+            Option("English", language == "en") { onLanguage("en") }
+        }
+        if (onOpenUrl != null) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            LinkRow(stringResource(R.string.settings_help), "settings-help") {
+                onDismiss()
+                onOpenUrl(SupportLinks.helpUrl(langCode, webHost))
             }
-            if (onOpenUrl != null) {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                LinkRow(stringResource(R.string.settings_help), "settings-help") {
-                    onDismiss()
-                    onOpenUrl(SupportLinks.helpUrl(langCode, webHost))
-                }
-                LinkRow(stringResource(R.string.settings_contact), "settings-contact") {
-                    onDismiss()
-                    onOpenUrl(SupportLinks.contactUrl(langCode, webHost))
-                }
-                LinkRow(stringResource(R.string.settings_privacy_policy), "settings-privacy") {
-                    onDismiss()
-                    onOpenUrl(SupportLinks.privacyUrl(langCode, webHost))
-                }
-                LinkRow(stringResource(R.string.settings_terms_of_service), "settings-terms") {
-                    onDismiss()
-                    onOpenUrl(SupportLinks.termsUrl(langCode, webHost))
-                }
+            LinkRow(stringResource(R.string.settings_contact), "settings-contact") {
+                onDismiss()
+                onOpenUrl(SupportLinks.contactUrl(langCode, webHost))
+            }
+            LinkRow(stringResource(R.string.settings_privacy_policy), "settings-privacy") {
+                onDismiss()
+                onOpenUrl(SupportLinks.privacyUrl(langCode, webHost))
+            }
+            LinkRow(stringResource(R.string.settings_terms_of_service), "settings-terms") {
+                onDismiss()
+                onOpenUrl(SupportLinks.termsUrl(langCode, webHost))
             }
         }
     }

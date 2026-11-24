@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -153,6 +154,11 @@ fun StudioApp(
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { termsModel.refresh() }
     val termsState by termsModel.state.collectAsStateWithLifecycle()
+    // Scoped to the active account (so an account switch never leaks files) and keyed by channelId (so channel
+    // switches, multiple exports, and process recreation all keep queued editor exports until Terms are accepted).
+    var pendingEditorExports by rememberSaveable(current.userId, stateSaver = PendingExportsSaver) {
+        mutableStateOf<Map<String, List<PickedFile>>>(emptyMap())
+    }
 
     fun openExternalLink(url: String) {
         if (!openInBrowser(url)) {
@@ -199,7 +205,6 @@ fun StudioApp(
                 pendingLink = null
             }
             val key = "${current.userId}-${selected.id}"
-            var pendingEditorExport by remember(key) { mutableStateOf<PickedFile?>(null) }
             val content: ContentViewModel = viewModel(key = "content-$key") { ContentViewModel(container.repository, selected.id) }
             // Per account and channel, so a switch reads features again; re-read whenever the app is back in front.
             val featuresModel: StudioFeaturesViewModel =
@@ -237,27 +242,30 @@ fun StudioApp(
                     when (t) {
                         StudioTab.CONTENT -> ContentRoute(content, onEdit = { editing = it })
                         StudioTab.UPLOAD -> {
-                            when (val ts = termsState) {
-                                CreatorTermsUiState.Loading -> CreatorTermsLoading()
-                                CreatorTermsUiState.Failed -> CreatorTermsError(onRetry = termsModel::load)
-                                is CreatorTermsUiState.Required -> CreatorTermsGate(
-                                    saving = ts.saving,
-                                    error = ts.errorRes?.let { resources.getString(it) },
-                                    onOpenUrl = ::openExternalLink,
-                                    onAgree = termsModel::accept,
-                                    webHost = BuildConfig.WEB_HOST
-                                )
-                                CreatorTermsUiState.Accepted -> {
-                                    val upload: UploadViewModel = viewModel(key = "upload-$key") {
-                                        UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
-                                    }
-                                    LaunchedEffect(pendingEditorExport) {
-                                        val pending = pendingEditorExport ?: return@LaunchedEffect
-                                        upload.addFiles(listOf(pending))
-                                        pendingEditorExport = null
-                                    }
-                                    UploadRoute(upload)
+                            StudioUploadTab(
+                                termsState = termsState,
+                                onRetryTerms = termsModel::load,
+                                onAgreeTerms = termsModel::accept,
+                                onOpenUrl = ::openExternalLink,
+                                webHost = BuildConfig.WEB_HOST
+                            ) {
+                                val upload: UploadViewModel = viewModel(key = "upload-$key") {
+                                    UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
                                 }
+                                val pendingForChannel = pendingEditorExports[selected.id].orEmpty()
+                                LaunchedEffect(selected.id, pendingForChannel) {
+                                    if (pendingForChannel.isNotEmpty()) {
+                                        upload.addFiles(pendingForChannel)
+                                        pendingEditorExports = pendingEditorExports - selected.id
+                                    }
+                                }
+                                val uploadState by upload.state.collectAsStateWithLifecycle()
+                                LaunchedEffect(uploadState.queue) {
+                                    if (uploadState.queue.any { it.error?.contains("terms_required", ignoreCase = true) == true }) {
+                                        termsModel.requireTerms()
+                                    }
+                                }
+                                UploadRoute(upload)
                             }
                         }
                         StudioTab.ANALYTICS -> AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
@@ -274,14 +282,14 @@ fun StudioApp(
                             val upload: UploadViewModel = viewModel(key = "upload-$key") {
                                 UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
                             }
-                            // Hold the exported file if Terms are not accepted yet so it queues once accepted.
+                            // Hold exported files per channel if Terms are not accepted yet so none are dropped.
                             val send: ((String, String, Long) -> Unit)? = if (StudioTab.UPLOAD in tabs) {
                                 { uri, name, size ->
                                     val file = PickedFile(uri, name, size, "video/mp4")
                                     if (termsState == CreatorTermsUiState.Accepted) {
                                         upload.addFiles(listOf(file))
                                     } else {
-                                        pendingEditorExport = file
+                                        pendingEditorExports = enqueuePendingExport(pendingEditorExports, selected.id, file)
                                     }
                                     tab = StudioTab.UPLOAD
                                 }
@@ -347,6 +355,76 @@ private fun StudioSection.toTab(): StudioTab = when (this) {
     StudioSection.CONTENT -> StudioTab.CONTENT
     StudioSection.ANALYTICS -> StudioTab.ANALYTICS
 }
+
+/** Upload tab shell: renders the fail-closed Terms gate until [termsState] is [CreatorTermsUiState.Accepted]. */
+@Composable
+internal fun StudioUploadTab(
+    termsState: CreatorTermsUiState,
+    onRetryTerms: () -> Unit,
+    onAgreeTerms: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+    webHost: String,
+    uploadContent: @Composable () -> Unit
+) {
+    val resources = LocalResources.current
+    when (termsState) {
+        CreatorTermsUiState.Loading -> CreatorTermsLoading()
+        CreatorTermsUiState.Failed -> CreatorTermsError(onRetry = onRetryTerms)
+        is CreatorTermsUiState.Required -> CreatorTermsGate(
+            saving = termsState.saving,
+            error = termsState.errorRes?.let { resources.getString(it) },
+            onOpenUrl = onOpenUrl,
+            onAgree = onAgreeTerms,
+            webHost = webHost
+        )
+        CreatorTermsUiState.Accepted -> uploadContent()
+    }
+}
+
+internal fun enqueuePendingExport(
+    current: Map<String, List<PickedFile>>,
+    channelId: String,
+    file: PickedFile
+): Map<String, List<PickedFile>> {
+    val existing = current[channelId].orEmpty()
+    return current + (channelId to (existing + file).distinctBy { it.uri })
+}
+
+/** Bundle-safe saver for pending editor exports keyed by channel ID. */
+internal val PendingExportsSaver: Saver<Map<String, List<PickedFile>>, ArrayList<ArrayList<String>>> = Saver(
+    save = { map ->
+        ArrayList<ArrayList<String>>().apply {
+            map.forEach { (channelId, files) ->
+                files.forEach { f ->
+                    add(
+                        arrayListOf(
+                            channelId,
+                            f.uri,
+                            f.name,
+                            f.sizeBytes.toString(),
+                            f.mimeType.orEmpty()
+                        )
+                    )
+                }
+            }
+        }
+    },
+    restore = { rows ->
+        buildMap<String, MutableList<PickedFile>> {
+            rows.forEach { row ->
+                if (row.size >= 5) {
+                    val file = PickedFile(
+                        uri = row[1],
+                        name = row[2],
+                        sizeBytes = row[3].toLongOrNull() ?: 0L,
+                        mimeType = row[4].ifEmpty { null }
+                    )
+                    getOrPut(row[0]) { mutableListOf() }.add(file)
+                }
+            }
+        }
+    }
+)
 
 /** "Add a passkey" needs a sign-in within 15 minutes (the server's step_up_required window). */
 private const val STEP_UP_MAX_AGE_S = 900

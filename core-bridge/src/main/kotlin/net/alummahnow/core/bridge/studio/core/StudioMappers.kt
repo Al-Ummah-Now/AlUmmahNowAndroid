@@ -1,5 +1,6 @@
 package net.alummahnow.core.bridge.studio.core
 
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -50,14 +51,23 @@ object StudioMappers {
         return list.mapNotNull { it.obj()?.let(::channel) }
     }
 
-    /** `GET /api/me/creator` → [CreatorAccess]; omits `termsAccepted` as `null` when the server predates #1931. */
+    /**
+     * `GET /api/me/creator` → [CreatorAccess]; omits `termsAccepted` as `null` when the server predates #1931.
+     * Any present non-boolean value fails closed to `false`.
+     */
     fun creatorAccess(body: String): CreatorAccess {
         val r = J.parse(body).unwrap().obj() ?: JsonObject(emptyMap())
+        val rawTerms = r["termsAccepted"]
+        val termsAccepted = when {
+            rawTerms == null || rawTerms is JsonNull -> null
+            rawTerms is JsonPrimitive && !rawTerms.isString -> rawTerms.booleanOrNull ?: false
+            else -> false
+        }
         return CreatorAccess(
             canUpload = r.b("canUpload") == true,
             canCreateChannel = r.b("canCreateChannel") == true,
             tierName = r.o("tier")?.s("name"),
-            termsAccepted = r.b("termsAccepted")
+            termsAccepted = termsAccepted
         )
     }
 

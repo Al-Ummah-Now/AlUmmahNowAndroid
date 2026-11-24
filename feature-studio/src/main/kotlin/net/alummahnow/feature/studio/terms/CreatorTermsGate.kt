@@ -20,7 +20,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,11 +52,11 @@ fun CreatorTermsGate(
     error: String?,
     onOpenUrl: (String) -> Unit,
     onAgree: () -> Unit,
+    webHost: String,
     modifier: Modifier = Modifier,
-    initialChecked: Boolean = false,
-    webHost: String = SupportLinks.DEFAULT_WEB_HOST
+    initialChecked: Boolean = false
 ) {
-    var checked by remember { mutableStateOf(initialChecked) }
+    var checked by rememberSaveable { mutableStateOf(initialChecked) }
     val lang = currentLocale().language
     Box(
         modifier = modifier

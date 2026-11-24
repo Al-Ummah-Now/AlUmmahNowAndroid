@@ -104,7 +104,17 @@ class SignInAndChannelsTest {
         val signedOut = mutableListOf<String>()
         compose.setContent {
             AunTheme {
-                AccountSheet(listOf(sampleAccount), "u1", sampleChannels[0], {}, {}, { signedOut += it }, {}, {})
+                AccountSheet(
+                    listOf(sampleAccount),
+                    "u1",
+                    sampleChannels[0],
+                    {},
+                    {},
+                    { signedOut += it },
+                    {},
+                    {},
+                    webHost = "videos.alummahnow.net"
+                )
             }
         }
         compose.onNodeWithTag("sign-out-u1").performClick()
@@ -173,7 +183,18 @@ class SignInAndChannelsTest {
         var added = 0
         compose.setContent {
             AunTheme {
-                AccountSheet(listOf(sampleAccount), sampleAccount.userId, null, {}, {}, {}, {}, {}, onAddPasskey = { added++ })
+                AccountSheet(
+                    listOf(sampleAccount),
+                    sampleAccount.userId,
+                    null,
+                    {},
+                    {},
+                    {},
+                    {},
+                    {},
+                    onAddPasskey = { added++ },
+                    webHost = "videos.alummahnow.net"
+                )
             }
         }
         compose.onNodeWithTag("add-passkey").performClick()

@@ -58,7 +58,8 @@ import net.alummahnow.core.bridge.studio.VisibilityFilter
 @Suppress("SwallowedException")
 class CoreStudioRepository(
     private val client: () -> ApiClient,
-    private val proofs: NativeProofProvider = NoNativeProof
+    private val proofs: NativeProofProvider = NoNativeProof,
+    private val executePath: suspend (PathCall) -> String = { call -> client().requestPath(call).body }
 ) : StudioRepository {
 
     private suspend fun call(
@@ -74,7 +75,7 @@ class CoreStudioRepository(
         val idempotencyKey = if (idempotent) UUID.randomUUID().toString() else null
         coreCall {
             withNativeProof(proofs, method, ::isNativeProofRequired) { proofHeaders ->
-                client().requestPath(
+                executePath(
                     PathCall(
                         method = method,
                         pathTemplate = path,
@@ -85,7 +86,7 @@ class CoreStudioRepository(
                         idempotencyKey = idempotencyKey,
                         authRequired = true
                     )
-                ).body
+                )
             }
         }
     }
