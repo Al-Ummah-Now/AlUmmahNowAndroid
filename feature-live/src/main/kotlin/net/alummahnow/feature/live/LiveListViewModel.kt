@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,7 @@ class LiveListViewModel(private val live: LiveRepository, private val now: () ->
     private val mutableState = MutableStateFlow<LiveListUiState>(LiveListUiState.Loading)
     val state: StateFlow<LiveListUiState> = mutableState.asStateFlow()
     private var event: LiveEventType? = null
+    private var loading: Job? = null
 
     init {
         load()
@@ -50,8 +52,10 @@ class LiveListViewModel(private val live: LiveRepository, private val now: () ->
         load()
     }
 
+    /** The latest load is the one that is shown: an earlier one still on its way is dropped. */
     fun load() {
-        viewModelScope.launch {
+        loading?.cancel()
+        loading = viewModelScope.launch {
             try {
                 mutableState.value = LiveListUiState.Content(read())
             } catch (e: CancellationException) {

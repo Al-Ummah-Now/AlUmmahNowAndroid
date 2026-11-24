@@ -33,13 +33,18 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
     var fails = false
     var chatFails = false
     var chatPollAfter: Long? = null
+    var pinned: LiveChatMessage? = null
 
     /** Every read is refused with this `Retry-After`. */
     var retryAfter: Long? = null
 
     override suspend fun features() = features
 
+    /** Held back until it is completed, for one event. */
+    var listGate: Pair<LiveEventType, CompletableDeferred<Unit>>? = null
+
     override suspend fun streams(status: LiveStatus, event: LiveEventType?): List<LiveStream> {
+        listGate?.let { (held, gate) -> if (event == held) gate.await() }
         if (fails) throw CoreError.Http(503)
         askedEvent = event
         return lists[status].orEmpty()
@@ -61,7 +66,7 @@ internal class FakeLive(var current: LiveState = LiveState(LiveStatus.SCHEDULED)
         chatGate?.await()
         refuse()
         if (chatFails) throw CoreError.Http(503)
-        return LiveChatPage(listOf(LiveChatMessage("m", "A", "x", 0)), pollAfterMs = chatPollAfter)
+        return LiveChatPage(listOf(LiveChatMessage("m", "A", "x", 0)), pinned, pollAfterMs = chatPollAfter)
     }
 
     private fun refuse() {

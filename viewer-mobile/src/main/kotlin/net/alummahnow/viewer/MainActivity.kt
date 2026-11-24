@@ -30,10 +30,7 @@ import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.navigation.NavType
@@ -56,10 +53,8 @@ import net.alummahnow.feature.live.LiveListUiState
 import net.alummahnow.feature.live.LiveListViewModel
 import net.alummahnow.feature.live.LiveRail
 import net.alummahnow.feature.live.LiveWatchScreen
-import net.alummahnow.feature.live.LiveWatchUiState
 import net.alummahnow.feature.live.LiveWatchViewModel
-import net.alummahnow.feature.live.applyTo
-import net.alummahnow.feature.live.readingOf
+import net.alummahnow.feature.live.RunLive
 import net.alummahnow.feature.watch.WatchScreen
 import net.alummahnow.feature.watch.WatchViewModel
 import net.alummahnow.player.ui.rememberMediaController
@@ -255,23 +250,11 @@ private fun LiveWatchRoute(container: AppContainer, id: String, inPip: Boolean, 
     val player by rememberMediaController()
     var fullscreen by remember { mutableStateOf(false) }
     val activity = LocalActivity.current as? MainActivity
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
     PipEligibility(player, onPipEligible)
     LaunchedEffect(fullscreen) { activity?.setFullscreen(fullscreen) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
     DisposableEffect(Unit) { onDispose { activity?.setFullscreen(false) } }
-    // The clock, the polls and the premiere's moment, while the screen is on
-    LaunchedEffect(vm, player) {
-        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            vm.run(
-                reading = {
-                    val content = (vm.state.value as? LiveWatchUiState.Content)?.content
-                    player?.let { p -> content?.let { readingOf(p, it) } }
-                },
-                apply = { actions -> player?.let { applyTo(it, actions) } }
-            )
-        }
-    }
+    RunLive(vm, player)
     LiveWatchScreen(
         state = state,
         player = player,

@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,9 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -188,6 +192,27 @@ fun LiveWatchScreen(
     }
 }
 
+/**
+ * The clock, the polls and the premiere's moment, while the screen is on. One run for the screen: the player connecting
+ * or coming back does not end it, which would count the viewer out.
+ */
+@Composable
+fun RunLive(vm: LiveWatchViewModel, player: Player?) {
+    val current by rememberUpdatedState(player)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(vm, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            vm.run(
+                reading = {
+                    val content = (vm.state.value as? LiveWatchUiState.Content)?.content
+                    current?.let { p -> content?.let { readingOf(p, it) } }
+                },
+                apply = { actions -> current?.let { applyTo(it, actions) } }
+            )
+        }
+    }
+}
+
 @Composable
 private fun LiveLayout(content: LiveWatchContent, top: @Composable (Modifier) -> Unit, onReturnToLive: () -> Unit) {
     val details: @Composable () -> Unit = {
@@ -261,7 +286,7 @@ fun mediaIdOf(media: LiveMedia): String = when (media) {
 }
 
 /** What the player is doing, when it plays [content]'s media. */
-fun readingOf(player: Player, content: LiveWatchContent): PlayerReading? {
+internal fun readingOf(player: Player, content: LiveWatchContent): PlayerReading? {
     val media = content.media ?: return null
     if (player.currentMediaItem?.mediaId != mediaIdOf(media)) return null
     return PlayerReading(
@@ -273,7 +298,7 @@ fun readingOf(player: Player, content: LiveWatchContent): PlayerReading? {
     )
 }
 
-fun applyTo(player: Player, actions: List<FollowAction>) = actions.forEach { action ->
+internal fun applyTo(player: Player, actions: List<FollowAction>) = actions.forEach { action ->
     when (action) {
         is FollowAction.Seek -> player.seekTo(action.positionMs)
         FollowAction.NormalSpeed -> player.setPlaybackSpeed(1f)
