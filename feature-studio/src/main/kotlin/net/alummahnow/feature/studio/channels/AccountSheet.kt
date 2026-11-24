@@ -10,11 +10,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -39,6 +45,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import net.alummahnow.core.bridge.SupportLinks
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.design.components.ConfirmDialog
@@ -61,15 +68,23 @@ fun AccountSheet(
     onSignOut: (String) -> Unit,
     onSwitchChannel: () -> Unit,
     onDismiss: () -> Unit,
-    onAddPasskey: (() -> Unit)? = null
+    onAddPasskey: (() -> Unit)? = null,
+    onOpenUrl: ((String) -> Unit)? = null
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
+    val lang = currentLocale().language
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("account-sheet"),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = FanousTokens.Spacing.lg)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(bottom = FanousTokens.Spacing.lg)
+        ) {
             if (channel != null) {
                 SheetRow(
                     icon = { ChannelAvatar(channel, 40) },
@@ -121,6 +136,69 @@ fun AccountSheet(
                     title = stringResource(net.alummahnow.feature.passkey.R.string.passkey_add),
                     subtitle = stringResource(net.alummahnow.feature.passkey.R.string.passkey_explainer),
                     modifier = Modifier.clickable(role = Role.Button, onClick = onAddPasskey).testTag("add-passkey")
+                )
+            }
+            if (onOpenUrl != null) {
+                HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.xs))
+                SheetRow(
+                    icon = {
+                        Icon(
+                            Icons.AutoMirrored.Filled.HelpOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp).padding(8.dp)
+                        )
+                    },
+                    title = stringResource(R.string.studio_help),
+                    subtitle = null,
+                    modifier = Modifier.clickable(role = Role.Button) {
+                        onDismiss()
+                        onOpenUrl(SupportLinks.helpUrl(lang))
+                    }.testTag("studio-help")
+                )
+                SheetRow(
+                    icon = {
+                        Icon(
+                            Icons.Filled.MailOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp).padding(8.dp)
+                        )
+                    },
+                    title = stringResource(R.string.studio_contact),
+                    subtitle = null,
+                    modifier = Modifier.clickable(role = Role.Button) {
+                        onDismiss()
+                        onOpenUrl(SupportLinks.contactUrl(lang))
+                    }.testTag("studio-contact")
+                )
+                SheetRow(
+                    icon = {
+                        Icon(
+                            Icons.Filled.PrivacyTip,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp).padding(8.dp)
+                        )
+                    },
+                    title = stringResource(R.string.studio_privacy_policy),
+                    subtitle = null,
+                    modifier = Modifier.clickable(role = Role.Button) {
+                        onDismiss()
+                        onOpenUrl(SupportLinks.privacyUrl(lang))
+                    }.testTag("studio-privacy")
+                )
+                SheetRow(
+                    icon = {
+                        Icon(
+                            Icons.Filled.Description,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp).padding(8.dp)
+                        )
+                    },
+                    title = stringResource(R.string.studio_terms_of_service),
+                    subtitle = null,
+                    modifier = Modifier.clickable(role = Role.Button) {
+                        onDismiss()
+                        onOpenUrl(SupportLinks.termsUrl(lang))
+                    }.testTag("studio-terms")
                 )
             }
         }

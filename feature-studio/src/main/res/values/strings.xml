@@ -134,4 +134,15 @@
         <item quantity="other">%1$d comments are waiting for review.</item>
     </plurals>
     <string name="studio_dashboard_section_failed">This section couldn\'t load.</string>
+    <string name="studio_help">Help</string>
+    <string name="studio_contact">Contact us</string>
+    <string name="studio_privacy_policy">Privacy policy</string>
+    <string name="studio_terms_of_service">Terms of Service</string>
+    <string name="studio_community_guidelines">Community Guidelines</string>
+    <string name="studio_terms_title">Agree to Terms before uploading</string>
+    <string name="studio_terms_body">Before uploading your first video, review and accept our Terms of Service and Community Guidelines.</string>
+    <string name="studio_terms_checkbox">I have read and agree to the Terms of Service and Community Guidelines.</string>
+    <string name="studio_terms_agree">I agree and continue</string>
+    <string name="studio_terms_saving">Saving…</string>
+    <string name="studio_terms_error">Could not save your agreement. Try again.</string>
 </resources>

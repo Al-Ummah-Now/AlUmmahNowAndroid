@@ -32,6 +32,9 @@ interface StudioRepository {
     suspend fun schedule(videoId: String, channelId: String, publishAtIso: String, timezone: String)
     suspend fun addToPlaylists(videoId: String, channelId: String, playlistIds: List<String>, orderKey: String)
     suspend fun analytics(channelId: String, range: AnalyticsRange): ChannelAnalytics
+
+    /** Records acceptance of the Terms of Service & Community Guidelines (`POST /api/me/creator/terms`). */
+    suspend fun acceptCreatorTerms() {}
 }
 
 /**

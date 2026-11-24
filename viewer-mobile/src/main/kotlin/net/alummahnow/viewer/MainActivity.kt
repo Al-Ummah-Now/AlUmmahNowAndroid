@@ -238,7 +238,12 @@ private fun ViewerNavHost(container: AppContainer, inPip: Boolean, links: Flow<S
             languageSwitchSupported = AppLanguage.isSupported,
             onTheme = { scope.launch { container.displayPrefs.setTheme(it) } },
             onLanguage = { AppLanguage.set(context, it) },
-            onDismiss = { settingsOpen = false }
+            onDismiss = { settingsOpen = false },
+            onOpenUrl = { url ->
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                }
+            }
         )
     }
 }

@@ -158,7 +158,12 @@ data class BulkResult(val items: List<BulkItemResult>) {
 
 data class StudioPlaylist(val id: String, val title: String, val isPublic: Boolean)
 
-data class CreatorAccess(val canUpload: Boolean, val canCreateChannel: Boolean, val tierName: String?)
+data class CreatorAccess(
+    val canUpload: Boolean,
+    val canCreateChannel: Boolean,
+    val tierName: String?,
+    val termsAccepted: Boolean? = null
+)
 
 /** Comments on the channel's videos and posts (`GET /api/channels/{id}/comments/summary`): what is waiting for review. */
 data class CommentsSummary(val held: Int, val inbox: Int)
