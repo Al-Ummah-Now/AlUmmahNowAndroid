@@ -2,6 +2,9 @@ package net.alummahnow.studio
 
 import java.io.File
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.studio.AccountSession
@@ -16,6 +19,13 @@ import net.alummahnow.core.bridge.studio.UploadDraft
 import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.UploadQueue
 import net.alummahnow.core.bridge.studio.UserFeatures
+import net.alummahnow.core.bridge.studio.deletion.AccountDeletion
+import net.alummahnow.core.bridge.studio.deletion.DeletionAnswer
+import net.alummahnow.core.bridge.studio.deletion.DeletionApi
+import net.alummahnow.core.bridge.studio.deletion.DeletionDevice
+import net.alummahnow.core.bridge.studio.deletion.DeletionRecord
+import net.alummahnow.core.bridge.studio.deletion.DeletionRecords
+import net.alummahnow.core.bridge.studio.deletion.DeletionToken
 
 /** A `T` whose every call fails: the fakes below answer only what the app's shell needs. */
 private inline fun <reified T : Any> unused(): T =
@@ -29,7 +39,14 @@ class FakeSession(vararg ids: String) : AccountSession {
     var signOutError: Exception? = null
 
     override fun beginSignIn(mode: SignInMode) = "https://auth.example.org/authorize"
-    override suspend fun completeSignIn(redirectUrl: String): StudioAccount = throw CoreError.Unavailable("sign-in")
+    var signsInAs: String? = null
+    override suspend fun completeSignIn(redirectUrl: String): StudioAccount {
+        val id = signsInAs ?: throw CoreError.Unavailable("sign-in")
+        if (accounts.value.none { it.userId == id }) accounts.value += studioAccount(id)
+        switchTo(id)
+        authTime = 1_000_000L - 5
+        return active.value!!
+    }
     override fun switchTo(userId: String) {
         active.value = accounts.value.first { it.userId == userId }
     }
@@ -40,7 +57,14 @@ class FakeSession(vararg ids: String) : AccountSession {
         if (active.value?.userId == userId) active.value = accounts.value.firstOrNull()
         return "https://auth.example.org/logout"
     }
-    override suspend fun accessToken(): String? = "token"
+    var authTime = 1_000_000L - 10
+    override suspend fun accessToken(): String? = active.value?.let { accessTokenOf(it.userId, authTime) }
+    override val logoutUrl = "https://auth.example.org/logout"
+    override fun beginStepUp(maxAgeSeconds: Int) = "https://auth.example.org/authorize?max_age=$maxAgeSeconds&state=st-1"
+    override suspend fun removeLocally(userId: String) {
+        accounts.value = accounts.value.filterNot { it.userId == userId }
+        if (active.value?.userId == userId) active.value = accounts.value.firstOrNull()
+    }
 }
 
 /** One account's server side. */
@@ -84,6 +108,54 @@ class FakeUploadQueue(private val session: FakeSession) : UploadQueue {
     }
     override suspend fun cancel(id: String) = Unit
     override fun remove(id: String) = Unit
+    val held = mutableSetOf<String>()
+    val purged = mutableListOf<String>()
+    var purgeError: Exception? = null
+    override suspend fun holdUploads(userId: String) {
+        held += userId
+    }
+    override suspend fun releaseUploads(userId: String) {
+        held -= userId
+    }
+    override suspend fun purgeAccount(userId: String) {
+        purgeError?.let { throw it }
+        purged += userId
+    }
+}
+
+/** Auth's access token as it really is: `sub` is not the account's id. */
+fun accessTokenOf(userId: String, authTime: Long): String {
+    val enc = java.util.Base64.getUrlEncoder().withoutPadding()
+    fun part(json: String) = enc.encodeToString(json.toByteArray())
+    return part("""{"alg":"ES256"}""") + "." +
+        part("""{"sub":"user:3f2a9c8b10294e1f","properties":{"id":"$userId"},"auth_time":$authTime}""") + ".sig"
+}
+
+class FakeDeletionApi : DeletionApi {
+    val calls = mutableListOf<String>()
+    var now = 1_000_000L
+    val erases = ArrayDeque<DeletionAnswer>()
+    var account = DeletionAnswer(200, """{"deleted":true}""")
+    override suspend fun erase(token: String, resumeToken: String?): DeletionAnswer {
+        calls += "erase ${DeletionToken.userIdOf(token)} ${resumeToken ?: "-"}"
+        return erases.removeFirstOrNull() ?: DeletionAnswer(200, """{"success":true,"complete":true}""")
+    }
+    override suspend fun deleteAccount(token: String): DeletionAnswer {
+        calls += "account ${DeletionToken.userIdOf(token)}"
+        return account
+    }
+    override suspend fun serverNowSeconds() = now
+}
+
+class MemoryRecords : DeletionRecords {
+    override val records = MutableStateFlow<List<DeletionRecord>>(emptyList())
+    override fun get(userId: String) = records.value.firstOrNull { it.userId == userId }
+    override fun put(record: DeletionRecord) {
+        records.value = records.value.filterNot { it.userId == record.userId } + record
+    }
+    override fun remove(userId: String) {
+        records.value = records.value.filterNot { it.userId == userId }
+    }
 }
 
 class FakeContainer(base: File, override val session: FakeSession, private val repositories: Map<String, FakeStudioRepository>) :
@@ -98,6 +170,20 @@ class FakeContainer(base: File, override val session: FakeSession, private val r
     override val uploads = FakeUploadQueue(session)
     override val exports = PendingExports(File(base, "editor-exports"), File(base, "pending.json"))
     val forgotten = mutableListOf<String>()
+    override val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    override val deletionRecords = MemoryRecords()
+    val deletionApi = FakeDeletionApi()
+    override val deletion = AccountDeletion(
+        deletionRecords,
+        deletionApi,
+        object : DeletionDevice {
+            override suspend fun token(userId: String) = if (session.active.value?.userId == userId) session.accessToken() else null
+            override suspend fun holdUploads(userId: String) = uploads.holdUploads(userId)
+            override suspend fun releaseUploads(userId: String) = uploads.releaseUploads(userId)
+            override suspend fun purgeUploads(userId: String) = uploads.purgeAccount(userId)
+            override suspend fun endSession(userId: String) = session.removeLocally(userId)
+        }
+    )
     override fun repositoryFor(userId: String) = repositories.getValue(userId)
     override fun forget(userId: String) {
         forgotten += userId

@@ -5,11 +5,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,12 +21,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.UploadPhase
+import net.alummahnow.core.bridge.studio.deletion.DeletionAnswer
+import net.alummahnow.core.bridge.studio.deletion.DeletionRecord
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.upload.PickedFile
 import org.junit.After
@@ -63,8 +67,11 @@ class StudioAppTest {
         base.deleteRecursively()
     }
 
+    private val opened = mutableListOf<String>()
+    private val redirects = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
     private fun show() {
-        compose.setContent { AunTheme { StudioApp(container, emptyFlow(), openInBrowser = { true }) } }
+        compose.setContent { AunTheme { StudioApp(container, redirects, openInBrowser = { opened.add(it) }) } }
         waitFor("tab-upload")
     }
 
@@ -125,7 +132,7 @@ class StudioAppTest {
         repoA.termsAccepted = false
         container.uploads.items.value = listOf(UploadItem("u1", "x", UploadPhase.FAILED, 0, 10, null, "forbidden: x"))
         compose.waitUntil(TIMEOUT_MS) {
-            compose.onAllNodes(androidx.compose.ui.test.hasText("An upload was refused: open Upload to agree to the Terms."))
+            compose.onAllNodes(hasText("An upload was refused: open Upload to agree to the Terms."))
                 .fetchSemanticsNodes().isNotEmpty()
         }
     }
@@ -178,6 +185,18 @@ class StudioAppTest {
         agree()
         waitFor("upload-pick")
         assertEquals(listOf("v1", "v2"), repoA.acceptedVersions)
+    }
+
+    @Test
+    fun `a switch shows the new account's uploads, never the other account's`() {
+        container.uploads.byUser["a"] = listOf(UploadItem("u1", "x", UploadPhase.FAILED, 0, 10, null, "network error: x"))
+        show()
+        openUpload()
+        waitFor("upload-item-u1")
+        switchTo("b")
+        openUpload()
+        waitFor("upload-pick")
+        waitGone("upload-item-u1")
     }
 
     @Test
@@ -251,9 +270,156 @@ class StudioAppTest {
         openUpload()
         waitFor("upload-pick")
         compose.waitUntil(TIMEOUT_MS) {
-            compose.onAllNodes(androidx.compose.ui.test.hasText("The exported video is no longer on this device.", substring = true))
+            compose.onAllNodes(hasText("The exported video is no longer on this device.", substring = true))
                 .fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    private fun openDelete() {
+        compose.onNodeWithTag("account-button").performClick()
+        waitFor("studio-delete-account")
+        compose.onNodeWithTag("studio-delete-account").performScrollTo().performClick()
+        waitFor("delete-account-dialog")
+    }
+
+    private fun typeAndConfirm(word: String = "DELETE") {
+        compose.onNodeWithTag("delete-account-input").performScrollTo().performTextInput(word)
+        compose.onNodeWithTag("delete-account-confirm").performClick()
+    }
+
+    private fun waitForText(text: String) =
+        compose.waitUntil(TIMEOUT_MS) { compose.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
+
+    @Test
+    fun `deleting the last account erases, deletes, cleans up and says so on the sign-in screen`() {
+        session.accounts.value = session.accounts.value.take(1)
+        show()
+        openDelete()
+        compose.onNodeWithTag("delete-account-name").assertTextContains("a@example.org", substring = true)
+        compose.onNodeWithTag("delete-account-channels").assertTextContains("You own 1 channel.", substring = true)
+        typeAndConfirm()
+        waitFor("signin-notice-0")
+        compose.onNodeWithTag("signin-notice-0").assertTextContains("your Al Ummah Now account was deleted", substring = true)
+        assertEquals(listOf("erase a -", "account a"), container.deletionApi.calls)
+        assertEquals(listOf("a"), container.uploads.purged)
+        assertEquals(listOf("a"), container.forgotten)
+        assertTrue(container.deletionRecords.records.value.isEmpty())
+        assertTrue("https://auth.example.org/logout" in opened)
+    }
+
+    @Test
+    fun `deleting one of two accounts leaves the other one as it was`() {
+        show()
+        openDelete()
+        typeAndConfirm("حذف")
+        waitForText("your Al Ummah Now account was deleted")
+        assertEquals("b", session.active.value?.userId)
+        assertEquals(listOf("a"), container.uploads.purged)
+    }
+
+    @Test
+    fun `an unreadable channel is said and the person decides`() {
+        container.deletionApi.erases +=
+            DeletionAnswer(200, """{"success":true,"complete":true,"errors":["channel_unreadable:c9"]}""")
+        show()
+        openDelete()
+        typeAndConfirm()
+        waitForText("except for a channel we could not remove")
+        assertEquals(listOf("erase a -"), container.deletionApi.calls)
+        // Coming back later, the app says it on its own.
+        compose.onNodeWithTag("delete-account-cancel").performClick()
+        waitFor("deletion-banner")
+        compose.onNodeWithTag("deletion-finish").performClick()
+        waitFor("delete-account-dialog")
+        container.deletionApi.erases +=
+            DeletionAnswer(200, """{"success":true,"complete":true,"errors":["channel_unreadable:c9"]}""")
+        typeAndConfirm()
+        waitForText("Delete anyway")
+        // Going on erases again; the channel still can't be read.
+        container.deletionApi.erases +=
+            DeletionAnswer(200, """{"success":true,"complete":true,"errors":["channel_unreadable:c9"]}""")
+        compose.onNodeWithTag("delete-account-confirm").performClick()
+        waitForText("account was deleted and your Videos content was erased, except for a channel")
+        assertEquals("account a", container.deletionApi.calls.last())
+        assertEquals(3, container.deletionApi.calls.count { it.startsWith("erase a") })
+    }
+
+    @Test
+    fun `an old sign-in asks to sign in again, and nothing is removed until the person confirms again`() {
+        session.authTime = container.deletionApi.now - 400
+        show()
+        openDelete()
+        typeAndConfirm()
+        waitForText("sign in again to continue")
+        assertEquals(emptyList<String>(), container.deletionApi.calls)
+        compose.onNodeWithTag("delete-account-confirm").performClick()
+        compose.waitUntil(TIMEOUT_MS) { opened.any { "max_age=300" in it } }
+        session.signsInAs = "a"
+        redirects.tryEmit("alummahnow-studio://auth/callback?code=x&state=st-1")
+        waitForText("You are signed in. Confirm to continue.")
+        assertEquals(emptyList<String>(), container.deletionApi.calls)
+        compose.onNodeWithTag("delete-account-confirm").performClick() // the typed word is still there
+        compose.waitUntil(TIMEOUT_MS) { container.deletionApi.calls.size == 2 }
+    }
+
+    @Test
+    fun `signing in as someone else erases nothing and returns to the first account`() {
+        session.authTime = container.deletionApi.now - 400
+        show()
+        openDelete()
+        typeAndConfirm()
+        waitForText("sign in again to continue")
+        compose.onNodeWithTag("delete-account-confirm").performClick()
+        compose.waitUntil(TIMEOUT_MS) { opened.any { "max_age=300" in it } }
+        session.signsInAs = "b"
+        redirects.tryEmit("alummahnow-studio://auth/callback?code=x&state=st-1")
+        waitForText("You signed in to a different account.")
+        assertEquals("a", session.active.value?.userId)
+        assertEquals(emptyList<String>(), container.deletionApi.calls)
+    }
+
+    @Test
+    fun `another sign-in's redirect never counts for a deletion`() {
+        session.authTime = container.deletionApi.now - 400
+        show()
+        openDelete()
+        typeAndConfirm()
+        waitForText("sign in again to continue")
+        compose.onNodeWithTag("delete-account-confirm").performClick()
+        compose.waitUntil(TIMEOUT_MS) { opened.any { "max_age=300" in it } }
+        session.signsInAs = "a"
+        redirects.tryEmit("alummahnow-studio://auth/callback?code=x&state=other")
+        compose.waitForIdle()
+        compose.onAllNodes(hasText("You are signed in. Confirm to continue.")).fetchSemanticsNodes().let { assertTrue(it.isEmpty()) }
+        assertEquals(emptyList<String>(), container.deletionApi.calls)
+    }
+
+    @Test
+    fun `an open deletion shows on every screen, in the account list, and when nobody is signed in`() {
+        container.deletionRecords.put(DeletionRecord("a", "a@example.org", startedAtMs = 1))
+        container.deletionRecords.put(DeletionRecord("b", "b@example.org", startedAtMs = 1))
+        show()
+        waitFor("deletion-banner")
+        for (tab in listOf("content", "upload", "editor")) {
+            compose.onNodeWithTag("tab-$tab").performClick()
+            compose.onNodeWithTag("deletion-banner").assertIsDisplayed()
+        }
+        compose.onNodeWithTag("account-button").performClick()
+        waitForText("Deletion started, not finished")
+        compose.runOnUiThread {
+            session.accounts.value = emptyList()
+            session.active.value = null
+        }
+        waitFor("signin-notice-0")
+        compose.onNodeWithTag("signin-notice-0").assertTextContains("Sign in to that account to finish", substring = true)
+    }
+
+    @Test
+    fun `signing out the last account still forgets it and ends the browser's session`() {
+        session.accounts.value = session.accounts.value.take(1)
+        show()
+        signOut("a")
+        compose.waitUntil(TIMEOUT_MS) { container.forgotten == listOf("a") && "https://auth.example.org/logout" in opened }
     }
 
     private fun signOut(id: String) {

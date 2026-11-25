@@ -107,7 +107,14 @@ class CoreAccountSession(
         coreCall { manager.signOutAndRevoke(userId) }
         refresh()
         AunLog.i("auth", "signed out", "remaining" to mutableAccounts.value.size)
-        settings.issuer.trimEnd('/') + "/logout"
+        logoutUrl
+    }
+
+    override val logoutUrl: String get() = settings.issuer.trimEnd('/') + "/logout"
+
+    override suspend fun removeLocally(userId: String) = withContext(Dispatchers.IO) {
+        if (manager.accounts().any { it.userId == userId }) coreCall { manager.signOut(userId) }
+        refresh()
     }
 
     override suspend fun accessToken(): String? = withContext(Dispatchers.IO) { coreCall { manager.accessToken() } }

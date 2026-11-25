@@ -19,6 +19,11 @@ import net.alummahnow.core.bridge.studio.core.CoreStudioRepository
 import net.alummahnow.core.bridge.studio.core.CoreUploadQueue
 import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
+import net.alummahnow.core.bridge.studio.deletion.AccountDeletion
+import net.alummahnow.core.bridge.studio.deletion.DeletionDevice
+import net.alummahnow.core.bridge.studio.deletion.DeletionRecords
+import net.alummahnow.core.bridge.studio.deletion.HttpDeletionApi
+import net.alummahnow.core.bridge.studio.deletion.SecureDeletionRecords
 import net.alummahnow.feature.editor.editorExportDir
 import net.alummahnow.feature.upload.UploadWorker
 import net.alummahnow.integrity.PlayIntegrityTokenSource
@@ -69,6 +74,7 @@ class AppContainer(context: Context) : StudioContainer {
 
     override val exports = PendingExports(editorExportDir(context), File(context.filesDir, "pending-exports.json"))
 
+    override val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
@@ -81,6 +87,27 @@ class AppContainer(context: Context) : StudioContainer {
         clientFor = ::clientFor,
         repository = { repository },
         onWorkNeeded = { UploadWorker.start(context) }
+    )
+
+    override val deletionRecords: DeletionRecords = SecureDeletionRecords(KeystoreSecureStorage(context, "aun_deletion"))
+
+    override val deletion = AccountDeletion(
+        deletionRecords,
+        HttpDeletionApi(
+            apiBaseUrl = BuildConfig.API_BASE_URL,
+            issuer = BuildConfig.AUTH_ISSUER,
+            userAgent = "AlUmmahNow-Studio-Android/${BuildConfig.VERSION_NAME}",
+            clientHeader = AunClient.value("studio", BuildConfig.VERSION_NAME),
+            proofs = proofs
+        ),
+        object : DeletionDevice {
+            override suspend fun token(userId: String): String? =
+                if (session.active.value?.userId == userId) session.accessToken() else null
+            override suspend fun holdUploads(userId: String) = uploads.holdUploads(userId)
+            override suspend fun releaseUploads(userId: String) = uploads.releaseUploads(userId)
+            override suspend fun purgeUploads(userId: String) = uploads.purgeAccount(userId)
+            override suspend fun endSession(userId: String) = session.removeLocally(userId)
+        }
     )
 
     companion object {

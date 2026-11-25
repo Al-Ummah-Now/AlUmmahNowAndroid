@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MailOutline
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -70,7 +72,11 @@ fun AccountSheet(
     onDismiss: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
     onOpenUrl: ((String) -> Unit)? = null,
-    webHost: String
+    webHost: String,
+    /** Deletes the active account; null hides the row. */
+    onDeleteAccount: (() -> Unit)? = null,
+    /** Accounts whose deletion started and isn't finished. */
+    deletionStarted: Set<String> = emptySet()
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
     ModalBottomSheet(
@@ -89,7 +95,9 @@ fun AccountSheet(
             onDismiss = onDismiss,
             onAddPasskey = onAddPasskey,
             onOpenUrl = onOpenUrl,
-            webHost = webHost
+            webHost = webHost,
+            onDeleteAccount = onDeleteAccount,
+            deletionStarted = deletionStarted
         )
     }
     confirmSignOut?.let { a ->
@@ -118,7 +126,11 @@ internal fun AccountSheetContent(
     onDismiss: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
     onOpenUrl: ((String) -> Unit)? = null,
-    webHost: String
+    webHost: String,
+    /** Deletes the active account; null hides the row. */
+    onDeleteAccount: (() -> Unit)? = null,
+    /** Accounts whose deletion started and isn't finished. */
+    deletionStarted: Set<String> = emptySet()
 ) {
     val lang = currentLocale().language
     Column(
@@ -149,6 +161,7 @@ internal fun AccountSheetContent(
                 icon = { Initial(a.label) },
                 title = a.label,
                 subtitle = when {
+                    a.userId in deletionStarted -> stringResource(R.string.studio_delete_open_account)
                     a.needsReauth -> stringResource(R.string.studio_account_reauth)
                     active -> stringResource(R.string.studio_account_active)
                     else -> a.email.orEmpty()
@@ -244,6 +257,25 @@ internal fun AccountSheetContent(
                 }.testTag("studio-terms")
             )
         }
+        if (onDeleteAccount != null) {
+            HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.xs))
+            SheetRow(
+                icon = {
+                    Icon(
+                        Icons.Filled.DeleteForever,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(40.dp).padding(8.dp)
+                    )
+                },
+                title = stringResource(
+                    if (activeUserId in deletionStarted) R.string.studio_delete_finish else R.string.studio_delete_account
+                ),
+                titleColor = MaterialTheme.colorScheme.error,
+                subtitle = null,
+                modifier = Modifier.clickable(role = Role.Button, onClick = onDeleteAccount).testTag("studio-delete-account")
+            )
+        }
     }
 }
 
@@ -253,6 +285,7 @@ private fun SheetRow(
     title: String,
     subtitle: String?,
     modifier: Modifier = Modifier,
+    titleColor: Color = Color.Unspecified,
     trailing: @Composable () -> Unit = {}
 ) {
     Row(
@@ -262,7 +295,13 @@ private fun SheetRow(
     ) {
         icon()
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = titleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             if (!subtitle.isNullOrEmpty()) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

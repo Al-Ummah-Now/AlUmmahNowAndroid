@@ -111,13 +111,138 @@ class CoreUploadQueueTest {
         assertFalse(queue.items.value.single().isRefused)
     }
 
+    @Test
+    fun `removing a failed upload leaves no work for the next launch`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        queue.run(UploadState.FAILED, "forbidden: x")
+        queue.remove(queue.items.value.single().id)
+        assertFalse(queue().hasWork())
+    }
+
+    @Test
+    fun `a batch queued while another uploads is staged too`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        val engine = engines.getOrPut("a") { FakeEngine() }
+        engine.next = UploadState.UPLOADING to null
+        var rounds = 0
+        queue.process {
+            rounds++
+            if (rounds == 1) queue.enqueueNow(draft())
+            if (rounds == 2) engine.finishAll()
+        }
+        assertEquals(2, engine.requests.size)
+        assertEquals(emptyList<File>(), staged)
+    }
+
+    /** [enqueue] from a callback that is not suspending. */
+    private fun CoreUploadQueue.enqueueNow(draft: UploadDraft) = kotlinx.coroutines.runBlocking { enqueue(listOf(draft)) }
+
+    @Test
+    fun `a purge removes the account's queue, files and engine, and no other account's`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        queue.run(UploadState.FAILED, "x")
+        active = "b"
+        queue.enqueue(listOf(draft()))
+        queue.purgeAccount("a")
+        assertEquals(emptyList<File>(), staged)
+        assertTrue(engines.getValue("a").stopped)
+        assertFalse(File(context.filesDir, "uploads/a").exists())
+        assertEquals(1, queue.refresh().size)
+        // Nothing of the deleted account comes back in a new process either.
+        active = "a"
+        assertEquals(emptyList<Any>(), queue().refresh())
+    }
+
+    @Test
+    fun `a purge while a file is being copied leaves no copy and writes nothing back`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        engines.getOrPut("a") { FakeEngine() }.onEnqueue = { kotlinx.coroutines.runBlocking { queue.purgeAccount("a") } }
+        queue.process { }
+        assertEquals(emptyList<File>(), staged)
+        assertFalse(File(context.filesDir, "uploads/a").exists())
+        assertFalse(queue().hasWork())
+    }
+
+    @Test
+    fun `a file that can't be staged leaves no copy`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        engines.getOrPut("a") { FakeEngine() }.onEnqueue = { error("refused") }
+        queue.process { }
+        assertEquals(emptyList<File>(), staged)
+    }
+
+    @Test
+    fun `an account that is signed in and uploads again is not purged any more`() = runTest {
+        val queue = queue()
+        queue.purgeAccount("a")
+        queue.enqueue(listOf(draft()))
+        queue.run(UploadState.DONE)
+        assertEquals(1, engines.getValue("a").requests.size)
+    }
+
+    @Test
+    fun `held uploads are paused and not started, then go on`() = runTest {
+        val queue = queue()
+        val engine = engines.getOrPut("a") { FakeEngine() }
+        engine.next = UploadState.UPLOADING to null
+        queue.enqueue(listOf(draft()))
+        queue.process {
+            if (engine.requests.isNotEmpty()) engine.next = UploadState.DONE to null
+            queue.releaseOnce(engine)
+        }
+        assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
+    }
+
+    private var releasedOnce = false
+
+    /** Holds the running upload once, checks that a new one is not started meanwhile, and lets it go on and finish. */
+    private fun CoreUploadQueue.releaseOnce(engine: FakeEngine) {
+        if (releasedOnce) return
+        releasedOnce = true
+        kotlinx.coroutines.runBlocking {
+            holdUploads("a")
+            assertEquals(UploadPhase.PAUSED, items.value.first { it.id == "up-1" }.phase)
+            enqueue(listOf(draft()))
+            assertEquals(1, engine.requests.size)
+            releaseUploads("a")
+            engine.finishAll()
+        }
+    }
+
     /** aun-upload's engine as the queue uses it; its uploads end as [next] says. */
     private class FakeEngine(private val uploads: MutableMap<String, UploadInfo> = linkedMapOf()) :
         UploadEngineInterface by unusedEngine() {
         var next: Pair<UploadState, String?> = UploadState.QUEUED to null
+        var onEnqueue: () -> Unit = {}
+        var stopped = false
         val requests = mutableListOf<UploadRequest>()
+        val actions = mutableListOf<String>()
+
+        fun finishAll() = uploads.keys.toList().forEach { set(it, UploadState.DONE) }
+
+        private fun set(id: String, state: UploadState) {
+            uploads[id] = uploads.getValue(id).copy(state = state)
+        }
+        override fun pause(id: String) {
+            actions += "pause $id"
+            set(id, UploadState.PAUSED)
+        }
+        override fun resume(id: String) {
+            actions += "resume $id"
+            set(id, UploadState.UPLOADING)
+        }
+        override suspend fun cancel(id: String) = set(id, UploadState.CANCELLED)
+        override fun shutdown() {
+            stopped = true
+        }
 
         override fun enqueue(request: UploadRequest): String {
+            onEnqueue()
             requests += request
             val id = "up-${requests.size}"
             uploads[id] = UploadInfo(

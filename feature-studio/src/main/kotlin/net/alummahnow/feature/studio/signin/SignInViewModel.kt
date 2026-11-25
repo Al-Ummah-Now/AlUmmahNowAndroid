@@ -44,7 +44,7 @@ class SignInViewModel(private val session: AccountSession) : ViewModel() {
     }
 
     /** The app received `alummahnow-studio://auth/callback?...`. */
-    fun complete(redirectUrl: String, onDone: () -> Unit = {}) {
+    fun complete(redirectUrl: String, onError: () -> Unit = {}, onDone: () -> Unit = {}) {
         mutableState.value = SignInUiState.Completing
         viewModelScope.launch {
             attempt("auth", "sign-in") { session.completeSignIn(redirectUrl) }.fold(
@@ -53,6 +53,7 @@ class SignInViewModel(private val session: AccountSession) : ViewModel() {
                     onDone()
                 },
                 onFailure = { e ->
+                    onError()
                     mutableState.value = SignInUiState.Error(
                         when {
                             redirectUrl.contains("error=access_denied") -> R.string.studio_signin_cancelled
