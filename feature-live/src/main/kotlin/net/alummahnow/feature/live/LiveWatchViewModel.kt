@@ -213,8 +213,7 @@ class LiveWatchViewModel(
         if (!isBlocked(current.stream)) refreshChat(current, positionMs)
         if (current.mode == LiveMode.LIVE && now() >= beatDue && !isBlocked(current.stream)) {
             var wait = BEAT
-            counted = true
-            val count = quiet({ wait = it }) { live.beat(streamId, viewerId, leaving = false) }
+            val count = quiet({ wait = it }) { live.beat(streamId, viewerId, leaving = false).also { counted = true } }
             beatDue = now() + wait
             if (count != null) update { it.copy(viewers = count) }
         }

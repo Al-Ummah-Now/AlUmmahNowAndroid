@@ -74,7 +74,9 @@ class ViewerBlockStore(private val prefs: SharedPreferences? = null) {
         update(mutableEntries.value.filterNot { it.blocksChannel(channelId, channelName) })
     }
 
-    fun blockChatUser(userId: String? = null, authorName: String) {
+    /** Only by ID: a name is shared by others and can be changed. Entries stored by name earlier still count. */
+    fun blockChatUser(userId: String?, authorName: String) {
+        if (userId.isNullOrBlank()) return
         val key = chatUserKey(userId, authorName)
         if (mutableEntries.value.any { it.id == key }) return
         update(listOf(BlockedEntry(key, BlockedKind.CHAT_USER, authorName)) + mutableEntries.value)

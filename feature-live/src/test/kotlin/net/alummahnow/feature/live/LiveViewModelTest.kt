@@ -19,6 +19,7 @@ import net.alummahnow.core.bridge.live.LiveChatPage
 import net.alummahnow.core.bridge.live.LiveEventType
 import net.alummahnow.core.bridge.live.LiveFeatures
 import net.alummahnow.core.bridge.live.LiveKind
+import net.alummahnow.core.bridge.live.LiveRepository
 import net.alummahnow.core.bridge.live.LiveState
 import net.alummahnow.core.bridge.live.LiveStatus
 import net.alummahnow.core.bridge.live.LiveStream
@@ -422,6 +423,29 @@ class LiveViewModelTest {
         clock.advance(120)
         vm.tick(0)
         assertEquals(listOf(before[0] + 1, before[1], before[2]), counts(live))
+    }
+
+    @Test fun `a first heartbeat that failed is not followed by a leaving one`() = test {
+        val live = FakeLive(onAir).apply { retryAfter = 60_000 }
+        var blocked = false
+        val vm = LiveWatchViewModel("s", FakeLiveReads(live), FakeCatalog(), { blocked }) { clock.at }
+        vm.tick(0)
+        assertEquals(listOf(false), live.beats)
+        blocked = true
+        vm.tick(0)
+        assertEquals(listOf(false), live.beats)
+        // Counted by one that succeeded: leaving is told.
+        blocked = false
+        live.retryAfter = null
+        vm.tick(0)
+        blocked = true
+        vm.tick(0)
+        assertEquals(listOf(false, false, true), live.beats)
+    }
+
+    /** Reads succeed although the heartbeat is refused. */
+    private class FakeLiveReads(private val live: FakeLive) : LiveRepository by live {
+        override suspend fun state(id: String) = live.current
     }
 
     @Test fun `leaving a blocked stream that was never counted sends nothing`() = test {
