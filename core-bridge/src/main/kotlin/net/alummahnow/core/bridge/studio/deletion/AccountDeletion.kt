@@ -115,8 +115,8 @@ class AccountDeletion(
                 if (!DeletionToken.isRecent(ready.value, now, maxAge)) return DeletionOutcome.NeedsSignIn(FIRST_MAX_AGE_S, before)
             }
         }
-        // Only a run that is not finished goes on; after a finished one the erase starts from the beginning.
-        val resume = saved?.takeIf { it.stage == DeletionStage.STARTED && it.resumeToken != null }
+        // Only a run that is not finished has a token to go on with; after a finished one the erase starts again.
+        val resume = saved?.takeIf { it.resumeToken != null }
         val record = DeletionRecord(
             userId,
             label,

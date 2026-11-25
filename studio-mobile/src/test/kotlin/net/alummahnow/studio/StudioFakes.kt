@@ -5,6 +5,7 @@ import java.lang.reflect.Proxy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.studio.AccountSession
@@ -55,6 +56,7 @@ class FakeSession(vararg ids: String) : AccountSession {
         signOutError?.let { throw it }
         accounts.value = accounts.value.filterNot { it.userId == userId }
         if (active.value?.userId == userId) active.value = accounts.value.firstOrNull()
+        delay(50) // the screen that asked is gone by the time the answer comes
         return "https://auth.example.org/logout"
     }
     var authTime = 1_000_000L - 10
