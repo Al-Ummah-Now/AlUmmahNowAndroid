@@ -55,7 +55,9 @@ class CoreUploadQueue(
     /** Starts the background worker. */
     private val onWorkNeeded: () -> Unit,
     newEngine: ((userId: String, dir: File) -> UploadEngineInterface)? = null,
-    private val holdTimeoutMs: Long = HOLD_TIMEOUT_MS
+    private val holdTimeoutMs: Long = HOLD_TIMEOUT_MS,
+    /** The account may be deleted (the answer to its deletion is missing): nothing of it starts until that is known. */
+    private val blocked: (userId: String) -> Boolean = { false }
 ) : UploadQueue {
     private val app = context.applicationContext
     private val newEngine = newEngine ?: { userId, dir ->
@@ -70,8 +72,12 @@ class CoreUploadQueue(
     /** Deleted accounts: nothing of theirs is staged, uploaded or written back. Saved with the queue. */
     private val purgedUsers = mutableSetOf<String>()
 
-    /** Accounts whose uploads wait, and what was paused for it. */
+    /** Accounts whose uploads wait, and what was paused for it. Saved: a hold outlives the process. */
     private val held = mutableMapOf<String, MutableSet<String>>()
+    private val heldFile = File(root, "held.json")
+
+    /** Holds an earlier process left. */
+    private val leftHeld = mutableSetOf<String>()
 
     /** Held while a finished upload's settings are applied. */
     private val settling = Mutex()
@@ -114,11 +120,28 @@ class CoreUploadQueue(
 
     init {
         synchronized(purgedUsers) { purgedUsers += load().purgedUsers }
+        synchronized(held) {
+            runCatching { json.decodeFromString<Map<String, Set<String>>>(heldFile.readText()) }.getOrNull()?.forEach { (user, ids) ->
+                held[user] = ids.toMutableSet()
+                leftHeld += user
+            }
+        }
+    }
+
+    /** Called under [held]'s lock. */
+    private fun saveHeld() {
+        runCatching { heldFile.writeText(json.encodeToString<Map<String, Set<String>>>(held)) }
+            .onFailure { AunLog.e("upload", "held uploads not saved", it) }
+    }
+
+    /** Lets uploads go on that an earlier process held and didn't release, unless their account may be deleted. */
+    suspend fun releaseLeft() {
+        synchronized(held) { leftHeld.toList() }.forEach { releaseUploads(it) }
     }
 
     private fun isPurged(userId: String): Boolean = synchronized(purgedUsers) { userId in purgedUsers }
 
-    private fun isHeld(userId: String): Boolean = synchronized(held) { userId in held }
+    private fun isHeld(userId: String): Boolean = synchronized(held) { userId in held } || blocked(userId)
 
     private fun load(): State = runCatching { json.decodeFromString<State>(stateFile.readText()) }.getOrDefault(State())
 
@@ -193,7 +216,7 @@ class CoreUploadQueue(
             applyFollowUps()
             val now = refresh()
             onUpdate(now)
-            if (now.none { it.isActive } && load().pending.none { !isHeld(it.userId) }) break
+            if (now.none { it.isActive && it.phase != UploadPhase.PREPARING } && load().pending.none { !isHeld(it.userId) }) break
             delay(POLL_MS)
         }
     }
@@ -205,7 +228,9 @@ class CoreUploadQueue(
         // A failed upload waits for the person (retry or remove), not for the worker.
         fun failed(f: FollowUp) =
             runCatching { engine(f.draft.userId).get(f.uploadId)?.state == UploadState.FAILED }.getOrDefault(false)
-        return s.pending.isNotEmpty() || s.followUps.any { !it.applied && !failed(it) } || refresh().any { it.isActive }
+        return s.pending.any { !isHeld(it.userId) } ||
+            s.followUps.any { !it.applied && !isHeld(it.draft.userId) && !failed(it) } ||
+            refresh().any { it.isActive && it.phase != UploadPhase.PREPARING }
     }
 
     private suspend fun stagePending() = withContext(Dispatchers.IO) {
@@ -259,7 +284,7 @@ class CoreUploadQueue(
                 priority = 0
             )
             // Held while it was copied: it stays in the queue, and is copied again afterwards.
-            synchronized(held) { if (p.userId in held) null else engine(p.userId).enqueue(request) }.also { queued = it != null }
+            synchronized(held) { if (isHeld(p.userId)) null else engine(p.userId).enqueue(request) }.also { queued = it != null }
         } catch (e: AunException) {
             throw mapCoreError(e)
         } finally {
@@ -333,7 +358,7 @@ class CoreUploadQueue(
     }
 
     override fun pause(id: String) {
-        activeUserId()?.let { user -> synchronized(held) { held[user]?.remove(id) } }
+        activeUserId()?.let { user -> synchronized(held) { if (held[user]?.remove(id) == true) saveHeld() } }
         withEngine { pause(id) }
     }
 
@@ -369,7 +394,11 @@ class CoreUploadQueue(
 
     override suspend fun holdUploads(userId: String) {
         // From here on nothing new reaches the engine: [stage], [resume] and [retry] look under the same lock.
-        synchronized(held) { held.getOrPut(userId) { mutableSetOf() } }
+        synchronized(held) {
+            leftHeld -= userId
+            held.getOrPut(userId) { mutableSetOf() }
+            saveHeld()
+        }
         // Purged: nothing of it is there, and nothing of it starts.
         if (isPurged(userId)) return
         val quiet = withContext(Dispatchers.IO) {
@@ -380,7 +409,7 @@ class CoreUploadQueue(
                 do {
                     val running = engine.list().filter { it.state in RUNNING }
                     running.forEach { info ->
-                        synchronized(held) { held[userId]?.add(info.id) }
+                        synchronized(held) { if (held[userId]?.add(info.id) == true) saveHeld() }
                         engine.pause(info.id)
                     }
                     // A paused upload's request may still be out, and its answer may start it again.
@@ -412,7 +441,11 @@ class CoreUploadQueue(
     }
 
     override suspend fun releaseUploads(userId: String) {
-        val paused = synchronized(held) { held.remove(userId) } ?: return
+        val paused = synchronized(held) {
+            if (blocked(userId)) return
+            leftHeld -= userId
+            held.remove(userId)?.also { saveHeld() }
+        } ?: return
         withContext(Dispatchers.IO) {
             runCatching { engine(userId) }.getOrNull()?.let { engine ->
                 paused.forEach { id -> runCatching { engine.goOn(id) } }
@@ -428,7 +461,12 @@ class CoreUploadQueue(
     private fun startAgain(id: String) {
         val userId = activeUserId() ?: return
         synchronized(held) {
-            held[userId]?.add(id) ?: withEngine { goOn(id) }
+            if (isHeld(userId)) {
+                held.getOrPut(userId) { mutableSetOf() }.add(id)
+                saveHeld()
+            } else {
+                withEngine { goOn(id) }
+            }
         }
         onWorkNeeded()
     }
@@ -460,7 +498,11 @@ class CoreUploadQueue(
                 }
             }
         }
-        synchronized(held) { held.remove(userId) }
+        synchronized(held) {
+            leftHeld -= userId
+            held.remove(userId)
+            saveHeld()
+        }
         refresh()
     }
 

@@ -82,15 +82,16 @@ class AppContainer(context: Context) : StudioContainer {
         scope.launch { exports.follow(session.accounts) }
     }
 
+    override val deletionRecords: DeletionRecords = SecureDeletionRecords(KeystoreSecureStorage(context, "aun_deletion"))
+
     override val uploads: CoreUploadQueue = CoreUploadQueue(
         context = context,
         activeUserId = { session.active.value?.userId },
         clientFor = ::clientFor,
         repository = { repository },
-        onWorkNeeded = { UploadWorker.start(context) }
+        onWorkNeeded = { UploadWorker.start(context) },
+        blocked = { deletionRecords.isUnsure(it) }
     )
-
-    override val deletionRecords: DeletionRecords = SecureDeletionRecords(KeystoreSecureStorage(context, "aun_deletion"))
 
     override val deletion = AccountDeletion(
         deletionRecords,

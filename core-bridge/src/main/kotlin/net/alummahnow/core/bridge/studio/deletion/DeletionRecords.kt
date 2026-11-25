@@ -45,6 +45,8 @@ data class DeletionRecord(
     val unsure: Boolean = false,
     /** The receipt answers until then. */
     val receiptExpiresAtMs: Long = 0,
+    /** When the token of that `DELETE /account` was issued (seconds). */
+    val sentIssuedAt: Long = 0,
     /** How often the app asked by itself, and when last. */
     val asks: Int = 0,
     val lastAskMs: Long = 0,
@@ -55,6 +57,9 @@ data class DeletionRecord(
 /** The deletions that started on this device, by account. */
 interface DeletionRecords {
     val records: StateFlow<List<DeletionRecord>>
+
+    /** Whether [userId]'s account may be deleted already: nothing may be uploaded for it until that is known. */
+    fun isUnsure(userId: String): Boolean = records.value.any { it.userId == userId && it.unsure }
 
     /** Throws when it cannot be read: "unknown" must never look like "nothing started". */
     fun get(userId: String): DeletionRecord?
