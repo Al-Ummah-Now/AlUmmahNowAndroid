@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -18,8 +19,10 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
@@ -46,6 +49,7 @@ import net.alummahnow.feature.studio.content.ContentViewModel
 import net.alummahnow.feature.studio.content.reasonText
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -275,6 +279,34 @@ class ReviewTest {
         val more = compose.onNodeWithTag("status-more").assertIsDisplayed().fetchSemanticsNode()
         assertEquals(whole, more.size.width)
         assertTrue(more.boundsInRoot.right <= compose.onNodeWithTag("content-search").fetchSemanticsNode().boundsInRoot.right)
+    }
+
+    private fun layout(tag: String): TextLayoutResult {
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("$tag-${libraryVideos[0].id}", useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        return layouts.single()
+    }
+
+    private fun assertWhole(tag: String) = with(layout(tag)) {
+        val last = lineCount - 1
+        val shown = "$tag: ${layoutInput.text}, $lineCount lines to ${getLineEnd(last, visibleEnd = true)}"
+        assertFalse(shown, multiParagraph.didExceedMaxLines || isLineEllipsized(last))
+        assertEquals(shown, layoutInput.text.length, getLineEnd(last))
+    }
+
+    @Test
+    fun `at a large font no word of a row is cut`() {
+        show(inReview, fontScale = 2f)
+        listOf("title", "review", "meta", "date").forEach(::assertWhole)
+        assertEquals(1, layout("date").lineCount)
+    }
+
+    @Test
+    fun `at a large font on a narrow phone the date takes the lines it needs`() {
+        show(inReview, "en-ldltr-w320dp-h800dp-port", fontScale = 2f)
+        listOf("review", "meta", "date").forEach(::assertWhole)
+        assertTrue(layout("date").lineCount > 1)
     }
 
     @Test

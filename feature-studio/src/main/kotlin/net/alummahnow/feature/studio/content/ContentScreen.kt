@@ -445,8 +445,11 @@ private fun VideoRow(
                     onCheckedChange = { actions.onToggle(v.id) },
                     modifier = Modifier.testTag("select-${v.id}").semantics { contentDescription = selectLabel }
                 )
-                // A smaller thumbnail on narrow phones (360dp) so the title keeps a readable width.
-                val narrow = LocalConfiguration.current.screenWidthDp < NARROW_DP
+                // A smaller thumbnail on narrow phones (360dp) and at a large font so the words keep a readable width.
+                val config = LocalConfiguration.current
+                val large = config.fontScale >= LARGE_FONT
+                val narrow = large || config.screenWidthDp < NARROW_DP
+                val lines = if (large) LARGE_FONT_LINES else 2
                 Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(if (narrow) 80.dp else 120.dp))
                 Column(Modifier.weight(1f)) {
                     // A tighter line height than titleSmall: a title that wraps reads as one title, not two lines apart.
@@ -454,23 +457,25 @@ private fun VideoRow(
                         title,
                         style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp),
                         color = f.colors.textPrimary.color,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = lines,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("title-${v.id}")
                     )
                     reviewLine(v.review, queueMinutes).takeIf { !deleted }?.let {
                         Text(
                             it,
                             style = MaterialTheme.typography.bodySmall,
                             color = f.colors.textPrimary.color,
-                            modifier = Modifier.testTag("review-${v.id}")
+                            modifier = Modifier.padding(vertical = 2.dp).testTag("review-${v.id}")
                         )
                     }
                     Text(
                         meta(v, deleted),
                         style = MaterialTheme.typography.bodySmall,
                         color = f.colors.textSecondary.color,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = lines,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("meta-${v.id}")
                     )
                     // The date on its own line under the details: a separate column left phones no room for the title.
                     // A video without a date keeps the line (empty), so every row has the same height.
@@ -480,8 +485,7 @@ private fun VideoRow(
                             date.orEmpty(),
                             style = MaterialTheme.typography.bodySmall,
                             color = f.colors.textMuted.color,
-                            maxLines = 1,
-                            modifier = if (date == null) Modifier.clearAndSetSemantics {} else Modifier
+                            modifier = if (date == null) Modifier.clearAndSetSemantics {} else Modifier.testTag("date-${v.id}")
                         )
                     }
                 }
@@ -536,3 +540,7 @@ internal fun formatDate(iso: String): String {
 private const val DATE_CHARS = 10
 
 private const val NARROW_DP = 400
+
+/** From this font scale a row gives its words more room: a smaller thumbnail, more lines. */
+private const val LARGE_FONT = 1.3f
+private const val LARGE_FONT_LINES = 4
