@@ -96,6 +96,28 @@ class AccountDeletionTest {
         compose.onNodeWithTag("delete-account-confirm").assertIsNotEnabled()
     }
 
+    /** wiki guides/data-lifecycle.md: the purge is after 30 days, and may be later. */
+    private fun purge(language: String, said: String, never: String) {
+        val texts = mutableListOf<String>()
+        RuntimeEnvironment.setQualifiers(language)
+        compose.setContent {
+            texts += aunString(R.string.studio_delete_kept, 30)
+            texts += aunString(R.string.studio_delete_done_purge, 30)
+        }
+        compose.waitForIdle()
+        assertEquals(2, texts.distinct().size)
+        texts.forEach {
+            assertTrue(it, said in it)
+            assertFalse(it, never in it)
+        }
+    }
+
+    @Test
+    fun `the purge is said to be after 30 days, never within them`() = purge("en-ldltr", "after 30 days", "within")
+
+    @Test
+    fun `the purge is said to be after 30 days in Arabic too`() = purge("ar-ldrtl", "بعد ٣٠ يومًا", "خلال")
+
     @Test
     fun `without a known number the channels are still named, and an account with none says nothing`() {
         state = state.copy(ownedChannels = null)
