@@ -434,14 +434,16 @@ private fun Message(
                             safety.onReportMessage(stream, message)
                         }
                     )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.live_block_user)) },
-                        modifier = Modifier.testTag("live-block-user-item"),
-                        onClick = {
-                            menuOpen = false
-                            confirmBlock = true
-                        }
-                    )
+                    if (!message.userId.isNullOrBlank()) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.live_block_user)) },
+                            modifier = Modifier.testTag("live-block-user-item"),
+                            onClick = {
+                                menuOpen = false
+                                confirmBlock = true
+                            }
+                        )
+                    }
                 }
             }
         }

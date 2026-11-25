@@ -132,6 +132,41 @@ class ViewerSafetyTest {
     }
 
     @Test
+    fun aChatUserIsBlockedOnlyById() {
+        val store = ViewerBlockStore()
+        store.blockChatUser(null, "Ahmad")
+        store.blockChatUser(" ", "Ahmad")
+        assertTrue(store.entries.value.isEmpty())
+        store.blockChatUser("u-1", "Ahmad")
+        assertFalse(store.isChatUserBlocked("u-2", "Ahmad"))
+        assertTrue(store.isChatUserBlocked("u-1", "Renamed"))
+    }
+
+    @Test
+    fun aMessageWithoutAUserIdCanBeReportedButNotBlocked() {
+        RuntimeEnvironment.setQualifiers("en-ldltr")
+        val content = sampleLiveContent(messages = listOf(LiveChatMessage("m-9", "Guest", "salaam", 1_000L)))
+        compose.setContent {
+            AunTheme(mode = ThemeMode.DARK) {
+                LiveWatchScreen(
+                    state = LiveWatchUiState.Content(content),
+                    player = null,
+                    isFullscreen = false,
+                    isInPictureInPicture = false,
+                    onToggleFullscreen = {},
+                    onReturnToLive = {},
+                    onRetry = {},
+                    safety = LiveSafetyActions({}, {}, {}, { _, _ -> }, {})
+                )
+            }
+        }
+        compose.onNodeWithTag("live-chat-more-m-9").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Report message").assertIsDisplayed()
+        compose.onNodeWithTag("live-block-user-item").assertDoesNotExist()
+    }
+
+    @Test
     fun unblockRemovesTheEntryHoweverItWasStored() {
         val store = ViewerBlockStore()
         store.blockChannel(null, "Daily Dars")
