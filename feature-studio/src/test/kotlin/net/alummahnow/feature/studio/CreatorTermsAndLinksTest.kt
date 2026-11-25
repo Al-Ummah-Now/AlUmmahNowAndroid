@@ -326,6 +326,8 @@ class CreatorTermsAndLinksTest {
         assertEquals("v2", vm.gate.version)
         assertEquals(R.string.studio_terms_changed, vm.gate.errorRes)
         assertEquals(listOf("v1"), repo.acceptedVersions)
+        // They were read, so the one before them is over, however they were read.
+        assertEquals(null, vm.gate.before)
 
         // A server that gives none: nothing is sent, and it says that it failed.
         val none = gated(null)
