@@ -68,6 +68,12 @@ fun DeleteAccountDialog(
     val waitMinutes = minutesUntil(state.notBeforeMs, nowMs)
     val ready = state.action == DeleteAction.SIGN_IN || isDeleteWord(typed)
 
+    val scroll = rememberScrollState()
+    // What happens is said at the end: at a large font that is below the fold.
+    LaunchedEffect(state.message, state.working, scroll.maxValue) {
+        if (state.working || state.message != null) scroll.scrollTo(scroll.maxValue)
+    }
+
     AlertDialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -78,7 +84,7 @@ fun DeleteAccountDialog(
             .testTag("delete-account-dialog"),
         title = { Text(title) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
+            Column(Modifier.verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
                 Text(
                     isolate(target.email?.takeIf { it.isNotBlank() } ?: target.label),
                     style = MaterialTheme.typography.titleSmall,
@@ -125,7 +131,11 @@ fun DeleteAccountDialog(
                 onClick = onConfirm,
                 enabled = ready && !state.working && waitMinutes == null,
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
+                    contentColor = if (state.action == DeleteAction.SIGN_IN) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
                     disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
                 modifier = Modifier.testTag("delete-account-confirm")
