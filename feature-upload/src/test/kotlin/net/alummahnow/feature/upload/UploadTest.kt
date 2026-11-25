@@ -158,7 +158,7 @@ private class FakeRepo : StudioRepository {
     override suspend fun playlists(channelId: String) = listOf(StudioPlaylist("p1", "Series", true))
     override suspend fun channels() = error("unused")
     override suspend fun creatorAccess() = error("unused")
-    override suspend fun acceptCreatorTerms() = error("unused")
+    override suspend fun acceptCreatorTerms(version: String) = error("unused")
     override suspend fun features(channelId: String?) = error("unused")
     override suspend fun content(query: ContentQuery) = error("unused")
     override suspend fun counts(channelId: String) = error("unused")

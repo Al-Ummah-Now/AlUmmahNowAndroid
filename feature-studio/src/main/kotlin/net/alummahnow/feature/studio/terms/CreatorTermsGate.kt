@@ -60,9 +60,12 @@ fun CreatorTermsGate(
     webHost: String,
     modifier: Modifier = Modifier,
     initialChecked: Boolean = false,
-    uploadRefused: Boolean = false
+    uploadRefused: Boolean = false,
+    /** What a tick is for (the version shown): one for anything else doesn't count, also after process death. */
+    agreement: String = ""
 ) {
-    var checked by rememberSaveable { mutableStateOf(initialChecked) }
+    var agreedTo by rememberSaveable { mutableStateOf(if (initialChecked) agreement else null) }
+    val checked = agreedTo == agreement
     val lang = currentLocale().language
     Box(
         modifier = modifier
@@ -115,7 +118,7 @@ fun CreatorTermsGate(
                         value = checked,
                         enabled = !saving,
                         role = Role.Checkbox,
-                        onValueChange = { checked = it }
+                        onValueChange = { agreedTo = if (it) agreement else null }
                     )
                     .padding(vertical = FanousTokens.Spacing.xs)
                     .testTag("creator-terms-checkbox"),

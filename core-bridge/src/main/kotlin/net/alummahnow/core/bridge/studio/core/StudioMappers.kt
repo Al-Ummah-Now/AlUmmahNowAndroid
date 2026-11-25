@@ -61,7 +61,8 @@ object StudioMappers {
             canUpload = r.b("canUpload") == true,
             canCreateChannel = r.b("canCreateChannel") == true,
             tierName = r.o("tier")?.s("name"),
-            termsAccepted = termsAccepted
+            termsAccepted = termsAccepted,
+            termsVersion = (r["termsVersion"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.ifEmpty { null }
         )
     }
 

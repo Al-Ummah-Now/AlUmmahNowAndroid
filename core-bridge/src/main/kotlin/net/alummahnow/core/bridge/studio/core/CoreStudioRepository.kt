@@ -108,8 +108,13 @@ class CoreStudioRepository(
     override suspend fun creatorAccess(): CreatorAccess =
         StudioMappers.creatorAccess(call("GET", "/api/me/creator"))
 
-    override suspend fun acceptCreatorTerms() {
-        call("POST", "/api/me/creator/terms")
+    override suspend fun acceptCreatorTerms(version: String) {
+        try {
+            call("POST", "/api/me/creator/terms", body = buildJsonObject { put("version", version) })
+        } catch (e: CoreError.Http) {
+            // The route's only 409. The core keeps neither its code nor its currentVersion (AlUmmahNowCore#61).
+            if (e.code == HTTP_CONFLICT) throw StudioError.TermsChanged() else throw e
+        }
     }
 
     override suspend fun features(channelId: String?): UserFeatures =

@@ -18,6 +18,7 @@ import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
+import net.alummahnow.core.bridge.studio.StudioError
 import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.StudioSuggestion
@@ -128,6 +129,8 @@ class FakeRepository : StudioRepository {
     var countsMissing = false
     var canUpload = true
     var termsAccepted: Boolean? = true
+    var termsVersion: String? = "v1"
+    val acceptedVersions = mutableListOf<String>()
     var creatorAccessError: Exception? = null
     var acceptTermsError: Exception? = null
     var acceptTermsCalls = 0
@@ -141,12 +144,20 @@ class FakeRepository : StudioRepository {
 
     override suspend fun creatorAccess(): CreatorAccess {
         creatorAccessError?.let { throw it }
-        return CreatorAccess(canUpload = canUpload, canCreateChannel = false, tierName = "Creator", termsAccepted = termsAccepted)
+        return CreatorAccess(
+            canUpload = canUpload,
+            canCreateChannel = false,
+            tierName = "Creator",
+            termsAccepted = termsAccepted,
+            termsVersion = termsVersion
+        )
     }
 
-    override suspend fun acceptCreatorTerms() {
+    override suspend fun acceptCreatorTerms(version: String) {
         acceptTermsCalls++
+        acceptedVersions += version
         acceptTermsError?.let { throw it }
+        if (version != termsVersion) throw StudioError.TermsChanged()
         termsAccepted = true
     }
 

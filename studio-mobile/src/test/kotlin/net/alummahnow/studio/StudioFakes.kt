@@ -9,6 +9,7 @@ import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
+import net.alummahnow.core.bridge.studio.StudioError
 import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.UploadDraft
@@ -45,6 +46,7 @@ class FakeSession(vararg ids: String) : AccountSession {
 /** One account's server side. */
 class FakeStudioRepository(private val channel: StudioChannel) : StudioRepository by unused() {
     var termsAccepted: Boolean? = true
+    var termsVersion: String? = "v1"
     var reads = 0
     var accepts = 0
     override suspend fun channels() = listOf(channel)
@@ -52,10 +54,19 @@ class FakeStudioRepository(private val channel: StudioChannel) : StudioRepositor
     override suspend fun playlists(channelId: String): List<StudioPlaylist> = emptyList()
     override suspend fun creatorAccess(): CreatorAccess {
         reads++
-        return CreatorAccess(canUpload = true, canCreateChannel = true, tierName = null, termsAccepted = termsAccepted)
+        return CreatorAccess(
+            canUpload = true,
+            canCreateChannel = true,
+            tierName = null,
+            termsAccepted = termsAccepted,
+            termsVersion = termsVersion
+        )
     }
-    override suspend fun acceptCreatorTerms() {
+    val acceptedVersions = mutableListOf<String>()
+    override suspend fun acceptCreatorTerms(version: String) {
         accepts++
+        acceptedVersions += version
+        if (version != termsVersion) throw StudioError.TermsChanged()
         termsAccepted = true
     }
 }

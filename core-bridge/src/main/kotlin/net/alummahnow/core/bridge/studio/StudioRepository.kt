@@ -33,8 +33,11 @@ interface StudioRepository {
     suspend fun addToPlaylists(videoId: String, channelId: String, playlistIds: List<String>, orderKey: String)
     suspend fun analytics(channelId: String, range: AnalyticsRange): ChannelAnalytics
 
-    /** Records acceptance of the Terms of Service & Community Guidelines (`POST /api/me/creator/terms`). */
-    suspend fun acceptCreatorTerms()
+    /**
+     * Records acceptance of [version] of the Terms of Service & Community Guidelines, the one the person was shown
+     * (`POST /api/me/creator/terms`). Throws [StudioError.TermsChanged] when it is not the current one.
+     */
+    suspend fun acceptCreatorTerms(version: String)
 }
 
 /**
@@ -60,6 +63,9 @@ sealed class StudioError(message: String) : Exception(message) {
 
     /** The restore window (30 days) has passed (HTTP 410). */
     class RestoreExpired : StudioError("restore expired")
+
+    /** The Terms are newer than the version that was accepted (HTTP 409 `terms_version_changed`): show them again. */
+    class TermsChanged : StudioError("terms changed")
 
     /** Validation error with the server's message. */
     class Invalid(val detail: String) : StudioError(detail)

@@ -385,6 +385,7 @@ internal fun StudioUploadTab(
             saving = termsState.saving,
             error = termsState.errorRes?.let { resources.getString(it) },
             uploadRefused = termsState.uploadRefused,
+            agreement = termsState.agreement,
             onOpenUrl = onOpenUrl,
             onAgree = onAgreeTerms,
             webHost = webHost

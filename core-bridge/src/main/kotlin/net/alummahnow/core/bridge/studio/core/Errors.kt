@@ -14,6 +14,7 @@ internal fun mapCoreError(e: Throwable): Throwable = when (e) {
     is AunException.Forbidden -> StudioError.Forbidden()
     is AunException.NotFound -> if (isFeatureOff(e)) StudioError.FeatureOff() else CoreError.NotFound(e.detail)
     is AunException.InvalidInput -> StudioError.Invalid(e.detail)
+    is AunException.Conflict -> CoreError.Http(HTTP_CONFLICT)
     is AunException.RateLimited -> CoreError.Http(HTTP_TOO_MANY)
     is AunException.Http -> mapHttp(e)
     is AunException -> CoreError.Http(0).also { it.initCause(e) }
@@ -48,6 +49,7 @@ internal inline fun <T> coreCall(block: () -> T): T = try {
 
 private const val HTTP_BAD_REQUEST = 400
 private const val HTTP_PAYMENT_REQUIRED = 402
+internal const val HTTP_CONFLICT = 409
 private const val HTTP_GONE = 410
 private const val HTTP_UNPROCESSABLE = 422
 private const val HTTP_TOO_MANY = 429

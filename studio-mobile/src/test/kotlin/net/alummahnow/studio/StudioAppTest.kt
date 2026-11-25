@@ -2,6 +2,7 @@ package net.alummahnow.studio
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
@@ -161,6 +162,22 @@ class StudioAppTest {
         waitFor("upload-pick")
         assertEquals(0, repoA.accepts)
         assertEquals(1, repoB.accepts)
+    }
+
+    @Test
+    fun `Terms that changed before the tap are shown again and need a new tick`() {
+        repoA.termsAccepted = false
+        show()
+        openUpload()
+        waitFor("creator-terms-gate")
+        repoA.termsVersion = "v2"
+        agree()
+        waitFor("creator-terms-error")
+        compose.onNodeWithTag("creator-terms-error").assertTextContains("The Terms of Service were updated.", substring = true)
+        compose.onNodeWithTag("creator-terms-agree").assertIsNotEnabled()
+        agree()
+        waitFor("upload-pick")
+        assertEquals(listOf("v1", "v2"), repoA.acceptedVersions)
     }
 
     @Test
