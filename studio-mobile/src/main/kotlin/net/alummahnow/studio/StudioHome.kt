@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
@@ -28,6 +29,8 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRailItemColors
 import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -168,3 +171,12 @@ fun StudioHome(
         }
     }
 }
+
+/** Snackbars stand above the bottom bar ([aboveBar]: there is one): a message can name a tab, and it must stay in reach. */
+@Composable
+internal fun StudioSnackbar(state: SnackbarHostState, aboveBar: Boolean) {
+    SnackbarHost(state, Modifier.padding(bottom = if (aboveBar) BAR_HEIGHT else 0.dp))
+}
+
+/** Material's bottom bar and the divider over it. */
+private val BAR_HEIGHT = 81.dp

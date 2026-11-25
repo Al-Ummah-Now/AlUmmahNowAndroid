@@ -88,8 +88,13 @@ class CreatorTermsAndLinksTest {
     @Test
     fun `SupportLinks has no default host`() {
         listOf("", "videos.", "alummahnow.net", "example.org").forEach { host ->
-            assertTrue(host, runCatching { SupportLinks.termsUrl("en", host) }.isFailure)
-            assertTrue(host, runCatching { SupportLinks.privacyUrl("ar", host) }.isFailure)
+            listOf(
+                SupportLinks::termsUrl,
+                SupportLinks::privacyUrl,
+                SupportLinks::helpUrl,
+                SupportLinks::contactUrl,
+                SupportLinks::communityGuidelinesUrl
+            ).forEach { url -> assertTrue("${url.name} $host", runCatching { url("en", host) }.isFailure) }
         }
     }
 

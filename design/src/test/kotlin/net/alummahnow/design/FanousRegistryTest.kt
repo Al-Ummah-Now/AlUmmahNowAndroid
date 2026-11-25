@@ -45,11 +45,16 @@ class FanousRegistryTest {
                 mapOf(
                     "primary" to (p.buttonPrimaryDisabledText to p.buttonPrimaryDisabledBg),
                     "secondary" to (p.buttonSecondaryDisabledText to p.buttonSecondaryDisabledBg),
-                    "ghost" to (p.buttonGhostDisabledText to p.buttonGhostDisabledBg),
                     "destructive" to (p.buttonDestructiveDisabledText to p.buttonDestructiveDisabledBg)
                 ).forEach { (kind, pair) ->
                     val ratio = contrast(pair.first.color, pair.second.color)
                     assertTrue("$id dark=$dark $kind is $ratio", ratio >= 4.5f)
+                }
+                // A disabled ghost has no fill: its label is read on what it stands on.
+                val scheme = colorScheme(FanousTheme(id.tokens, dark))
+                listOf(scheme.background, scheme.surfaceContainer, scheme.surfaceContainerHigh).forEach { under ->
+                    val ratio = contrast(p.buttonGhostDisabledText.color, under)
+                    assertTrue("$id dark=$dark ghost on $under is $ratio", ratio >= 4.5f)
                 }
             }
         }

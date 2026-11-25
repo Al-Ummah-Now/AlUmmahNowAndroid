@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -25,6 +26,7 @@ import net.alummahnow.core.bridge.studio.UserFeatures
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.terms.CreatorTermsGate
+import net.alummahnow.feature.studio.terms.CreatorTermsLoading
 import net.alummahnow.feature.studio.terms.CreatorTermsUiState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -76,7 +78,11 @@ class StudioTermsWiringTest {
         compose.onNodeWithTag("upload-ready").assertIsDisplayed()
     }
 
-    private fun shootInChrome(name: String, lang: StoreLocale, mode: ThemeMode) {
+    @Composable
+    private fun Gate() =
+        CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {}, webHost = "videos.alummahnow.net")
+
+    private fun shootInChrome(name: String, lang: StoreLocale, mode: ThemeMode, body: @Composable () -> Unit = { Gate() }) {
         RuntimeEnvironment.setQualifiers("${lang.qualifier}-${StoreDevice.PHONE.qualifiers}")
         Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
         val tabs = studioTabs(UserFeatures(setOf(UserFeatures.UPLOAD)), analyticsVisible = true)
@@ -101,13 +107,7 @@ class StudioTermsWiringTest {
                                 modifier = Modifier.padding(padding),
                                 railHeader = { IdentityButton(channel, onClick = {}) }
                             ) {
-                                CreatorTermsGate(
-                                    saving = false,
-                                    error = null,
-                                    onOpenUrl = {},
-                                    onAgree = {},
-                                    webHost = "videos.alummahnow.net"
-                                )
+                                body()
                             }
                         }
                     }
@@ -118,6 +118,22 @@ class StudioTermsWiringTest {
 
     @Test
     fun creatorTermsGateChromeEnDarkPhone() = shootInChrome("creator_terms_gate_chrome_en_dark_phone", StoreLocale.EN, ThemeMode.DARK)
+
+    @Test
+    fun creatorTermsLoadingEnDarkPhone() =
+        shootInChrome("creator_terms_loading_en_dark_phone", StoreLocale.EN, ThemeMode.DARK) { CreatorTermsLoading() }
+
+    @Test
+    fun creatorTermsLoadingEnLightPhone() =
+        shootInChrome("creator_terms_loading_en_light_phone", StoreLocale.EN, ThemeMode.LIGHT) { CreatorTermsLoading() }
+
+    @Test
+    fun creatorTermsLoadingArDarkPhone() =
+        shootInChrome("creator_terms_loading_ar_dark_phone", StoreLocale.AR, ThemeMode.DARK) { CreatorTermsLoading() }
+
+    @Test
+    fun creatorTermsLoadingArLightPhone() =
+        shootInChrome("creator_terms_loading_ar_light_phone", StoreLocale.AR, ThemeMode.LIGHT) { CreatorTermsLoading() }
 
     @Test
     fun creatorTermsGateChromeArLightPhone() = shootInChrome("creator_terms_gate_chrome_ar_light_phone", StoreLocale.AR, ThemeMode.LIGHT)

@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -255,7 +254,7 @@ fun StudioApp(
                 onAccount = { sheetOpen = true }
             )
         },
-        snackbarHost = { SnackbarHost(snackbar) }
+        snackbarHost = { StudioSnackbar(snackbar, aboveBar = !wide && selected != null) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (openDeletion != null) DeletionBanner(openDeletion, onFinish = { deletion.open(current, ownedChannels) })
