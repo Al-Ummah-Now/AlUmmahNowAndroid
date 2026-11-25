@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -135,6 +136,16 @@ class AccountDeletionTest {
         compose.mainClock.advanceTimeBy(6_000)
         compose.waitForIdle()
         compose.onNodeWithTag("delete-account-confirm").assertIsEnabled()
+    }
+
+    @Test
+    fun `at a large font, what happened is in view`() {
+        RuntimeEnvironment.setFontScale(2f)
+        RuntimeEnvironment.setQualifiers("en-ldltr-w411dp-h700dp-port")
+        compose.setContent { AunTheme { DeleteAccountDialog(state, {}, {}, nowMs = { clock }) } }
+        state = state.copy(message = R.string.studio_delete_error_started, isError = true)
+        compose.waitForIdle()
+        compose.onNodeWithTag("delete-account-message").assertIsDisplayed()
     }
 
     @Test
@@ -358,6 +369,18 @@ class AccountDeletionTest {
             null,
             notices = listOf(aunString(R.string.studio_delete_done) + " " + aunString(R.string.studio_delete_done_purge, 30))
         )
+    }
+
+    @Test fun doneEnDark200() = done(Look.EN_DARK, 2f)
+
+    @Test fun doneArLight200() = done(Look.AR_LIGHT, 2f)
+
+    @Test fun startedEnLight200() = shootDialog("error_started", Look.EN_LIGHT, "DELETE", fontScale = 2f) {
+        copy(message = R.string.studio_delete_error_started, isError = true)
+    }
+
+    @Test fun leftChannelArDark200() = shootDialog("left_channel", Look.AR_DARK, "حذف", fontScale = 2f) {
+        copy(message = R.string.studio_delete_left_channel, action = DeleteAction.DELETE_ANYWAY)
     }
 
     @Test fun doneEnDark() = done(Look.EN_DARK)
