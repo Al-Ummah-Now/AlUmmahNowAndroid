@@ -152,7 +152,7 @@
     <string name="studio_delete_title">Permanently delete your account?</string>
     <string name="studio_delete_body">This deletes your Al Ummah Now account and erases your Videos profile, channels, videos, playlists, posts and activity. They can\'t be restored.</string>
     <string name="studio_delete_channels">Channels you own are deleted whole, with what their other admins and members added.</string>
-    <string name="studio_delete_kept">Your comments elsewhere are emptied and lose your name. Reports you filed and what you added to someone else\'s channel stay without it. Stored copies of video and image files can remain. The sign-in record is purged after %1$d days.</string>
+    <string name="studio_delete_kept">Your comments elsewhere are emptied and lose your name. Reports you filed and what you added to someone else\'s channel stay without it. Stored copies of video and image files are not removed at the same moment and can remain afterward. The sign-in record is purged after %1$d days.</string>
     <string name="studio_delete_prompt">Type %1$s to confirm</string>
     <string name="studio_delete_word">DELETE</string>
     <string name="studio_delete_working">Deleting your account…</string>
@@ -191,7 +191,7 @@
     <string name="studio_delete_done_channel">Your Al Ummah Now account was deleted and your Videos content was erased, except for a channel we could not remove. It stays until our team removes it; they have been told.</string>
     <string name="studio_delete_done_other">Your Al Ummah Now account was deleted and your Videos content was erased, except for some records we could not remove automatically.</string>
     <string name="studio_delete_done_both">Your Al Ummah Now account was deleted and your Videos content was erased, except for a channel and some records we could not remove. The channel stays until our team removes it; they have been told about the channel.</string>
-    <string name="studio_delete_done_purge">The deleted sign-in record is purged after %1$d days. Stored copies of video and image files can remain.</string>
+    <string name="studio_delete_done_purge">The deleted sign-in record is purged after %1$d days. Stored copies of video and image files are not removed at the same moment and can remain afterward.</string>
     <plurals name="studio_delete_channels_count">
         <item quantity="one">You own %1$d channel. It is deleted whole, with what its other admins and members added.</item>
         <item quantity="other">You own %1$d channels. They are deleted whole, with what their other admins and members added.</item>

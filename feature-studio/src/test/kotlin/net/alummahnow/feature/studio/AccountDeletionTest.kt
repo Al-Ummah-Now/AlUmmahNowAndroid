@@ -96,8 +96,8 @@ class AccountDeletionTest {
         compose.onNodeWithTag("delete-account-confirm").assertIsNotEnabled()
     }
 
-    /** wiki guides/data-lifecycle.md: the purge is after 30 days, and may be later. */
-    private fun purge(language: String, said: String, never: String) {
+    /** wiki guides/data-lifecycle.md: the purge is after 30 days, and may be later. The files: the Privacy page's sentence. */
+    private fun purge(language: String, said: String, never: String, files: String) {
         val texts = mutableListOf<String>()
         RuntimeEnvironment.setQualifiers(language)
         compose.setContent {
@@ -108,15 +108,26 @@ class AccountDeletionTest {
         assertEquals(2, texts.distinct().size)
         texts.forEach {
             assertTrue(it, said in it)
+            assertTrue(it, files in it)
             assertFalse(it, never in it)
         }
     }
 
     @Test
-    fun `the purge is said to be after 30 days, never within them`() = purge("en-ldltr", "after 30 days", "within")
+    fun `the purge is said to be after 30 days, never within them`() = purge(
+        "en-ldltr",
+        "after 30 days",
+        "within",
+        "Stored copies of video and image files are not removed at the same moment and can remain afterward."
+    )
 
     @Test
-    fun `the purge is said to be after 30 days in Arabic too`() = purge("ar-ldrtl", "بعد ٣٠ يومًا", "خلال")
+    fun `the purge is said to be after 30 days in Arabic too`() = purge(
+        "ar-ldrtl",
+        "بعد ٣٠ يومًا",
+        "خلال",
+        "ولا تُزال النسخ المخزّنة من ملفات المرئيات والصور في اللحظة نفسها، وقد تبقى بعد ذلك."
+    )
 
     @Test
     fun `without a known number the channels are still named, and an account with none says nothing`() {
