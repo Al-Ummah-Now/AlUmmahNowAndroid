@@ -19,4 +19,5 @@
     <string name="settings_unblock_cd">إلغاء حظر %1$s</string>
     <string name="settings_close">إغلاق</string>
     <string name="launcher_name">الأمة الآن</string>
+    <string name="settings_blocked_unnamed">بلا اسم</string>
 </resources>

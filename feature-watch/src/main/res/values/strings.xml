@@ -7,7 +7,7 @@
     <string name="watch_report_channel">Report channel</string>
     <string name="watch_block_channel">Block channel</string>
     <string name="watch_block_channel_title">Block %1$s?</string>
-    <string name="watch_block_channel_body">Videos and live streams from this channel will be hidden on this device. You can unblock it any time in Settings.</string>
+    <string name="watch_block_channel_body">Videos and live streams from this channel will be hidden on this device. You can unblock it any time in Display settings.</string>
     <string name="watch_block_confirm">Block</string>
     <string name="watch_channel_blocked">Videos from %1$s are hidden on this device.</string>
     <string name="watch_unblock">Unblock</string>

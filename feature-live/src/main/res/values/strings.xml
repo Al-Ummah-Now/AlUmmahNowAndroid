@@ -38,9 +38,9 @@
     <string name="live_channel_blocked">Streams from %1$s are hidden on this device.</string>
     <string name="live_unblock">Unblock</string>
     <string name="live_block_channel_title">Block %1$s?</string>
-    <string name="live_block_channel_body">Videos and live streams from this channel will be hidden on this device. You can unblock it any time in Settings.</string>
+    <string name="live_block_channel_body">Videos and live streams from this channel will be hidden on this device. You can unblock it any time in Display settings.</string>
     <string name="live_block_user_title">Block %1$s?</string>
-    <string name="live_block_user_body">Live chat messages from this user will be hidden on this device. You can unblock them any time in Settings.</string>
+    <string name="live_block_user_body">Live chat messages from this user will be hidden on this device. You can unblock them any time in Display settings.</string>
     <string name="live_event_filter">Event: %1$s</string>
     <string name="live_event_all">All</string>
     <string name="live_event_jumuah">Jumu’ah</string>

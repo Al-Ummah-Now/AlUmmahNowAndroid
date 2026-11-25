@@ -8,19 +8,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import net.alummahnow.core.bridge.live.LiveChatMessage
+import net.alummahnow.core.bridge.model.LocalizedText
 import net.alummahnow.core.bridge.safety.BlockedEntry
 import net.alummahnow.core.bridge.safety.BlockedKind
 import net.alummahnow.design.theme.AunTheme
@@ -66,12 +64,11 @@ class ViewerSafetyScreenshotTest {
         val device = if (tablet) "w1024dp-h640dp-land-xhdpi" else "w411dp-h891dp-port-xxhdpi"
         RuntimeEnvironment.setQualifiers("${if (look.ar) "ar-ldrtl" else "en-ldltr"}-$device")
         Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
+        // The device's own setting: a density put around the content doesn't reach menus and dialogs.
+        RuntimeEnvironment.setFontScale(fontScale)
         compose.setContent {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                AunTheme(mode = look.mode) {
-                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() }
-                }
+            AunTheme(mode = look.mode) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content() }
             }
         }
         taps.forEach {
@@ -87,7 +84,8 @@ class ViewerSafetyScreenshotTest {
     private fun watch(look: Look, blocked: Boolean = false) = @Composable {
         WatchScreen(
             state = WatchUiState.Content(
-                sampleSafetyDetail(channel(look), title = if (look.ar) "تلاوة هادئة" else "A calm recitation"),
+                sampleSafetyDetail(channel(look), title = if (look.ar) "تلاوة هادئة" else "A calm recitation")
+                    .copy(description = LocalizedText.of(if (look.ar) "من صلاة الفجر." else "From the dawn prayer.")),
                 emptyList()
             ),
             player = null,

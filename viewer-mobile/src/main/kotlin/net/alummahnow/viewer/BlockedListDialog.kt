@@ -96,6 +96,7 @@ private fun BlockedRow(entry: BlockedEntry, onUnblock: (String) -> Unit) {
             BlockedKind.CHAT_USER -> R.string.settings_blocked_kind_user
         }
     )
+    val name = entry.name.ifBlank { stringResource(R.string.settings_blocked_unnamed) }
     Row(
         Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -103,7 +104,7 @@ private fun BlockedRow(entry: BlockedEntry, onUnblock: (String) -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                entry.name.ifBlank { kindLabel },
+                name,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -113,7 +114,7 @@ private fun BlockedRow(entry: BlockedEntry, onUnblock: (String) -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        val unblockCd = aunString(R.string.settings_unblock_cd, isolate(entry.name.ifBlank { kindLabel }))
+        val unblockCd = aunString(R.string.settings_unblock_cd, isolate(name))
         TextButton(
             onClick = { onUnblock(entry.id) },
             modifier = Modifier
