@@ -172,6 +172,23 @@ class StudioAppTest {
     }
 
     @Test
+    fun `another account's refused upload says nothing about this one`() {
+        repoB.termsAccepted = false
+        show()
+        container.uploads.items.value = listOf(UploadItem("u1", "x", UploadPhase.FAILED, 0, 10, null, "forbidden: x"))
+        compose.waitForIdle()
+        // The first account's rows are still in the list while the second one's are being read.
+        val wait = java.util.concurrent.CountDownLatch(1)
+        container.uploads.refreshWaits = wait
+        switchTo("b")
+        openUpload()
+        waitFor("creator-terms-gate")
+        compose.waitForIdle()
+        compose.onNodeWithTag("creator-terms-refused").assertDoesNotExist()
+        wait.countDown()
+    }
+
+    @Test
     fun `Terms that changed before the tap are shown again and need a new tick`() {
         repoA.termsAccepted = false
         show()
