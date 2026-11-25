@@ -244,4 +244,51 @@
         <item quantity="many">حاول مرة أخرى بعد %1$d ساعة.</item>
         <item quantity="other">حاول مرة أخرى بعد %1$d ساعة.</item>
     </plurals>
+    <string name="studio_status_in_review">قيد المراجعة</string>
+    <string name="studio_status_not_approved">لم تتم الموافقة</string>
+    <string name="studio_empty_in_review">لا يوجد شيء قيد المراجعة.</string>
+    <string name="studio_empty_not_approved">لا توجد مرئيات مرفوضة.</string>
+    <string name="studio_review_held">سيراجعه أحد المراجعين</string>
+    <string name="studio_review_appealed">أُرسل الاعتراض، سيراجعه مراجع آخر</string>
+    <string name="studio_review_rejected">لم تتم الموافقة: %1$s</string>
+    <string name="studio_review_appeal">اعتراض</string>
+    <string name="studio_review_resubmit">المراجعة مرة أخرى بعد التعديل</string>
+    <string name="studio_review_resubmitted">أُرسل للمراجعة مرة أخرى.</string>
+    <string name="studio_review_resubmit_failed">تعذّر إرساله للمراجعة. حاول مرة أخرى.</string>
+    <string name="studio_appeal_title">الاعتراض على هذا القرار</string>
+    <string name="studio_appeal_body">سيراجع مراجع آخر المرئي مرة أخرى. يمكنك الاعتراض مرة واحدة.</string>
+    <string name="studio_appeal_label">لماذا يجب الموافقة عليه؟</string>
+    <string name="studio_appeal_send">إرسال الاعتراض</string>
+    <string name="studio_appeal_sent">أُرسل الاعتراض. سيراجعه مراجع آخر.</string>
+    <string name="studio_appeal_failed">تعذّر إرسال الاعتراض. حاول مرة أخرى.</string>
+    <string name="studio_review_reason_sexual">محتوى جنسي أو غير لائق</string>
+    <string name="studio_review_reason_child_safety">محتوى يعرّض الأطفال للخطر</string>
+    <string name="studio_review_reason_graphic_violence">عنف صادم</string>
+    <string name="studio_review_reason_self_harm">محتوى يشجع على إيذاء النفس</string>
+    <string name="studio_review_reason_hate">خطاب كراهية</string>
+    <string name="studio_review_reason_violent_extremism">تطرف عنيف</string>
+    <string name="studio_review_reason_harassment">مضايقة</string>
+    <string name="studio_review_reason_spam_scam">رسائل مزعجة أو احتيال</string>
+    <string name="studio_review_reason_impersonation">انتحال شخصية</string>
+    <string name="studio_review_reason_privacy">معلومات خاصة بشخص آخر</string>
+    <string name="studio_review_reason_copyright">محتوى لا تملك حق مشاركته</string>
+    <string name="studio_review_reason_misleading_metadata">عنوان أو صورة مصغرة أو وصف لا يطابق المرئي</string>
+    <string name="studio_review_reason_religious_misattribution">نسبة كلام إلى علماء أو مصادر لم يقولوه</string>
+    <string name="studio_review_reason_other">مخالفة إرشادات المجتمع</string>
+    <plurals name="studio_review_checking">
+        <item quantity="zero">قيد المراجعة</item>
+        <item quantity="one">قيد المراجعة، عادةً خلال دقيقة</item>
+        <item quantity="two">قيد المراجعة، عادةً خلال دقيقتين</item>
+        <item quantity="few">قيد المراجعة، عادةً خلال %1$d دقائق</item>
+        <item quantity="many">قيد المراجعة، عادةً خلال %1$d دقيقة</item>
+        <item quantity="other">قيد المراجعة، عادةً خلال %1$d دقيقة</item>
+    </plurals>
+    <plurals name="studio_review_held_minutes">
+        <item quantity="zero">سيراجعه أحد المراجعين</item>
+        <item quantity="one">سيراجعه أحد المراجعين، نحو دقيقة</item>
+        <item quantity="two">سيراجعه أحد المراجعين، نحو دقيقتين</item>
+        <item quantity="few">سيراجعه أحد المراجعين، نحو %1$d دقائق</item>
+        <item quantity="many">سيراجعه أحد المراجعين، نحو %1$d دقيقة</item>
+        <item quantity="other">سيراجعه أحد المراجعين، نحو %1$d دقيقة</item>
+    </plurals>
 </resources>

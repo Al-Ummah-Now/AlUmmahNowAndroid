@@ -67,6 +67,21 @@ class DashboardTest {
     // --- Sections ---
 
     @Test
+    fun `a video in review or not approved is a recent upload, and is asked for only when there is one`() = runTest(dispatcher) {
+        val none = repoWithEverything()
+        DashboardViewModel(none, "c1")
+        advanceUntilIdle()
+        assertTrue(none.queries.none { it.status == ContentStatus.IN_REVIEW || it.status == ContentStatus.NOT_APPROVED })
+        val repo = repoWithEverything().apply {
+            videos += StudioVideo("r1", "Held", status = ContentStatus.IN_REVIEW, createdAt = "2026-11-17T10:00:00Z")
+            videos += StudioVideo("n1", "Turned down", status = ContentStatus.NOT_APPROVED, createdAt = "2026-11-16T10:00:00Z")
+        }
+        val vm = DashboardViewModel(repo, "c1")
+        advanceUntilIdle()
+        assertEquals(listOf("r1", "n1", "p1"), (content(vm).recent as DashboardSection.Ready).value.take(3).map { it.id })
+    }
+
+    @Test
     fun `the dashboard has recent videos, comments, drafts and scheduled`() = runTest(dispatcher) {
         val vm = DashboardViewModel(repoWithEverything(), "c1")
         advanceUntilIdle()

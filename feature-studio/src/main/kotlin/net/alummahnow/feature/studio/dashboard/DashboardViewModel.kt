@@ -78,7 +78,11 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
             val counts = async { section("counts") { repository.counts(channelId) } }
             val recent = async {
                 section("recent") {
-                    (list(ContentStatus.PROCESSING) + list(ContentStatus.PUBLISHED))
+                    // A video that waits for review, or was turned down, is a recent upload too.
+                    val reviewed = (counts.await() as? DashboardSection.Ready)?.value
+                    val held = if ((reviewed?.inReview ?: 0) > 0) list(ContentStatus.IN_REVIEW) else emptyList()
+                    val rejected = if ((reviewed?.notApproved ?: 0) > 0) list(ContentStatus.NOT_APPROVED) else emptyList()
+                    (list(ContentStatus.PROCESSING) + held + rejected + list(ContentStatus.PUBLISHED))
                         .sortedByDescending { it.createdAt.orEmpty() }
                         .take(SECTION_SIZE)
                 }

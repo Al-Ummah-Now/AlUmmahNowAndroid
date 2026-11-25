@@ -60,4 +60,5 @@
     <string name="aun_size_mb">%1$s\u00A0MB</string>
     <string name="aun_size_gb">%1$s\u00A0GB</string>
     <string name="aun_size_tb">%1$s\u00A0TB</string>
+    <string name="aun_more">More</string>
 </resources>

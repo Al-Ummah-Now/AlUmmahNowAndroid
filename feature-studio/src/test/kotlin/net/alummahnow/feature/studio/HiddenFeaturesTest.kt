@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -178,8 +179,11 @@ class HiddenFeaturesTest {
         RuntimeEnvironment.setQualifiers("en-ldltr")
         var state by mutableStateOf(ContentUiState(videos = sampleVideos, loading = false))
         compose.setContent { AunTheme { ContentScreen(state, noop) } }
-        compose.onAllNodesWithTag("status-deleted").assertCountEquals(0)
         compose.onNodeWithTag("status-published").assertExists()
+        // Not in the row, and not under More either.
+        compose.onNodeWithTag("status-more").performClick()
+        compose.onNodeWithTag("status-failed").assertExists()
+        compose.onAllNodesWithTag("status-deleted").assertCountEquals(0)
         state = state.copy(softDelete = true)
         compose.waitForIdle()
         compose.onNodeWithTag("status-deleted").assertExists()

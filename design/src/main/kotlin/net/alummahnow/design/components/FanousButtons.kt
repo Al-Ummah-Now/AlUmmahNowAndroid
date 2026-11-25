@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,7 +120,8 @@ fun FanousChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: M
             color = if (selected) f.parts.buttonPrimaryText.color else f.colors.textSecondary.color,
             fontSize = 14.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

@@ -174,6 +174,8 @@ private class FakeRepo : StudioRepository {
     override suspend fun delete(ids: List<String>, channelId: String) = error("unused")
     override suspend fun restore(ids: List<String>, channelId: String) = error("unused")
     override suspend fun deletePermanently(id: String, channelId: String) = error("unused")
+    override suspend fun appealReview(id: String, message: String) = error("unused")
+    override suspend fun resubmitReview(id: String) = error("unused")
     override suspend fun schedule(videoId: String, channelId: String, publishAtIso: String, timezone: String) = error("unused")
     override suspend fun addToPlaylists(videoId: String, channelId: String, playlistIds: List<String>, orderKey: String) = error("unused")
     override suspend fun analytics(channelId: String, range: AnalyticsRange) = error("unused")
