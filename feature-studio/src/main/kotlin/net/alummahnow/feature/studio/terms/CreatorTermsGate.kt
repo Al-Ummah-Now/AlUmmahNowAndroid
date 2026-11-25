@@ -1,5 +1,6 @@
 package net.alummahnow.feature.studio.terms
 
+import android.animation.ValueAnimator
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -182,6 +184,9 @@ private fun GateLink(label: String, tag: String, onClick: () -> Unit) {
     }
 }
 
+/** A spinner that stands still where animations are off. */
+private const val STILL_ARC = 0.75f
+
 /** Shown while Creator Terms acceptance status is loading (fail closed). */
 @Composable
 fun CreatorTermsLoading(modifier: Modifier = Modifier) {
@@ -192,7 +197,16 @@ fun CreatorTermsLoading(modifier: Modifier = Modifier) {
             .testTag("creator-terms-loading"),
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator()
+        val label = stringResource(net.alummahnow.design.R.string.aun_loading)
+        val said = Modifier.semantics {
+            contentDescription = label
+            liveRegion = LiveRegionMode.Polite
+        }
+        if (ValueAnimator.areAnimatorsEnabled()) {
+            CircularProgressIndicator(said)
+        } else {
+            CircularProgressIndicator(progress = { STILL_ARC }, modifier = said)
+        }
     }
 }
 
