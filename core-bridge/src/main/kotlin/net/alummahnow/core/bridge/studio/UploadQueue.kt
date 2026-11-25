@@ -58,7 +58,10 @@ interface UploadQueue {
     suspend fun cancel(id: String)
     fun remove(id: String)
 
-    /** Pauses [userId]'s uploads and starts none, until [releaseUploads] (or the app restarts: then each can be resumed). */
+    /**
+     * Pauses [userId]'s uploads and starts none until [releaseUploads], and returns only when no request of theirs is
+     * under way. Throws when that can't be reached. After an app restart each can be resumed.
+     */
     suspend fun holdUploads(userId: String)
 
     /** Resumes what [holdUploads] paused. */

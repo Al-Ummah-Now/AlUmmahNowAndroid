@@ -40,7 +40,7 @@ data class DeleteAccountUiState(
     val passes: Int = 0,
     val restarted: Boolean = false,
     val action: DeleteAction = DeleteAction.DELETE,
-    val leftover: Leftover? = null,
+    val leftover: Set<Leftover> = emptySet(),
     @param:StringRes val message: Int? = null,
     /** [message] says what went wrong (announced at once, in the error colour). */
     val isError: Boolean = false,
@@ -95,7 +95,7 @@ class AccountDeletionViewModel(
         if (s.action == DeleteAction.SIGN_IN) startSignIn(target, openBrowser) else start(target, s.leftover, openBrowser)
     }
 
-    private fun start(target: StudioAccount, accepted: Leftover?, openBrowser: (String) -> Boolean) {
+    private fun start(target: StudioAccount, accepted: Set<Leftover>, openBrowser: (String) -> Boolean) {
         mutable.update { it.copy(working = true, stopping = false, passes = 0, restarted = false, message = null, isError = false) }
         viewModelScope.launch {
             val outcome = try {
@@ -115,10 +115,11 @@ class AccountDeletionViewModel(
 
     private fun deleted(target: StudioAccount, outcome: DeletionOutcome.Deleted, openBrowser: (String) -> Boolean) {
         forgetClient(target.userId)
-        val text = when (outcome.leftover) {
-            Leftover.CHANNEL -> R.string.studio_delete_done_channel
-            Leftover.OTHER -> R.string.studio_delete_done_other
-            null -> R.string.studio_delete_done
+        val text = when {
+            outcome.leftover.isEmpty() -> R.string.studio_delete_done
+            Leftover.CHANNEL !in outcome.leftover -> R.string.studio_delete_done_other
+            Leftover.OTHER !in outcome.leftover -> R.string.studio_delete_done_channel
+            else -> R.string.studio_delete_done_both
         }
         mutable.value = DeleteAccountUiState(notice = DeletionNotice(text, withPurge = true, serial = ++serial))
         // The browser's session ends too; the account itself is gone already, so nothing depends on it.
@@ -135,7 +136,12 @@ class AccountDeletionViewModel(
         is DeletionOutcome.LeftBehind -> copy(
             action = DeleteAction.DELETE_ANYWAY,
             leftover = outcome.leftover,
-            message = if (outcome.leftover == Leftover.CHANNEL) R.string.studio_delete_left_channel else R.string.studio_delete_left_other
+            message = when {
+                Leftover.CHANNEL !in outcome.leftover -> R.string.studio_delete_left_other
+                Leftover.OTHER !in outcome.leftover -> R.string.studio_delete_left_channel
+                else -> R.string.studio_delete_left_both
+            },
+            isError = false
         )
         is DeletionOutcome.Wait -> error(
             if (outcome.erased == ErasedSoFar.NOTHING) R.string.studio_delete_busy_nothing else R.string.studio_delete_wait

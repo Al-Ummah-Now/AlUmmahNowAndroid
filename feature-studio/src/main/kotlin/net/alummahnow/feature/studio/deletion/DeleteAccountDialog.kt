@@ -215,13 +215,21 @@ private fun Status(state: DeleteAccountUiState, waitMinutes: Int?) {
         Text(stringResource(message), style = MaterialTheme.typography.bodyMedium, color = color)
         if (waitMinutes != null) {
             Text(
-                aunPlural(R.plurals.studio_delete_wait_minutes, waitMinutes, waitMinutes),
+                waitText(waitMinutes),
                 style = MaterialTheme.typography.bodyMedium,
                 color = color,
                 modifier = Modifier.testTag("delete-account-wait")
             )
         }
     }
+}
+
+/** Never less than is left: hours are rounded up too. */
+@Composable
+private fun waitText(minutes: Int): String {
+    if (minutes < 2 * HOUR_MINUTES) return aunPlural(R.plurals.studio_delete_wait_minutes, minutes, minutes)
+    val hours = (minutes + HOUR_MINUTES - 1) / HOUR_MINUTES
+    return aunPlural(R.plurals.studio_delete_wait_hours, hours, hours)
 }
 
 /** Whole minutes left until [untilMs], counted down while the dialog is open; null once it may go on. */
@@ -262,4 +270,5 @@ private val ARABIC =
 const val PURGE_DAYS = 30
 private const val STILL_ARC = 0.72f
 private const val MINUTE_MS = 60_000L
+private const val HOUR_MINUTES = 60
 private const val TICK_MS = 5_000L

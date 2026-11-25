@@ -29,7 +29,7 @@ enum class ErasedSoFar {
 
 sealed interface DeletionOutcome {
     /** Both steps succeeded. [leftover]: what the person was told stays behind. */
-    data class Deleted(val leftover: Leftover?) : DeletionOutcome
+    data class Deleted(val leftover: Set<Leftover>) : DeletionOutcome
 
     /** A recent sign-in of the same person is needed. Nothing more is removed until they confirm again. */
     data class NeedsSignIn(val maxAgeSeconds: Int, val erased: ErasedSoFar) : DeletionOutcome
@@ -38,7 +38,7 @@ sealed interface DeletionOutcome {
     data class OtherAccount(val erased: ErasedSoFar) : DeletionOutcome
 
     /** The erase finished and left something: the person decides before the account goes. */
-    data class LeftBehind(val leftover: Leftover) : DeletionOutcome
+    data class LeftBehind(val leftover: Set<Leftover>) : DeletionOutcome
 
     /** The server asked to wait. */
     data class Wait(val untilMs: Long, val erased: ErasedSoFar) : DeletionOutcome
@@ -61,7 +61,7 @@ interface DeletionDevice {
     /** A current access token of [userId]; null when it is not the active account or has no session. */
     suspend fun token(userId: String): String?
 
-    /** Pauses the account's uploads: one that finished after the erase would bring content back. */
+    /** Holds the account's uploads until nothing of them is under way. Throws when that can't be reached. */
     suspend fun holdUploads(userId: String)
 
     suspend fun releaseUploads(userId: String)
@@ -93,7 +93,7 @@ class AccountDeletion(
     suspend fun run(
         userId: String,
         label: String,
-        acceptLeftover: Leftover? = null,
+        acceptLeftover: Set<Leftover> = emptySet(),
         stopRequested: () -> Boolean = { false },
         onPass: (pass: Int, restarted: Boolean) -> Unit = { _, _ -> }
     ): DeletionOutcome {
@@ -121,16 +121,18 @@ class AccountDeletion(
             userId,
             label,
             resumeToken = resume?.resumeToken,
-            leftover = resume?.leftover,
+            leftover = resume?.leftover.orEmpty(),
             startedAtMs = saved?.startedAtMs ?: nowMs()
         )
-        if (!save(record)) return DeletionOutcome.NoRecord(before)
         var outcome: DeletionOutcome? = null
         try {
-            runCatching { device.holdUploads(userId) }.onFailure {
+            // An upload that went on would bring content back after the erase: without the hold, nothing is called.
+            val held = runCatching { device.holdUploads(userId) }.onFailure {
                 if (it is CancellationException) throw it
-                AunLog.e("auth", "uploads not paused for the deletion", it)
+                AunLog.e("auth", "uploads not held, so no deletion", it)
             }
+            if (held.isFailure) return DeletionOutcome.Failed(before)
+            if (!save(record)) return DeletionOutcome.NoRecord(before)
             return Attempt(record, startedBefore = saved != null, acceptLeftover, stopRequested, onPass).run().also { outcome = it }
         } finally {
             if (outcome !is DeletionOutcome.Deleted) {
@@ -147,7 +149,7 @@ class AccountDeletion(
     private inner class Attempt(
         private var record: DeletionRecord,
         private var startedBefore: Boolean,
-        private val acceptLeftover: Leftover?,
+        private val acceptLeftover: Set<Leftover>,
         private val stopRequested: () -> Boolean,
         private val onPass: (Int, Boolean) -> Unit
     ) {
@@ -176,7 +178,7 @@ class AccountDeletion(
                 startedBefore = true
                 val restarted = body?.b("restarted") == true
                 // A run that began again reports again what it cannot remove.
-                val leftover = Leftover.worse(record.leftover.takeUnless { restarted }, leftoverOf(body))
+                val leftover = leftoverOf(body) + (if (restarted) emptySet() else record.leftover)
                 record = record.copy(
                     stage = if (complete) DeletionStage.CONTENT_ERASED else DeletionStage.STARTED,
                     resumeToken = next.takeUnless { complete },
@@ -218,17 +220,15 @@ class AccountDeletion(
             return runCatching { records.remove(userId) }.fold({ ErasedSoFar.NOTHING }, { ErasedSoFar.SOME })
         }
 
-        private suspend fun afterErase(leftover: Leftover?): DeletionOutcome {
+        private suspend fun afterErase(leftover: Set<Leftover>): DeletionOutcome {
             // Never more than what they were told about.
-            if (leftover != null && acceptLeftover != leftover && acceptLeftover != Leftover.CHANNEL) {
-                return DeletionOutcome.LeftBehind(leftover)
-            }
+            if (!acceptLeftover.containsAll(leftover)) return DeletionOutcome.LeftBehind(leftover)
             // Not stopped half-way: the answer, the marker and the cleanup belong together.
             return withContext(NonCancellable) { deleteAccount(leftover) }
         }
 
-        private suspend fun deleteAccount(leftover: Leftover?): DeletionOutcome {
-            val erasedNow = if (leftover == null) ErasedSoFar.CONTENT else ErasedSoFar.SOME
+        private suspend fun deleteAccount(leftover: Set<Leftover>): DeletionOutcome {
+            val erasedNow = if (leftover.isEmpty()) ErasedSoFar.CONTENT else ErasedSoFar.SOME
             var lost = false
             repeat(2) {
                 val token = when (val pinned = pinnedToken(userId)) {
@@ -310,7 +310,9 @@ class AccountDeletion(
         const val CONTINUE_MAX_AGE_S = 570
 
         private const val DEFAULT_RETRY_S = 300L
-        private const val MAX_RETRY_S = 3_600L
+
+        /** Ten years: only so that a number too large for a clock stays one. */
+        private const val MAX_RETRY_S = 315_360_000L
         private const val MS_PER_S = 1_000L
         private const val HTTP_TOO_MANY = 429
         private const val HTTP_UNAUTHORIZED = 401
@@ -334,18 +336,17 @@ class AccountDeletion(
                 (answer.status == HTTP_NOT_FOUND && body?.s("error") == "not_found")
         }
 
-        private fun leftoverOf(body: JsonObject?): Leftover? {
-            val errors = body?.a("errors").orEmpty()
-            if (errors.isEmpty()) return null
-            val channel = errors.any { (it as? JsonPrimitive)?.contentOrNull?.startsWith("channel_unreadable:") == true }
-            return if (channel) Leftover.CHANNEL else Leftover.OTHER
-        }
+        /** Each kind that is there: one never hides the other. */
+        private fun leftoverOf(body: JsonObject?): Set<Leftover> = body?.a("errors").orEmpty().map { error ->
+            val channel = (error as? JsonPrimitive)?.contentOrNull?.startsWith("channel_unreadable:") == true
+            if (channel) Leftover.CHANNEL else Leftover.OTHER
+        }.toSet()
 
-        /** Seconds of a Retry-After header (a number or a date), within reason. */
+        /** Seconds of a Retry-After header (a number or a date), never less than it says. */
         internal fun retryAfterSeconds(header: String?, nowMs: Long): Long {
             val value = header?.trim().orEmpty()
             val seconds = if (value.isNotEmpty() && value.all { it in '0'..'9' }) {
-                value.toLongOrNull()
+                value.toLongOrNull() ?: MAX_RETRY_S
             } else {
                 httpDateSeconds(value)?.let { it - nowMs / MS_PER_S }
             }

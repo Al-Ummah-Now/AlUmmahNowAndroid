@@ -12,11 +12,7 @@ import net.alummahnow.core.bridge.AunLog
 /** What the erase reported it could not remove. A channel it could not read stays until an admin removes it. */
 enum class Leftover {
     CHANNEL,
-    OTHER;
-
-    companion object {
-        fun worse(a: Leftover?, b: Leftover?): Leftover? = if (a == CHANNEL || b == CHANNEL) CHANNEL else a ?: b
-    }
+    OTHER
 }
 
 enum class DeletionStage {
@@ -39,7 +35,7 @@ data class DeletionRecord(
     val stage: DeletionStage = DeletionStage.STARTED,
     /** Opaque, bound to the account by the server; handed back unread. */
     val resumeToken: String? = null,
-    val leftover: Leftover? = null,
+    val leftover: Set<Leftover> = emptySet(),
     val startedAtMs: Long = 0,
     /** The server asked to wait until then. */
     val notBeforeMs: Long = 0
