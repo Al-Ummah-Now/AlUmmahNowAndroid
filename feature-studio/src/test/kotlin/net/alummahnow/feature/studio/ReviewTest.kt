@@ -535,19 +535,42 @@ class ReviewTest {
         val shown = "$tag: ${layoutInput.text}, $lineCount lines to ${getLineEnd(last, visibleEnd = true)}"
         assertFalse(shown, multiParagraph.didExceedMaxLines || isLineEllipsized(last))
         assertEquals(shown, layoutInput.text.length, getLineEnd(last))
+        // No line ends inside a word.
+        (0 until last).map { layoutInput.text[getLineEnd(it) - 1] }.forEach { assertTrue("$shown: '$it'", it.isWhitespace() || it == '-') }
     }
 
     @Test
-    fun `at a large font no word of a row is cut`() {
+    fun `at a large font no word of a row is cut or broken`() {
         show(inReview, fontScale = 2f)
         listOf("title", "review", "meta", "date").forEach(::assertWhole)
-        assertEquals(1, layout("date").lineCount)
     }
 
     @Test
-    fun `at a large font on a narrow phone the date takes the lines it needs`() {
-        show(inReview, "en-ldltr-w320dp-h800dp-port", fontScale = 2f)
-        listOf("review", "meta", "date").forEach(::assertWhole)
+    fun `nor on a narrow phone`() {
+        show(notApproved, "en-ldltr-w320dp-h1600dp-port", fontScale = 2f)
+        listOf("title", "review", "meta", "date").forEach(::assertWhole)
+    }
+
+    @Test
+    fun `a long title at a large font has four lines`() {
+        val long = libraryVideos[0].copy(title = "A title with a good many words ".repeat(8), titleLocalized = emptyMap())
+        show(inReview.copy(videos = listOf(long)), fontScale = 2f)
+        assertEquals(4, layout("title").lineCount)
+    }
+
+    @Test
+    fun `on a tablet the words stay beside the thumbnail at a large font`() {
+        show(inReview, "en-ldltr-w800dp-h1280dp-port", fontScale = 2f)
+        val id = libraryVideos[0].id
+        val title = compose.onNodeWithTag("title-$id", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val check = compose.onNodeWithTag("select-$id").fetchSemanticsNode().boundsInRoot
+        assertTrue("$title $check", title.left > check.right)
+    }
+
+    @Test
+    fun `beside the thumbnail on a narrow phone the date takes the lines it needs`() {
+        show(inReview, "en-ldltr-w320dp-h1600dp-port", fontScale = 1.2f)
+        assertWhole("date")
         assertTrue(layout("date").lineCount > 1)
     }
 

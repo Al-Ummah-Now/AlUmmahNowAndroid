@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -434,6 +435,12 @@ private fun VideoRow(
             }
             .testTag("video-${v.id}")
     ) {
+        // At a large font on a phone the words go under the thumbnail, with the card's whole width: beside it they break.
+        val config = LocalConfiguration.current
+        val stacked = config.fontScale >= LARGE_FONT && config.screenWidthDp < WIDE_DP
+        // A smaller thumbnail on narrow phones (360dp) so the words beside it keep a readable width.
+        val thumbnail = if (!stacked && config.screenWidthDp < NARROW_DP) 80.dp else 120.dp
+        val words: @Composable (Modifier) -> Unit = { VideoWords(v, title, deleted, queueMinutes, if (stacked) 4 else 2, it) }
         Column {
             Row(
                 Modifier.padding(FanousTokens.Spacing.sm),
@@ -445,50 +452,8 @@ private fun VideoRow(
                     onCheckedChange = { actions.onToggle(v.id) },
                     modifier = Modifier.testTag("select-${v.id}").semantics { contentDescription = selectLabel }
                 )
-                // A smaller thumbnail on narrow phones (360dp) and at a large font so the words keep a readable width.
-                val config = LocalConfiguration.current
-                val large = config.fontScale >= LARGE_FONT
-                val narrow = large || config.screenWidthDp < NARROW_DP
-                val lines = if (large) LARGE_FONT_LINES else 2
-                Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(if (narrow) 80.dp else 120.dp))
-                Column(Modifier.weight(1f)) {
-                    // A tighter line height than titleSmall: a title that wraps reads as one title, not two lines apart.
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp),
-                        color = f.colors.textPrimary.color,
-                        maxLines = lines,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.testTag("title-${v.id}")
-                    )
-                    reviewLine(v.review, queueMinutes).takeIf { !deleted }?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = f.colors.textPrimary.color,
-                            modifier = Modifier.padding(vertical = 2.dp).testTag("review-${v.id}")
-                        )
-                    }
-                    Text(
-                        meta(v, deleted),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = f.colors.textSecondary.color,
-                        maxLines = lines,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.testTag("meta-${v.id}")
-                    )
-                    // The date on its own line under the details: a separate column left phones no room for the title.
-                    // A video without a date keeps the line (empty), so every row has the same height.
-                    if (!deleted) {
-                        val date = v.createdAt?.let { formatDate(it) }
-                        Text(
-                            date.orEmpty(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = f.colors.textMuted.color,
-                            modifier = if (date == null) Modifier.clearAndSetSemantics {} else Modifier.testTag("date-${v.id}")
-                        )
-                    }
-                }
+                Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(thumbnail))
+                if (stacked) Spacer(Modifier.weight(1f)) else words(Modifier.weight(1f))
                 if (deleted) {
                     IconButton(onClick = onDeleteForever, modifier = Modifier.testTag("forever-${v.id}")) {
                         Icon(
@@ -507,7 +472,58 @@ private fun VideoRow(
                     }
                 }
             }
+            if (stacked) {
+                words(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = FanousTokens.Spacing.md, end = FanousTokens.Spacing.md, bottom = FanousTokens.Spacing.md)
+                )
+            }
             if (!selecting && v.status == ContentStatus.NOT_APPROVED) ReviewActions(v, enabled = !busy, actions)
+        }
+    }
+}
+
+/** A row's title, where its review is, its details and its date. */
+@Composable
+private fun VideoWords(v: StudioVideo, title: String, deleted: Boolean, queueMinutes: Int?, lines: Int, modifier: Modifier = Modifier) {
+    val f = LocalFanous.current
+    Column(modifier) {
+        // A tighter line height than titleSmall: a title that wraps reads as one title, not two lines apart.
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp),
+            color = f.colors.textPrimary.color,
+            maxLines = lines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("title-${v.id}")
+        )
+        reviewLine(v.review, queueMinutes).takeIf { !deleted }?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = f.colors.textPrimary.color,
+                modifier = Modifier.padding(vertical = 2.dp).testTag("review-${v.id}")
+            )
+        }
+        Text(
+            meta(v, deleted),
+            style = MaterialTheme.typography.bodySmall,
+            color = f.colors.textSecondary.color,
+            maxLines = lines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("meta-${v.id}")
+        )
+        // The date on its own line under the details: a separate column left phones no room for the title.
+        // A video without a date keeps the line (empty), so every row has the same height.
+        if (!deleted) {
+            val date = v.createdAt?.let { formatDate(it) }
+            Text(
+                date.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = f.colors.textMuted.color,
+                modifier = if (date == null) Modifier.clearAndSetSemantics {} else Modifier.testTag("date-${v.id}")
+            )
         }
     }
 }
@@ -541,6 +557,5 @@ private const val DATE_CHARS = 10
 
 private const val NARROW_DP = 400
 
-/** From this font scale a row gives its words more room: a smaller thumbnail, more lines. */
 private const val LARGE_FONT = 1.3f
-private const val LARGE_FONT_LINES = 4
+private const val WIDE_DP = 600
