@@ -338,6 +338,38 @@ class CreatorTermsAndLinksTest {
     }
 
     @Test
+    fun `Terms that could not be read and then can no longer say so`() = vmTest {
+        // The version read on the next resume, and what the gate then says.
+        val cases = mapOf("v2" to R.string.studio_terms_changed, "v1" to null, null to null)
+        for ((found, said) in cases) {
+            val repo = gated()
+            val vm = CreatorTermsViewModel(repo)
+            advanceUntilIdle()
+            repo.acceptTermsError = StudioError.TermsChanged()
+            repo.creatorAccessError = CoreError.Network(IOException("offline"))
+            vm.accept()
+            advanceUntilIdle()
+            // Still offline: it still says so.
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals("$found", R.string.studio_terms_load_error, vm.gate.errorRes)
+            val ticked = vm.gate.agreement
+            repo.creatorAccessError = null
+            repo.termsVersion = found
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals("$found", said, vm.gate.errorRes)
+            assertEquals(found, vm.gate.version)
+            assertTrue("$found", vm.gate.agreement != ticked)
+            // A later resume that finds the same says nothing new.
+            val after = vm.gate
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals("$found", after, vm.gate)
+        }
+    }
+
+    @Test
     fun `after a refusal, accepted elsewhere or switched off opens Upload`() = vmTest {
         for (answer in listOf(true, null)) {
             for (error in listOf(StudioError.TermsChanged(), StudioError.FeatureOff())) {

@@ -27,6 +27,8 @@ sealed interface CreatorTermsUiState {
         val uploadRefused: Boolean = false,
         /** The version the gate shows and the person agrees to; null when it isn't known, and then none is accepted. */
         val version: String? = null,
+        /** The version shown before the current one could not be read. */
+        val before: String? = null,
         /** Counts the times the Terms were shown again, so a tick for an earlier time never counts. */
         val round: Int = 0
     ) : CreatorTermsUiState {
@@ -139,7 +141,13 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
     /** What the server says now, after it did not take [gate]'s version. Agreeing again needs a new tick if [changed]. */
     private suspend fun shownAgain(gate: CreatorTermsUiState.Required, changed: Boolean): CreatorTermsUiState {
         val access = attempt("studio", "creator-terms-load") { repository.creatorAccess() }.getOrElse {
-            return gate.copy(saving = false, errorRes = R.string.studio_terms_load_error, version = null, round = gate.round + 1)
+            return gate.copy(
+                saving = false,
+                errorRes = R.string.studio_terms_load_error,
+                version = null,
+                before = gate.version ?: gate.before,
+                round = gate.round + 1
+            )
         }
         if (access.termsAccepted != false) return CreatorTermsUiState.Accepted
         val next = gate.copy(saving = false, errorRes = R.string.studio_terms_error).showing(access.termsVersion)
@@ -151,6 +159,13 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
 
     /** The gate for [version]. A newer one than it showed is said, and needs a new tick. */
     private fun CreatorTermsUiState.Required.showing(version: String?): CreatorTermsUiState.Required = when {
+        // They could be read now, so it no longer says that they couldn't.
+        errorRes == R.string.studio_terms_load_error -> copy(
+            version = version,
+            before = null,
+            round = round + 1,
+            errorRes = R.string.studio_terms_changed.takeIf { before != null && version != null && version != before }
+        )
         version == this.version -> this
         version != null && this.version != null ->
             copy(version = version, round = round + 1, errorRes = R.string.studio_terms_changed)
