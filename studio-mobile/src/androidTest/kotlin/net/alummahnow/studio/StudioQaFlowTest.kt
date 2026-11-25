@@ -65,6 +65,12 @@ class StudioQaFlowTest {
         signIn(email!!, password!!)
         val channel = pickChannel()
 
+        // When the Terms switch is on, the server refuses an upload until they are accepted.
+        runBlocking {
+            val access = app.container.repository.creatorAccess()
+            if (access.termsAccepted == false) access.termsVersion?.let { app.container.repository.acceptCreatorTerms(it) }
+        }
+
         // Upload: a 3-second clip, private, with a unique title, through the real queue + worker.
         val title = "android-qa-${System.currentTimeMillis()}"
         val clip = copyAsset(compose.activity, "qa-test-clip.mp4")

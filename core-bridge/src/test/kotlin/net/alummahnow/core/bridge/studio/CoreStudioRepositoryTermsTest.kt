@@ -38,10 +38,11 @@ class CoreStudioRepositoryTermsTest {
                 """{"success":true}"""
             }
         )
-        repo.acceptCreatorTerms()
+        repo.acceptCreatorTerms("2026-11-24")
         assertEquals(1, calls.size)
         assertEquals("POST", calls[0].method)
         assertEquals("/api/me/creator/terms", calls[0].pathTemplate)
+        assertEquals("""{"version":"2026-11-24"}""", calls[0].bodyJson)
         assertTrue(calls[0].authRequired)
     }
 
@@ -51,7 +52,17 @@ class CoreStudioRepositoryTermsTest {
             client = { error("unused") },
             executePath = { throw AunException.NotFound("Not Found") }
         )
-        val result = runCatching { repo.acceptCreatorTerms() }
+        val result = runCatching { repo.acceptCreatorTerms("2026-11-24") }
         assertTrue(result.exceptionOrNull() is CoreError.NotFound)
+    }
+
+    @Test
+    fun `a 409 is changed Terms, any other failure is not`() = runTest {
+        suspend fun failure(e: Exception) =
+            runCatching {
+                CoreStudioRepository(client = { error("unused") }, executePath = { throw e }).acceptCreatorTerms("v")
+            }.exceptionOrNull()
+        assertTrue(failure(AunException.Conflict("The Terms of Service were updated")) is StudioError.TermsChanged)
+        assertEquals(503, (failure(AunException.Http(503u, null, "x")) as CoreError.Http).code)
     }
 }

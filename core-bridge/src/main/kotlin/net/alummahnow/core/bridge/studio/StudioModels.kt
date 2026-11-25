@@ -162,7 +162,9 @@ data class CreatorAccess(
     val canUpload: Boolean,
     val canCreateChannel: Boolean,
     val tierName: String?,
-    val termsAccepted: Boolean? = null
+    val termsAccepted: Boolean? = null,
+    /** The version of the Terms to accept; null when the server gives none (the switch is off). */
+    val termsVersion: String? = null
 )
 
 /** Comments on the channel's videos and posts (`GET /api/channels/{id}/comments/summary`): what is waiting for review. */

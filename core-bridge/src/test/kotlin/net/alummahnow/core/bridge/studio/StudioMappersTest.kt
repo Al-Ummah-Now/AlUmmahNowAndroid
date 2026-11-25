@@ -129,6 +129,14 @@ class StudioMappersTest {
     }
 
     @Test
+    fun `termsVersion is the server's text, or nothing`() {
+        fun version(json: String) = StudioMappers.creatorAccess("""{"success":true,"result":{"termsAccepted":false$json}}""").termsVersion
+        assertEquals("2026-11-24", version(""","termsVersion":" 2026-11-24 """"))
+        listOf("", ""","termsVersion":null""", ""","termsVersion":"" """, ""","termsVersion":20261124""", ""","termsVersion":{}""")
+            .forEach { assertNull(it, version(it)) }
+    }
+
+    @Test
     fun `a malformed termsAccepted counts as absent, the server enforces the Terms`() {
         listOf("\"true\"", "\"false\"", "\"yes\"", "\"\"", "0", "1", "{}", "[]", "[false]", "{\"accepted\":false}").forEach { value ->
             val access = StudioMappers.creatorAccess("""{"success":true,"result":{"canUpload":true,"termsAccepted":$value}}""")

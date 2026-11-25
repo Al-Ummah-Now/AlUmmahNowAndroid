@@ -7,6 +7,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -35,6 +38,7 @@ import kotlinx.coroutines.test.setMain
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.SupportLinks
 import net.alummahnow.core.bridge.studio.CreatorAccess
+import net.alummahnow.core.bridge.studio.StudioError
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.channels.AccountSheet
@@ -44,6 +48,7 @@ import net.alummahnow.feature.studio.terms.CreatorTermsGate
 import net.alummahnow.feature.studio.terms.CreatorTermsUiState
 import net.alummahnow.feature.studio.terms.CreatorTermsViewModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -178,7 +183,7 @@ class CreatorTermsAndLinksTest {
         repo.termsAccepted = false
         vm.uploadsRefused(setOf("u1", "u2"))
         advanceUntilIdle()
-        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true, version = "v1"), vm.state.value)
         assertEquals(setOf("u2"), vm.refusedForTerms.value)
     }
 
@@ -203,7 +208,7 @@ class CreatorTermsAndLinksTest {
         assertEquals(emptySet<String>(), vm.refusedForTerms.value)
         vm.uploadsRefused(setOf("u1"))
         advanceUntilIdle()
-        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true, version = "v1"), vm.state.value)
     }
 
     @Test
@@ -219,19 +224,168 @@ class CreatorTermsAndLinksTest {
         repo.termsAccepted = false
         vm.refresh()
         advanceUntilIdle()
-        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true, version = "v1"), vm.state.value)
         assertEquals(setOf("u1"), vm.refusedForTerms.value)
         repo.acceptTermsError = CoreError.Http(503)
         vm.accept()
         advanceUntilIdle()
-        assertEquals(CreatorTermsUiState.Required(errorRes = R.string.studio_terms_error, uploadRefused = true), vm.state.value)
+        assertEquals(
+            CreatorTermsUiState.Required(errorRes = R.string.studio_terms_error, uploadRefused = true, version = "v1"),
+            vm.state.value
+        )
+    }
+
+    private fun gated(version: String? = "v1") = FakeRepository().apply {
+        termsAccepted = false
+        termsVersion = version
+    }
+
+    private val CreatorTermsViewModel.gate get() = state.value as CreatorTermsUiState.Required
+
+    @Test
+    fun `the version that was shown is the one that is accepted`() = vmTest {
+        val repo = gated()
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+        assertEquals(listOf("v1"), repo.acceptedVersions)
+    }
+
+    @Test
+    fun `Terms that changed before the tap are shown again, need a new tick, and then are accepted`() = vmTest {
+        val repo = gated()
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        val before = vm.gate.agreement
+        repo.termsVersion = "v2"
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals("v2", vm.gate.version)
+        assertEquals(R.string.studio_terms_changed, vm.gate.errorRes)
+        assertFalse(vm.gate.saving)
+        assertTrue(vm.gate.agreement != before)
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+        assertEquals(listOf("v1", "v2"), repo.acceptedVersions)
+    }
+
+    @Test
+    fun `Terms that changed while the gate is open are said on the next resume, the same ones keep the tick`() = vmTest {
+        val repo = gated()
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        val before = vm.gate
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(before, vm.gate)
+        repo.termsVersion = "v2"
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals("v2", vm.gate.version)
+        assertEquals(R.string.studio_terms_changed, vm.gate.errorRes)
+        assertTrue(vm.gate.agreement != before.agreement)
+    }
+
+    @Test
+    fun `a refusal although the version is the same still needs a new tick`() = vmTest {
+        val repo = gated()
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        val before = vm.gate.agreement
+        repo.acceptTermsError = StudioError.TermsChanged()
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals("v1", vm.gate.version)
+        assertEquals(R.string.studio_terms_changed, vm.gate.errorRes)
+        assertTrue(vm.gate.agreement != before)
+    }
+
+    @Test
+    fun `a version that was never shown is never accepted`() = vmTest {
+        // Changed, and the new one can't be read: the next tap reads it, and only then it can be agreed to.
+        val repo = gated()
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        repo.termsVersion = "v2"
+        repo.creatorAccessError = CoreError.Network(IOException("offline"))
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals(null, vm.gate.version)
+        assertEquals(R.string.studio_terms_load_error, vm.gate.errorRes)
+        repo.creatorAccessError = null
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals("v2", vm.gate.version)
+        assertEquals(R.string.studio_terms_changed, vm.gate.errorRes)
+        assertEquals(listOf("v1"), repo.acceptedVersions)
+
+        // A server that gives none: nothing is sent, and it says that it failed.
+        val none = gated(null)
+        val other = CreatorTermsViewModel(none)
+        advanceUntilIdle()
+        other.accept()
+        advanceUntilIdle()
+        assertEquals(R.string.studio_terms_error, other.gate.errorRes)
+        assertEquals(emptyList<String>(), none.acceptedVersions)
+    }
+
+    @Test
+    fun `after a refusal, accepted elsewhere or switched off opens Upload`() = vmTest {
+        for (answer in listOf(true, null)) {
+            for (error in listOf(StudioError.TermsChanged(), StudioError.FeatureOff())) {
+                val repo = gated().apply { acceptTermsError = error }
+                val vm = CreatorTermsViewModel(repo)
+                advanceUntilIdle()
+                repo.termsAccepted = answer
+                vm.accept()
+                advanceUntilIdle()
+                assertEquals("$answer $error", CreatorTermsUiState.Accepted, vm.state.value)
+            }
+        }
+    }
+
+    @Test
+    fun `while the switch is off nothing is asked and nothing is sent`() = vmTest {
+        val repo = FakeRepository().apply {
+            termsAccepted = null
+            termsVersion = null
+        }
+        val vm = CreatorTermsViewModel(repo)
+        advanceUntilIdle()
+        assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
+        vm.accept()
+        advanceUntilIdle()
+        assertEquals(emptyList<String>(), repo.acceptedVersions)
+    }
+
+    @Test
+    fun `a tick counts only for the Terms it was given for, also after the process is recreated`() {
+        RuntimeEnvironment.setQualifiers("en-ldltr")
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        var agreement by mutableStateOf("v1#0")
+        restoration.setContent {
+            AunTheme { CreatorTermsGate(false, null, {}, {}, prodHost, agreement = agreement) }
+        }
+        compose.onNodeWithTag("creator-terms-checkbox").performClick()
+        compose.onNodeWithTag("creator-terms-checkbox").assertIsOn()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("creator-terms-checkbox").assertIsOn()
+        agreement = "v2#0"
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("creator-terms-checkbox").assertIsOff()
+        compose.onNodeWithTag("creator-terms-agree").assertIsNotEnabled()
     }
 
     @Test
     fun `an older read that answers late never replaces a newer one`() = vmTest {
         val late = CompletableDeferred<CreatorAccess>()
         var calls = 0
-        fun access(accepted: Boolean) = CreatorAccess(canUpload = true, canCreateChannel = true, tierName = null, termsAccepted = accepted)
+        fun access(
+            accepted: Boolean
+        ) = CreatorAccess(canUpload = true, canCreateChannel = true, tierName = null, termsAccepted = accepted, termsVersion = "v1")
         val repo = object : net.alummahnow.core.bridge.studio.StudioRepository by FakeRepository() {
             override suspend fun creatorAccess(): CreatorAccess = when (++calls) {
                 1 -> access(true)
@@ -245,10 +399,10 @@ class CreatorTermsAndLinksTest {
         advanceUntilIdle()
         vm.uploadsRefused(setOf("u1"))
         advanceUntilIdle()
-        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true, version = "v1"), vm.state.value)
         late.complete(access(true))
         advanceUntilIdle()
-        assertEquals(CreatorTermsUiState.Required(uploadRefused = true), vm.state.value)
+        assertEquals(CreatorTermsUiState.Required(uploadRefused = true, version = "v1"), vm.state.value)
     }
 
     @Test
@@ -265,7 +419,13 @@ class CreatorTermsAndLinksTest {
                     return if (loadCount == 2) {
                         staleLoad.await()
                     } else {
-                        CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = false)
+                        CreatorAccess(
+                            canUpload = true,
+                            canCreateChannel = true,
+                            tierName = "Creator",
+                            termsAccepted = false,
+                            termsVersion = "v1"
+                        )
                     }
                 }
             }
@@ -285,7 +445,9 @@ class CreatorTermsAndLinksTest {
             assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
 
             // Stale load from before accept completes with termsAccepted = false -> must NOT revert Accepted
-            staleLoad.complete(CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = false))
+            staleLoad.complete(
+                CreatorAccess(canUpload = true, canCreateChannel = true, tierName = "Creator", termsAccepted = false, termsVersion = "v1")
+            )
             advanceUntilIdle()
             assertEquals(CreatorTermsUiState.Accepted, vm.state.value)
         } finally {
@@ -395,6 +557,16 @@ class CreatorTermsAndLinksTest {
         CreatorTermsGate(saving = false, error = null, onOpenUrl = {}, onAgree = {}, webHost = prodHost, uploadRefused = true)
     }
 
+    private val gateChanged = @androidx.compose.runtime.Composable {
+        CreatorTermsGate(
+            saving = false,
+            error = androidx.compose.ui.res.stringResource(R.string.studio_terms_changed),
+            onOpenUrl = {},
+            onAgree = {},
+            webHost = prodHost
+        )
+    }
+
     private val gateFailed = @androidx.compose.runtime.Composable {
         CreatorTermsError(onRetry = {})
     }
@@ -458,6 +630,14 @@ class CreatorTermsAndLinksTest {
     @Test fun creatorTermsGateRefusedArDark() = shoot("creator_terms_gate_refused", Lang.AR, ThemeMode.DARK, content = gateRefused)
 
     @Test fun creatorTermsGateRefusedArLight() = shoot("creator_terms_gate_refused", Lang.AR, ThemeMode.LIGHT, content = gateRefused)
+
+    @Test fun creatorTermsGateChangedEnDark() = shoot("creator_terms_gate_changed", Lang.EN, ThemeMode.DARK, content = gateChanged)
+
+    @Test fun creatorTermsGateChangedEnLight() = shoot("creator_terms_gate_changed", Lang.EN, ThemeMode.LIGHT, content = gateChanged)
+
+    @Test fun creatorTermsGateChangedArDark() = shoot("creator_terms_gate_changed", Lang.AR, ThemeMode.DARK, content = gateChanged)
+
+    @Test fun creatorTermsGateChangedArLight() = shoot("creator_terms_gate_changed", Lang.AR, ThemeMode.LIGHT, content = gateChanged)
 
     @Test fun creatorTermsGateFailedEnDark() = shoot("creator_terms_gate_failed", Lang.EN, ThemeMode.DARK, content = gateFailed)
 
