@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -40,7 +41,10 @@ import net.alummahnow.design.theme.color
 /** Button kinds of the web (`.b-primary`, `.b-secondary`, `.b-ghost`); gold only for the primary action. */
 enum class FanousButtonKind { Primary, Secondary, Ghost, Destructive }
 
-/** A pill button in the theme's materials: gold gradient with its edge for the primary, outlined for the rest. */
+/**
+ * A pill button in the theme's materials: gold gradient with its edge for the primary, outlined for the rest.
+ * With [wrap] a label wider than its place takes more lines (a long one at a large font) instead of being cut.
+ */
 @Composable
 fun FanousButton(
     text: String,
@@ -48,7 +52,8 @@ fun FanousButton(
     modifier: Modifier = Modifier,
     kind: FanousButtonKind = FanousButtonKind.Secondary,
     icon: ImageVector? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    wrap: Boolean = false
 ) {
     val f = LocalFanous.current
     val p = f.parts
@@ -87,12 +92,19 @@ fun FanousButton(
             .then(surface)
             .clip(CircleShape)
             .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = if (wrap) 8.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
     ) {
         if (icon != null) Icon(icon, contentDescription = null, tint = textColor, modifier = Modifier.size(18.dp))
-        Text(text, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(
+            text,
+            color = textColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = if (wrap) TextAlign.Center else null,
+            maxLines = if (wrap) Int.MAX_VALUE else 1
+        )
     }
 }
 

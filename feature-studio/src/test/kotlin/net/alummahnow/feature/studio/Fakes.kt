@@ -1,5 +1,6 @@
 package net.alummahnow.feature.studio
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.studio.AccountSession
@@ -125,6 +126,12 @@ class FakeRepository : StudioRepository {
     var restoreError: Exception? = null
     var bulkError: Exception? = null
     val contentErrors = mutableMapOf<ContentStatus, Exception>()
+
+    /** Answers (or holds) a list itself; null leaves it to the fake's own videos. */
+    var contentAnswer: suspend (ContentQuery) -> ContentPage? = { null }
+
+    /** Holds the counts until it is completed. */
+    var countsGate: CompletableDeferred<Unit>? = null
     var comments = CommentsSummary(held = 2, inbox = 14)
     var commentsError: Exception? = null
     var countsError: Exception? = null
@@ -171,6 +178,7 @@ class FakeRepository : StudioRepository {
 
     override suspend fun content(query: ContentQuery): ContentPage {
         queries += query
+        contentAnswer(query)?.let { return it }
         if (query.status == ContentStatus.DELETED) deletedError?.let { throw it }
         contentErrors[query.status]?.let { throw it }
         val source = if (query.status == ContentStatus.DELETED) deleted else videos.filter { it.status == query.status }
@@ -184,6 +192,7 @@ class FakeRepository : StudioRepository {
     }
 
     override suspend fun counts(channelId: String): ContentCounts? {
+        countsGate?.await()
         countsError?.let { throw it }
         if (countsMissing) return null
         return sampleCounts()
@@ -257,17 +266,22 @@ class FakeRepository : StudioRepository {
     }
 
     var reviewError: Exception? = null
+
+    /** What else happens on the server when a review call comes in (another device was first). */
+    var onReview: () -> Unit = {}
     var reviewQueueMinutes: Int? = null
     val appeals = mutableListOf<Pair<String, String>>()
     val resubmits = mutableListOf<String>()
 
     override suspend fun appealReview(id: String, message: String) {
+        onReview()
         reviewError?.let { throw it }
         appeals += id to message
         inReview(id, VideoReview(ReviewStep.APPEALED, appealUsed = true))
     }
 
     override suspend fun resubmitReview(id: String) {
+        onReview()
         reviewError?.let { throw it }
         resubmits += id
         inReview(id, VideoReview(ReviewStep.CHECKING))

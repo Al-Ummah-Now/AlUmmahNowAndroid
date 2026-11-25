@@ -9,15 +9,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
@@ -26,17 +33,22 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.studio.ContentPage
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.ReviewStep
 import net.alummahnow.core.bridge.studio.VideoReview
+import net.alummahnow.design.format.isolate
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.studio.content.AppealDialog
@@ -84,6 +96,7 @@ class ReviewTest {
         val repo = repo()
         repo.reviewQueueMinutes = 40
         val vm = ContentViewModel(repo, "c1")
+        advanceUntilIdle()
         vm.setStatus(ContentStatus.NOT_APPROVED)
         advanceUntilIdle()
         assertEquals(listOf("v1"), vm.state.value.videos.map { it.id })
@@ -101,8 +114,9 @@ class ReviewTest {
 
     @Test
     fun `a new check that can't be sent says so and changes nothing`() = runTest(dispatcher) {
-        val repo = repo().apply { reviewError = CoreError.Http(409) }
+        val repo = repo().apply { reviewError = CoreError.Http(500) }
         val vm = ContentViewModel(repo, "c1")
+        advanceUntilIdle()
         vm.setStatus(ContentStatus.NOT_APPROVED)
         advanceUntilIdle()
         vm.resubmit("v1")
@@ -116,6 +130,7 @@ class ReviewTest {
     fun `an appeal is sent once, and the dialog stays with its text when it can't be`() = runTest(dispatcher) {
         val repo = repo().apply { reviewError = CoreError.Http(500) }
         val vm = ContentViewModel(repo, "c1")
+        advanceUntilIdle()
         vm.setStatus(ContentStatus.NOT_APPROVED)
         advanceUntilIdle()
         vm.openAppeal("v1")
@@ -137,6 +152,228 @@ class ReviewTest {
         assertTrue(vm.state.value.videos.isEmpty())
     }
 
+    private fun TestScope.notApproved(repo: FakeRepository): ContentViewModel {
+        val vm = ContentViewModel(repo, "c1")
+        advanceUntilIdle()
+        vm.setStatus(ContentStatus.NOT_APPROVED)
+        advanceUntilIdle()
+        return vm
+    }
+
+    private fun ContentViewModel.ids() = state.value.videos.map { it.id }
+
+    @Test
+    fun `a video that was sent can't be sent again while the list reloads, nor when that fails`() = runTest(dispatcher) {
+        val appeals: ContentViewModel.() -> Unit = {
+            openAppeal("v1")
+            sendAppeal("mine")
+        }
+        for (send in listOf<ContentViewModel.() -> Unit>({ resubmit("v1") }, appeals)) {
+            val repo = repo()
+            val vm = notApproved(repo)
+            vm.toggle("v1")
+            val reload = CompletableDeferred<Unit>()
+            repo.contentAnswer = {
+                reload.await()
+                throw CoreError.Http(500)
+            }
+            vm.send()
+            runCurrent()
+            assertTrue(vm.state.value.loading)
+            assertTrue(vm.ids().isEmpty())
+            assertTrue(vm.state.value.selected.isEmpty())
+            vm.send()
+            reload.complete(Unit)
+            advanceUntilIdle()
+            vm.send()
+            advanceUntilIdle()
+            assertEquals(1, repo.resubmits.size + repo.appeals.size)
+            assertTrue(vm.ids().isEmpty())
+        }
+    }
+
+    @Test
+    fun `an appeal and a new check are never both on their way`() = runTest(dispatcher) {
+        val repo = repo()
+        val vm = notApproved(repo)
+        vm.resubmit("v1")
+        vm.openAppeal("v1")
+        assertNull(vm.state.value.appeal)
+        advanceUntilIdle()
+        val other = repo()
+        val second = notApproved(other)
+        second.openAppeal("v1")
+        second.sendAppeal("mine")
+        second.resubmit("v1")
+        advanceUntilIdle()
+        assertEquals(1 to 0, other.appeals.size to other.resubmits.size)
+        val third = repo()
+        val both = notApproved(third)
+        both.openAppeal("v1")
+        both.resubmit("v1")
+        both.sendAppeal("mine")
+        advanceUntilIdle()
+        assertEquals(0 to 1, third.appeals.size to third.resubmits.size)
+    }
+
+    @Test
+    fun `a video that moved on elsewhere leaves the list, and no one is told to try again`() = runTest(dispatcher) {
+        for (appeal in listOf(false, true)) {
+            val repo = repo().apply { reviewError = CoreError.Http(409) }
+            val vm = notApproved(repo)
+            repo.onReview = {
+                repo.videos.replaceAll { if (it.id == "v1") it.copy(status = ContentStatus.IN_REVIEW) else it }
+            }
+            if (appeal) {
+                vm.openAppeal("v1")
+                vm.sendAppeal("mine")
+            } else {
+                vm.resubmit("v1")
+            }
+            advanceUntilIdle()
+            assertEquals(ContentNotice.Review(R.string.studio_review_changed), vm.state.value.notice)
+            assertNull(vm.state.value.appeal)
+            assertTrue(!vm.state.value.busy)
+            assertTrue(vm.ids().isEmpty())
+            assertTrue(ContentStatus.IN_REVIEW in vm.state.value.tabs)
+        }
+    }
+
+    @Test
+    fun `when sending fails the list is read again`() = runTest(dispatcher) {
+        for (appeal in listOf(false, true)) {
+            val repo = repo().apply { reviewError = CoreError.Http(500) }
+            val vm = notApproved(repo)
+            repo.onReview = { repo.videos.removeAll { it.id == "v1" } }
+            if (appeal) {
+                vm.openAppeal("v1")
+                vm.sendAppeal("mine")
+            } else {
+                vm.resubmit("v1")
+            }
+            advanceUntilIdle()
+            assertTrue(vm.ids().isEmpty())
+        }
+    }
+
+    // --- Its tabs ---
+
+    private val reviewTabs = setOf(ContentStatus.IN_REVIEW, ContentStatus.NOT_APPROVED)
+
+    private fun ContentViewModel.reviewTabs() = state.value.tabs.filter { it in reviewTabs }
+
+    @Test
+    fun `a review tab is there only with a video in it, and an open one until it is left`() = runTest(dispatcher) {
+        val off = ContentViewModel(FakeRepository(), "c1")
+        advanceUntilIdle()
+        assertTrue(off.reviewTabs().isEmpty())
+        off.setStatus(ContentStatus.IN_REVIEW) // not there, so nothing to open
+        assertEquals(ContentStatus.PUBLISHED, off.state.value.status)
+
+        val repo = repo()
+        val vm = notApproved(repo)
+        assertEquals(listOf(ContentStatus.NOT_APPROVED), vm.reviewTabs())
+        val counts = CompletableDeferred<Unit>()
+        repo.countsGate = counts
+        vm.resubmit("v1")
+        advanceUntilIdle()
+        assertEquals(reviewTabs.toList(), vm.reviewTabs()) // at once, before the new counts are here
+        counts.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(reviewTabs.toList(), vm.reviewTabs())
+        vm.setStatus(ContentStatus.PUBLISHED)
+        advanceUntilIdle()
+        assertEquals(listOf(ContentStatus.IN_REVIEW), vm.reviewTabs())
+    }
+
+    @Test
+    fun `counts that can't be read leave the review tabs as they were, a server without them has none`() = runTest(dispatcher) {
+        val repo = repo()
+        val vm = ContentViewModel(repo, "c1")
+        advanceUntilIdle()
+        repo.countsError = CoreError.Http(500)
+        vm.load()
+        advanceUntilIdle()
+        assertEquals(listOf(ContentStatus.NOT_APPROVED), vm.reviewTabs())
+        repo.countsError = null
+        repo.countsMissing = true
+        vm.load()
+        advanceUntilIdle()
+        assertTrue(vm.reviewTabs().isEmpty())
+    }
+
+    // --- More of a list ---
+
+    private val held = libraryVideos.map { it.copy(status = ContentStatus.IN_REVIEW, review = VideoReview(ReviewStep.HELD)) }
+
+    private fun paged(second: suspend () -> ContentPage) = FakeRepository().apply {
+        videos += held[0].copy(id = "r1")
+        contentAnswer = { q ->
+            when {
+                q.status != ContentStatus.IN_REVIEW -> null
+                q.cursor == null -> ContentPage(listOf(held[0]), "2", null)
+                else -> second()
+            }
+        }
+    }
+
+    private fun TestScope.inReview(repo: FakeRepository): ContentViewModel {
+        val vm = ContentViewModel(repo, "c1")
+        advanceUntilIdle()
+        vm.setStatus(ContentStatus.IN_REVIEW)
+        advanceUntilIdle()
+        return vm
+    }
+
+    @Test
+    fun `the wait is said when only a later page knows it, and kept when the next one does not`() = runTest(dispatcher) {
+        var page = 0
+        val repo = paged { if (page++ == 0) ContentPage(listOf(held[1]), "3", 40) else ContentPage(listOf(held[2]), null, null) }
+        val vm = inReview(repo)
+        assertNull(vm.state.value.reviewQueueMinutes)
+        vm.loadMore()
+        advanceUntilIdle()
+        assertEquals(40, vm.state.value.reviewQueueMinutes)
+        vm.loadMore()
+        advanceUntilIdle()
+        assertEquals(held.take(3).map { it.id }, vm.ids())
+        assertEquals(40, vm.state.value.reviewQueueMinutes)
+        vm.setStatus(ContentStatus.PUBLISHED)
+        assertNull(vm.state.value.reviewQueueMinutes)
+        assertNull(vm.state.value.cursor)
+    }
+
+    @Test
+    fun `a page that comes after the tab was left or the list read again is not added`() = runTest(dispatcher) {
+        for (next in listOf<ContentViewModel.() -> Unit>({ setStatus(ContentStatus.PUBLISHED) }, { load() })) {
+            val gate = CompletableDeferred<Unit>()
+            val repo = paged {
+                gate.await()
+                ContentPage(listOf(held[1].copy(id = "late")), null, null)
+            }
+            val vm = inReview(repo)
+            vm.loadMore()
+            runCurrent()
+            assertTrue(vm.state.value.loadingMore)
+            vm.next()
+            gate.complete(Unit)
+            advanceUntilIdle()
+            assertTrue("late" !in vm.ids())
+            assertTrue(!vm.state.value.loadingMore)
+        }
+    }
+
+    @Test
+    fun `more of a list is asked for with the words it was found with`() = runTest(dispatcher) {
+        val repo = paged { ContentPage(emptyList(), null, null) }
+        val vm = inReview(repo)
+        vm.setQuery("tafsir")
+        vm.loadMore()
+        runCurrent()
+        val asked = repo.queries.last()
+        assertEquals("2" to "", asked.cursor to asked.text)
+    }
+
     // --- What the screen shows ---
 
     private val log = mutableListOf<String>()
@@ -147,6 +384,7 @@ class ReviewTest {
     )
 
     private fun tab(status: ContentStatus, vararg reviews: VideoReview, queue: Int? = null) = ContentUiState(
+        reviewTabs = reviewTabs,
         status = status,
         loading = false,
         softDelete = true,
@@ -283,10 +521,14 @@ class ReviewTest {
 
     private fun layout(tag: String): TextLayoutResult {
         val layouts = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithTag("$tag-${libraryVideos[0].id}", useUnmergedTree = true)
+        val tagged = hasTestTag("$tag-${libraryVideos[0].id}")
+        // The row's texts carry their tag themselves, a button's text is inside it.
+        compose.onNode((tagged or hasAnyAncestor(tagged)) and hasTextLayout, useUnmergedTree = true)
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         return layouts.single()
     }
+
+    private val hasTextLayout = SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult)
 
     private fun assertWhole(tag: String) = with(layout(tag)) {
         val last = lineCount - 1
@@ -307,6 +549,46 @@ class ReviewTest {
         show(inReview, "en-ldltr-w320dp-h800dp-port", fontScale = 2f)
         listOf("review", "meta", "date").forEach(::assertWhole)
         assertTrue(layout("date").lineCount > 1)
+    }
+
+    @Test
+    fun `at a large font on a narrow phone the actions are whole, and inside the card`() {
+        show(notApproved, "en-ldltr-w320dp-h1600dp-port", fontScale = 2f)
+        assertActionsWhole()
+    }
+
+    @Test
+    fun `at a large font on a narrow phone the Arabic actions are whole, and inside the card`() {
+        show(notApproved, "ar-ldrtl-w320dp-h1600dp-port", fontScale = 2f)
+        assertActionsWhole()
+    }
+
+    private fun assertActionsWhole() {
+        val card = compose.onNodeWithTag("video-${libraryVideos[0].id}").fetchSemanticsNode().boundsInRoot
+        for (tag in listOf("appeal", "resubmit")) {
+            assertWhole(tag)
+            val button = compose.onNodeWithTag("$tag-${libraryVideos[0].id}").fetchSemanticsNode().boundsInRoot
+            assertTrue("$tag $button in $card", button.left >= card.left && button.right <= card.right)
+            assertTrue("$tag $button in $card", button.bottom <= card.bottom)
+        }
+        assertTrue(layout("resubmit").lineCount > 1)
+    }
+
+    @Test
+    fun `the actions are named with their video`() {
+        show(notApproved)
+        val (first, _) = libraryVideos
+        compose.onNodeWithTag("appeal-${first.id}").assertContentDescriptionEquals("Appeal: ${isolate(first.title)}")
+        compose.onNodeWithTag("resubmit-${first.id}")
+            .assertContentDescriptionEquals("Check again after editing: ${isolate(first.title)}")
+    }
+
+    @Test
+    fun `an appeal on its way says so`() {
+        compose.setContent { AunTheme { AppealDialog(AppealState("v1", sending = true), {}, {}, initialText = "mine") } }
+        compose.onNodeWithTag("appeal-send").assertTextEquals("Sending…").assertIsNotEnabled()
+        compose.onNodeWithText("Sending…", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
     }
 
     @Test
@@ -357,9 +639,10 @@ class ReviewTest {
         mode: ThemeMode,
         fontScale: Float = 1f,
         tap: String? = null,
+        size: String = Device.PHONE.qualifier,
         content: @Composable () -> Unit
     ) {
-        RuntimeEnvironment.setQualifiers("${lang.qualifier}-${Device.PHONE.qualifier}")
+        RuntimeEnvironment.setQualifiers("${lang.qualifier}-$size")
         RuntimeEnvironment.setFontScale(fontScale)
         android.provider.Settings.Global.putFloat(
             RuntimeEnvironment.getApplication().contentResolver,
@@ -373,13 +656,13 @@ class ReviewTest {
         }
         tap?.let { compose.onNode(hasTestTag(it)).performClick() }
         compose.waitForIdle()
-        val size = if (fontScale == 1f) "" else "_font200"
-        captureScreenRoboImage("src/test/screenshots/${name}${size}_${lang.name.lowercase()}_${mode.name.lowercase()}_phone.png")
+        val scale = if (fontScale == 1f) "" else "_font200"
+        captureScreenRoboImage("src/test/screenshots/${name}${scale}_${lang.name.lowercase()}_${mode.name.lowercase()}_phone.png")
     }
 
     private fun more(lang: Lang, mode: ThemeMode) =
         shootScreen("content_more", lang, mode, tap = "status-more") {
-            ContentScreen(ContentUiState(videos = libraryVideos, loading = false, softDelete = true), actions)
+            ContentScreen(ContentUiState(videos = libraryVideos, loading = false, softDelete = true, reviewTabs = reviewTabs), actions)
         }
 
     @Test fun moreEnDark() = more(Lang.EN, ThemeMode.DARK)
@@ -418,12 +701,25 @@ class ReviewTest {
     @Test fun appealFailedEnLight() =
         appeal(Lang.EN, ThemeMode.LIGHT, AppealState("v1", failed = true), words.getValue(Lang.EN), "appeal_failed")
 
+    @Test fun appealSendingEnDark() =
+        appeal(Lang.EN, ThemeMode.DARK, AppealState("v1", sending = true), words.getValue(Lang.EN), "appeal_sending")
+
+    @Test fun appealSendingArLight() =
+        appeal(Lang.AR, ThemeMode.LIGHT, AppealState("v1", sending = true), words.getValue(Lang.AR), "appeal_sending")
+
     @Test fun appealFailedArDark200() =
         appeal(Lang.AR, ThemeMode.DARK, AppealState("v1", failed = true), words.getValue(Lang.AR), "appeal_failed", scale = 2f)
 
     @Test fun notApprovedArDark200() = shootScreen("content_not_approved", Lang.AR, ThemeMode.DARK, 2f) {
         ContentScreen(notApproved, actions)
     }
+
+    private fun narrow(lang: Lang, mode: ThemeMode) =
+        shootScreen("content_not_approved_w360", lang, mode, 2f, size = "w360dp-h800dp-port-xhdpi") { ContentScreen(notApproved, actions) }
+
+    @Test fun notApprovedNarrowEnDark200() = narrow(Lang.EN, ThemeMode.DARK)
+
+    @Test fun notApprovedNarrowArLight200() = narrow(Lang.AR, ThemeMode.LIGHT)
 
     @Test fun inReviewEnLight200() = shootScreen("content_in_review", Lang.EN, ThemeMode.LIGHT, 2f) { ContentScreen(inReview, actions) }
 }

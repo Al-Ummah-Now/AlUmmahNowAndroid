@@ -192,7 +192,7 @@ class StudioQaFlowTest {
             compose.waitUntil(UPLOAD_TIMEOUT_MS) {
                 val found = has("video-$videoId")
                 if (!found) {
-                    openTab(LIVE_TABS[i++ % LIVE_TABS.size])
+                    openTab(LIVE_TABS[i++ % LIVE_TABS.size], optional = true)
                     Thread.sleep(TAB_SWITCH_MS)
                 }
                 found
@@ -202,9 +202,17 @@ class StudioQaFlowTest {
         }
     }
 
-    /** Taps a status tab; one that doesn't fit the row is in its More menu. A tab that isn't there fails the test. */
-    private fun openTab(tag: String) {
-        if (!has(tag)) compose.onNodeWithTag("status-more").performClick()
+    /**
+     * Taps a status tab; one that doesn't fit the row is in its More menu. A tab that isn't there fails the test, unless
+     * it is [optional] and one of the review tabs, which are only there with a video in them.
+     */
+    private fun openTab(tag: String, optional: Boolean = false) {
+        val menu = !has(tag) && has("status-more")
+        if (menu) compose.onNodeWithTag("status-more").performClick()
+        if (optional && tag in REVIEW_TABS && !has(tag)) {
+            if (menu) device.pressBack() // closes it
+            return
+        }
         compose.onNodeWithTag(tag).performClick()
     }
 
@@ -292,6 +300,8 @@ class StudioQaFlowTest {
         const val LIST_TIMEOUT_MS = 30_000L
         const val UPLOAD_TIMEOUT_MS = 180_000L
         const val TAB_SWITCH_MS = 2_000L
-        val LIVE_TABS = listOf("processing", "published", "in_review", "not_approved", "failed", "drafts", "scheduled").map { "status-$it" }
+        val REVIEW_TABS = listOf("status-in_review", "status-not_approved")
+        val LIVE_TABS = listOf("status-processing", "status-published") + REVIEW_TABS +
+            listOf("status-failed", "status-drafts", "status-scheduled")
     }
 }
