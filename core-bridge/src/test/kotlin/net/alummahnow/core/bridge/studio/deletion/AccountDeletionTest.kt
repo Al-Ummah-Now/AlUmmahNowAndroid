@@ -480,6 +480,7 @@ class AccountDeletionTest {
     fun `an expired receipt is dropped without asking, by the server's clock`() = runTest {
         val expired = lost().copy(receiptExpiresAtMs = now * 1000)
         records.records.value = listOf(expired)
+        api.now = now
         api.receipts += null
         assertEquals(DeletionOutcome.Unknown, run())
         assertEquals(listOf("receipt u1"), allCalls())
@@ -491,6 +492,98 @@ class AccountDeletionTest {
         api.statuses += isDeleted
         assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         assertEquals(listOf("status r0"), allCalls())
+    }
+
+    @Test
+    fun `offline, a phone's clock never ends a receipt`() = runTest {
+        val expired = lost().copy(receiptExpiresAtMs = now * 1000)
+        records.records.value = listOf(expired)
+        assertEquals(DeletionOutcome.Unknown, run())
+        assertTrue(deletion.settleLost().isEmpty())
+        assertEquals(emptyList<String>(), allCalls())
+        assertEquals("r0", records.get("u1")?.receipt)
+    }
+
+    @Test
+    fun `a receipt refused during an attempt goes at once`() = runTest {
+        api.accounts += listOf(null, null)
+        api.statuses += badReceipt
+        assertEquals(DeletionOutcome.Unknown, run())
+        assertEquals(null to true, records.get("u1")?.let { it.receipt to it.unsure })
+        log.clear()
+        assertTrue(deletion.settleLost().isEmpty())
+        assertTrue(allCalls().none { it.startsWith("status") })
+    }
+
+    @Test
+    fun `while the account may be deleted its uploads stay held, until it is known`() = runTest {
+        api.accounts += listOf(null, null)
+        api.statuses += null
+        assertEquals(DeletionOutcome.Unknown, run())
+        assertTrue("release" !in log)
+        // A retry that can't find out holds them still.
+        log.clear()
+        api.statuses += null
+        assertEquals(DeletionOutcome.Unknown, run())
+        assertTrue("release" !in log)
+        // There after all.
+        log.clear()
+        now += 60
+        api.statuses += isLive
+        assertTrue(deletion.settleLost().isEmpty())
+        assertEquals(listOf("status r1", "release"), log.filter { it.startsWith("status") || it == "release" })
+    }
+
+    @Test
+    fun `a new receipt says the account is there`() = runTest {
+        records.records.value = listOf(lost())
+        api.statuses += badReceipt
+        api.erases += DeletionAnswer(500, "")
+        assertEquals(DeletionOutcome.Failed(ErasedSoFar.SOME), run())
+        assertEquals("r1" to false, records.get("u1")?.let { it.receipt to it.unsure })
+        assertTrue("release" in log)
+    }
+
+    @Test
+    fun `without a receipt, a token issued well after step 2 says the account is there`() = runTest {
+        val sent = lost().copy(receipt = null, receiptExpiresAtMs = 0, sentIssuedAt = now - 100)
+        records.records.value = listOf(sent)
+        device.issuedAt = now + 1_700 // could still be from before Auth deleted it
+        assertTrue(deletion.settleLost().isEmpty())
+        assertEquals(true, records.get("u1")?.unsure)
+        assertTrue("release" !in log)
+        now += 60
+        device.issuedAt = now + 1_800
+        assertTrue(deletion.settleLost().isEmpty())
+        assertEquals(false, records.get("u1")?.unsure)
+        assertTrue("release" in log)
+        // Another account's token says nothing.
+        records.records.value = listOf(sent)
+        now += 60
+        device.tokenFor = { tokenOf("u2") }
+        deletion.settleLost()
+        assertEquals(true, records.get("u1")?.unsure)
+    }
+
+    @Test
+    fun `step 2 saves when its token was issued`() = runTest {
+        device.issuedAt = 4_242
+        api.onAccount = { assertEquals(4_242L, records.get("u1")?.sentIssuedAt) }
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
+    }
+
+    @Test
+    fun `a run taken up from an earlier attempt is followed by one from the start`() = runTest {
+        records.records.value = listOf(record(token = "t1", leftover = setOf(Leftover.CHANNEL)))
+        api.erases += listOf(complete("channel_unreadable:ch-1"), done)
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
+        assertEquals(listOf("erase u1 t1", "erase u1 -", "account u1"), calls())
+        // Unless it began again by itself.
+        log.clear()
+        records.records.value = listOf(record(token = "t1"))
+        api.erases += listOf(more("t2", ""","restarted":true"""), done)
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
+        assertEquals(listOf("erase u1 t1", "erase u1 t2", "account u1"), calls())
     }
 
     @Test
@@ -749,7 +842,7 @@ class AccountDeletionTest {
     }
 
     private fun tokenOf(userId: String) =
-        jwt("""{"sub":"user:3f2a9c8b10294e1f","properties":{"id":"$userId"},"auth_time":${device.authTime}}""")
+        jwt("""{"sub":"user:3f2a9c8b10294e1f","properties":{"id":"$userId"},"auth_time":${device.authTime},"iat":${device.issuedAt}}""")
 
     private inner class Records : DeletionRecords {
         var failPut = false
@@ -808,6 +901,7 @@ class AccountDeletionTest {
 
     private inner class Device : DeletionDevice {
         var authTime = now - 10
+        var issuedAt = now
         var tokenFor: () -> String? = { tokenOf("u1") }
         var purgeFails = false
         var holdFails = false

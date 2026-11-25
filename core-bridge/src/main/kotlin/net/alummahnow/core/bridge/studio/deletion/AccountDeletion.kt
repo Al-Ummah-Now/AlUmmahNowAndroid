@@ -147,7 +147,8 @@ class AccountDeletion(
             resumeToken = resume?.resumeToken,
             leftover = resume?.leftover.orEmpty(),
             startedAtMs = saved?.startedAtMs ?: nowMs(),
-            unsure = saved?.unsure == true
+            unsure = saved?.unsure == true,
+            sentIssuedAt = saved?.sentIssuedAt ?: 0
         )
         var outcome: DeletionOutcome? = null
         try {
@@ -159,7 +160,8 @@ class AccountDeletion(
             if (held.isFailure) return DeletionOutcome.Failed(before)
             // Before anything is removed: without it nobody could say later what became of the account.
             val started = when (val asked = askReceipt(userId, saved)) {
-                is Receipt.Got -> record.copy(receipt = asked.value, receiptExpiresAtMs = asked.expiresAtMs)
+                // Made only for an account that exists.
+                is Receipt.Got -> record.copy(receipt = asked.value, receiptExpiresAtMs = asked.expiresAtMs, unsure = false)
                 Receipt.NoRoute -> record.copy(receipt = saved?.receipt, receiptExpiresAtMs = saved?.receiptExpiresAtMs ?: 0)
                 Receipt.Gone -> return finish(saved ?: record).also { outcome = it }
                 is Receipt.Stop -> return asked.outcome
@@ -167,7 +169,8 @@ class AccountDeletion(
             if (!save(started)) return DeletionOutcome.NoRecord(before)
             return Attempt(started, saved, acceptLeftover, stopRequested, onPass).run().also { outcome = it }
         } finally {
-            if (outcome !is DeletionOutcome.Deleted) {
+            // An account that may be deleted uploads nothing: its uploads stay held until that is known.
+            if (outcome !is DeletionOutcome.Deleted && !records.isUnsure(userId)) {
                 withContext(NonCancellable) { runCatching { device.releaseUploads(userId) } }
             }
         }
@@ -187,12 +190,16 @@ class AccountDeletion(
         if (!mutex.tryLock()) return emptyMap()
         return try {
             records.records.value
-                .filter { it.stage != DeletionStage.DELETED && it.receipt != null && it.asks < MAX_ASKS }
+                .filter { it.stage != DeletionStage.DELETED && (it.receipt != null || it.unsure) && it.asks < MAX_ASKS }
                 .filter { nowMs() - it.lastAskMs !in 0 until ASK_AGAIN_MS }
                 .mapNotNull { record ->
                     // Counted first: a call that kills the app counts too.
                     val asked = record.copy(asks = record.asks + 1, lastAskMs = nowMs())
-                    if (save(asked)) (settle(asked) as? Settled.Gone)?.let { record.userId to it.outcome } else null
+                    val settled = if (save(asked)) settle(asked) else null
+                    if (asked.unsure && settled is Settled.Open && !settled.record.unsure) {
+                        runCatching { device.releaseUploads(record.userId) }
+                    }
+                    (settled as? Settled.Gone)?.let { record.userId to it.outcome }
                 }
                 .toMap()
         } finally {
@@ -214,16 +221,29 @@ class AccountDeletion(
 
     /** What became of the account of this record, if that can be asked. */
     private suspend fun settle(record: DeletionRecord): Settled {
-        if (record.receipt == null) return Settled.Open(record)
-        return when (standing(record)) {
+        return when (if (record.receipt == null) Standing.EXPIRED else standing(record)) {
             Standing.DELETED -> Settled.Gone(finish(record))
             Standing.NO_ANSWER -> Settled.NoAnswer(record)
             // The receipt is kept: a request that was lost may still be under way.
-            Standing.LIVE -> Settled.Open(record.copy(unsure = false, dismissed = false).also { if (it != record) save(it) })
-            Standing.NO_ROUTE -> Settled.Open(record)
-            // Nothing more can be asked with it.
-            Standing.EXPIRED -> Settled.Open(record.copy(receipt = null, receiptExpiresAtMs = 0).also { save(it) })
+            Standing.LIVE -> Settled.Open(saved(record, record.copy(unsure = false, dismissed = false)))
+            Standing.NO_ROUTE -> Settled.Open(stillThere(record))
+            Standing.EXPIRED -> Settled.Open(stillThere(saved(record, record.withoutReceipt())))
         }
+    }
+
+    private fun saved(before: DeletionRecord, after: DeletionRecord) = after.also { if (it != before) save(it) }
+
+    private fun DeletionRecord.withoutReceipt() = copy(receipt = null, receiptExpiresAtMs = 0)
+
+    /**
+     * Where no receipt can answer: Auth issues nothing for a deleted account, so a token it issued well after step 2
+     * was sent says that the account is there. Otherwise its uploads would wait for good.
+     */
+    private suspend fun stillThere(record: DeletionRecord): DeletionRecord {
+        if (!record.unsure) return record
+        val token = (pinnedToken(record.userId) as? Pinned.Token)?.value ?: return record
+        val later = (DeletionToken.issuedAt(token) ?: 0) > record.sentIssuedAt + LATER_TOKEN_S
+        return if (later) saved(record, record.copy(unsure = false, dismissed = false)) else record
     }
 
     private sealed interface Receipt {
@@ -285,9 +305,10 @@ class AccountDeletion(
     /** What Auth says of the account of [record], which its receipt was saved with. */
     private suspend fun standing(record: DeletionRecord): Standing {
         val receipt = record.receipt ?: return Standing.EXPIRED
-        // The phone's clock alone must not end it.
-        if (record.receiptExpiresAtMs <= nowMs() && record.receiptExpiresAtMs <= (api.serverNowSeconds()?.times(MS_PER_S) ?: nowMs())) {
-            return Standing.EXPIRED
+        // The phone's clock alone never ends it, also offline.
+        if (record.receiptExpiresAtMs <= nowMs()) {
+            val now = api.serverNowSeconds() ?: return Standing.NO_ANSWER
+            if (record.receiptExpiresAtMs <= now * MS_PER_S) return Standing.EXPIRED
         }
         val answer = try {
             api.accountStatus(receipt)
@@ -317,6 +338,9 @@ class AccountDeletion(
     ) {
         private val userId = record.userId
         private var startedBefore = previous != null
+
+        /** A run taken up from an earlier attempt skips what that one had finished: the account was live since. */
+        private var skipped = previous?.resumeToken != null
         private val erased get() = if (startedBefore) ErasedSoFar.SOME else ErasedSoFar.NOTHING
 
         suspend fun run(): DeletionOutcome {
@@ -335,7 +359,7 @@ class AccountDeletion(
                 }
                 if (answer.status == HTTP_UNAUTHORIZED && !needsSignIn(answer)) {
                     // Also how a deleted account's erase is refused.
-                    when (standing(record)) {
+                    when (ask()) {
                         Standing.DELETED -> return finish(if (pass == 1 && previous != null) previous else record)
                         Standing.LIVE -> Unit
                         else -> if (record.unsure) return DeletionOutcome.Unknown
@@ -358,7 +382,14 @@ class AccountDeletion(
                 )
                 // The earlier record still says "started": the next attempt repeats this pass.
                 if (!save(record)) return DeletionOutcome.NoRecord(ErasedSoFar.SOME)
-                if (complete) return afterErase(leftover)
+                if (restarted) skipped = false
+                if (complete && !skipped) return afterErase(leftover)
+                if (complete) {
+                    skipped = false
+                    // What this run couldn't remove, the one from the start reports again.
+                    record = record.copy(stage = DeletionStage.STARTED, leftover = emptySet())
+                    if (!save(record)) return DeletionOutcome.NoRecord(ErasedSoFar.SOME)
+                }
                 onPass(pass, restarted)
             }
             return DeletionOutcome.Paused(stopped = false, erased)
@@ -402,7 +433,7 @@ class AccountDeletion(
                     is Pinned.Token -> pinned.value
                 }
                 // Saved first: killed during the call, the next start must know to ask what became of it.
-                val sent = record.copy(unsure = true)
+                val sent = record.copy(unsure = true, sentIssuedAt = DeletionToken.issuedAt(token) ?: 0)
                 if (!save(sent)) return if (lost) lost() else DeletionOutcome.NoRecord(erasedNow)
                 record = sent
                 val answer = try {
@@ -424,12 +455,17 @@ class AccountDeletion(
 
         /** An answer to step 2 was lost; a session that ended since says nothing about it, Auth's record does. */
         private suspend fun lost(): DeletionOutcome =
-            if (standing(record) == Standing.DELETED) finish(record) else DeletionOutcome.Unknown
+            if (ask() == Standing.DELETED) finish(record) else DeletionOutcome.Unknown
+
+        /** [standing]; a receipt that isn't taken any more goes at once. */
+        private suspend fun ask(): Standing = standing(record).also {
+            if (it == Standing.EXPIRED) record = saved(record, record.withoutReceipt())
+        }
 
         /** Step 2 was answered with a no: the account is there, unless it was deleted elsewhere meanwhile. */
         private suspend fun refused(answer: DeletionAnswer, erasedNow: ErasedSoFar): DeletionOutcome {
             val signIn = needsSignIn(answer)
-            if (answer.status == HTTP_UNAUTHORIZED && !signIn && standing(record) == Standing.DELETED) return finish(record)
+            if (answer.status == HTTP_UNAUTHORIZED && !signIn && ask() == Standing.DELETED) return finish(record)
             record = record.copy(unsure = false)
             save(record)
             return if (signIn) DeletionOutcome.NeedsSignIn(FIRST_MAX_AGE_S, erasedNow) else DeletionOutcome.Failed(erasedNow)
@@ -484,6 +520,9 @@ class AccountDeletion(
         /** How often the app asks by itself about one attempt, and how soon again. */
         const val MAX_ASKS = 30
         const val ASK_AGAIN_MS = 60_000L
+
+        /** Twice an access token's life: it was issued after a token of the time step 2 was sent had ended. */
+        private const val LATER_TOKEN_S = 1_800L
 
         private const val DEFAULT_RETRY_S = 300L
 

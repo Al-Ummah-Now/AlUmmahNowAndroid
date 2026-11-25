@@ -33,6 +33,8 @@ class CoreUploadQueueTest {
         source.writeText("video")
     }
 
+    private var blocked = false
+
     private fun queue() = CoreUploadQueue(
         context = context,
         activeUserId = { active },
@@ -40,7 +42,8 @@ class CoreUploadQueueTest {
         repository = { error("no repository") },
         onWorkNeeded = { workAsked++ },
         newEngine = { userId, _ -> engines.getOrPut(userId) { FakeEngine() }.also { it.open() } },
-        holdTimeoutMs = 1_500
+        holdTimeoutMs = 1_500,
+        blocked = { blocked && it == "a" }
     )
 
     private fun draft() = UploadDraft(source.path, "talk.mp4", 5, "video/mp4", "Talk", channelId = "c1")
@@ -219,6 +222,45 @@ class CoreUploadQueueTest {
         queue.enqueue(listOf(draft()))
         queue.run(UploadState.DONE)
         assertEquals(1, engines.getValue("a").requests.size)
+    }
+
+    @Test
+    fun `nothing of an account that may be deleted is staged, sent, resumed or released, and the worker stops`() = runTest {
+        val queue = queue()
+        val engine = uploading(queue)
+        assertTrue(held(queue).isSuccess)
+        blocked = true
+        queue.enqueue(listOf(draft()))
+        queue.releaseUploads("a")
+        queue.resume("up-1")
+        queue.retry("up-1")
+        queue.process { }
+        assertFalse(queue.hasWork())
+        assertEquals(1, engine.requests.size)
+        assertEquals(listOf("pause up-1"), engine.actions)
+        // Known to be there.
+        blocked = false
+        assertTrue(queue.hasWork())
+        queue.releaseUploads("a")
+        assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
+    }
+
+    @Test
+    fun `a hold outlives the process, and the next start lets go only what may go on`() = runTest {
+        val engine = uploading(queue())
+        assertTrue(held(queue()).isSuccess)
+        blocked = true
+        val next = queue()
+        next.retry("up-1")
+        next.releaseLeft()
+        assertEquals(listOf("pause up-1"), engine.actions)
+        blocked = false
+        val after = queue()
+        after.releaseLeft()
+        assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
+        // Released once: a later process holds nothing.
+        queue().releaseLeft()
+        assertEquals(2, engine.actions.size)
     }
 
     @Test

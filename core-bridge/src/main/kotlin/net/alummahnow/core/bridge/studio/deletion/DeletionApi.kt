@@ -139,6 +139,9 @@ object DeletionToken {
         return age >= -MAX_FUTURE_SKEW_S && age <= maxAgeSeconds.toDouble()
     }
 
+    /** When it was issued (seconds), or null. */
+    fun issuedAt(token: String): Long? = payload(token)?.d("iat")?.toLong()
+
     private fun payload(token: String) = runCatching {
         val parts = token.split('.')
         require(parts.size == JWT_PARTS)
