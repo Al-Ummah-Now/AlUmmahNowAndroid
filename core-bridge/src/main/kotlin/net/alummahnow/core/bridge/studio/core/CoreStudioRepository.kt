@@ -137,7 +137,11 @@ class CoreStudioRepository(
                 }
             )
             val r = J.parse(body).unwrap().obj() ?: return ContentPage(emptyList(), null)
-            ContentPage(r.a("items").mapNotNull { it.obj()?.let(StudioMappers::video) }, r.s("cursor")?.ifEmpty { null })
+            ContentPage(
+                r.a("items").mapNotNull { it.obj()?.let(StudioMappers::video) },
+                r.s("cursor")?.ifEmpty { null },
+                r.l("reviewQueueMinutes").toInt().takeIf { it > 0 }
+            )
         } catch (e: CoreError.NotFound) {
             ownerSearch(query)
         }
@@ -201,7 +205,9 @@ class CoreStudioRepository(
                 it.l("scheduled").toInt(),
                 it.l("drafts").toInt(),
                 it.l("processing").toInt(),
-                it.l("failed").toInt()
+                it.l("failed").toInt(),
+                it.l("in_review").toInt(),
+                it.l("not_approved").toInt()
             )
         }
     } catch (e: CoreError.NotFound) {
@@ -288,6 +294,14 @@ class CoreStudioRepository(
 
     override suspend fun deletePermanently(id: String, channelId: String) {
         callNew("permanent-delete") { call("DELETE", "/api/videos/{id}/permanent", mapOf("id" to id), channelId = channelId) }
+    }
+
+    override suspend fun appealReview(id: String, message: String) {
+        call("POST", "/api/videos/{id}/review/appeal", mapOf("id" to id), body = buildJsonObject { put("message", message) })
+    }
+
+    override suspend fun resubmitReview(id: String) {
+        call("POST", "/api/videos/{id}/review/resubmit", mapOf("id" to id))
     }
 
     override suspend fun playlists(channelId: String): List<StudioPlaylist> {

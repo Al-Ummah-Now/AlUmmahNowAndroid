@@ -292,6 +292,6 @@ class StudioQaFlowTest {
         const val LIST_TIMEOUT_MS = 30_000L
         const val UPLOAD_TIMEOUT_MS = 180_000L
         const val TAB_SWITCH_MS = 2_000L
-        val LIVE_TABS = listOf("status-processing", "status-published", "status-failed", "status-drafts", "status-scheduled")
+        val LIVE_TABS = listOf("processing", "published", "in_review", "not_approved", "failed", "drafts", "scheduled").map { "status-$it" }
     }
 }

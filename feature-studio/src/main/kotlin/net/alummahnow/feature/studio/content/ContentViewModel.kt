@@ -23,6 +23,7 @@ import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.StudioSuggestion
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.hidesFeature
+import net.alummahnow.feature.studio.R
 import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.studioMessage
 
@@ -32,7 +33,13 @@ sealed interface ContentNotice {
     data class Restored(val count: Int, val failed: Int) : ContentNotice
     data class Updated(val count: Int, val failed: Int) : ContentNotice
     data class Failed(@param:StringRes val message: Int) : ContentNotice
+
+    /** What became of an appeal or a new check. */
+    data class Review(@param:StringRes val message: Int) : ContentNotice
 }
+
+/** The appeal dialog for [videoId]. */
+data class AppealState(val videoId: String, val sending: Boolean = false, val failed: Boolean = false)
 
 data class ContentUiState(
     val status: ContentStatus = ContentStatus.PUBLISHED,
@@ -50,7 +57,10 @@ data class ContentUiState(
      * Restore and Delete forever are not there at all. False until the probe says otherwise (fail closed).
      */
     val softDelete: Boolean = false,
-    val notice: ContentNotice? = null
+    val notice: ContentNotice? = null,
+    /** How long a held video waits for a person now, when that is known. */
+    val reviewQueueMinutes: Int? = null,
+    val appeal: AppealState? = null
 ) {
     val selecting: Boolean get() = selected.isNotEmpty()
 
@@ -118,6 +128,7 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
                         it.copy(
                             videos = page.items,
                             cursor = page.cursor,
+                            reviewQueueMinutes = page.reviewQueueMinutes,
                             loading = false,
                             selected = it.selected.intersect(
                                 page.items.map { v ->
@@ -225,6 +236,40 @@ class ContentViewModel(private val repository: StudioRepository, private val cha
         act("restore", { repository.restore(it, channelId) }, ids, softDeleteRoute = true) { r ->
             ContentNotice.Restored(r.succeeded, r.failed)
         }
+
+    /** Asks for a new check of a video that was turned down. */
+    fun resubmit(id: String) {
+        if (mutableState.value.busy) return
+        mutableState.update { it.copy(busy = true) }
+        viewModelScope.launch {
+            val sent = attempt("studio", "review resubmit") { repository.resubmitReview(id) }.isSuccess
+            val text = if (sent) R.string.studio_review_resubmitted else R.string.studio_review_resubmit_failed
+            mutableState.update { it.copy(busy = false, notice = ContentNotice.Review(text)) }
+            if (sent) load()
+        }
+    }
+
+    fun openAppeal(id: String) = mutableState.update { it.copy(appeal = AppealState(id)) }
+
+    fun closeAppeal() = mutableState.update { if (it.appeal?.sending == true) it else it.copy(appeal = null) }
+
+    /** Sends the appeal; the dialog (and what was typed) stays when that fails. */
+    fun sendAppeal(message: String) {
+        val appeal = mutableState.value.appeal ?: return
+        if (appeal.sending || message.isBlank()) return
+        mutableState.update { it.copy(appeal = appeal.copy(sending = true, failed = false)) }
+        viewModelScope.launch {
+            val sent = attempt("studio", "review appeal") { repository.appealReview(appeal.videoId, message.trim()) }.isSuccess
+            mutableState.update {
+                if (sent) {
+                    it.copy(appeal = null, notice = ContentNotice.Review(R.string.studio_appeal_sent))
+                } else {
+                    it.copy(appeal = appeal.copy(failed = true))
+                }
+            }
+            if (sent) load()
+        }
+    }
 
     fun deleteForever(id: String) {
         mutableState.update { it.copy(busy = true) }

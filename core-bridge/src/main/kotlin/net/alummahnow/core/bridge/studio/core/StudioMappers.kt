@@ -1,5 +1,8 @@
 package net.alummahnow.core.bridge.studio.core
 
+import java.time.Duration
+import java.time.Instant
+import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -10,10 +13,12 @@ import net.alummahnow.core.bridge.studio.ChannelRole
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
 import net.alummahnow.core.bridge.studio.DailyMetric
+import net.alummahnow.core.bridge.studio.ReviewStep
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.StudioPlaylist
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.UserFeatures
+import net.alummahnow.core.bridge.studio.VideoReview
 import net.alummahnow.core.bridge.studio.VideoStat
 
 /** JSON → model mapping, kept pure for unit tests. */
@@ -71,10 +76,13 @@ object StudioMappers {
         val upload = o.s("uploadStatus")
         val processing = o.s("processingStatus")
         val schedule = o.s("scheduledPublishStatus")
+        val review = ReviewStep.from(o.o("review")?.s("status"))
         return when {
             upload == "failed" || processing == "failed" || schedule == "failed" -> ContentStatus.FAILED
             upload in setOf("initiated", "uploading", "processing") ||
                 processing in setOf("pending", "processing", "transcoding") -> ContentStatus.PROCESSING
+            review == ReviewStep.REJECTED -> ContentStatus.NOT_APPROVED
+            review != null -> ContentStatus.IN_REVIEW
             schedule in setOf("scheduled", "publishing") -> ContentStatus.SCHEDULED
             o.b("isDraft") == true -> ContentStatus.DRAFTS
             else -> ContentStatus.PUBLISHED
@@ -104,7 +112,19 @@ object StudioMappers {
             createdAt = v.s("dateCreated"),
             deletedAt = o.s("deletedAt") ?: v.s("deletedAt"),
             restorableUntil = o.s("restorableUntil") ?: v.s("restorableUntil"),
-            uploadFailureReason = v.s("uploadFailureReason") ?: v.s("processingIssueKind")
+            uploadFailureReason = v.s("uploadFailureReason") ?: v.s("processingIssueKind"),
+            review = v.o("review")?.let(::review)
+        )
+    }
+
+    private fun review(o: JsonObject): VideoReview? {
+        val step = ReviewStep.from(o.s("status")) ?: return null
+        val eta = runCatching { Duration.between(Instant.parse(o.s("since")), Instant.parse(o.s("etaAt"))) }.getOrNull()
+        return VideoReview(
+            step = step,
+            etaMinutes = eta?.let { (it.seconds / SECONDS_PER_MINUTE).roundToInt() }?.takeIf { it > 0 } ?: VideoReview.DEFAULT_ETA_MINUTES,
+            reason = o.s("reasonCode"),
+            appealUsed = o.b("appealUsed") == true
         )
     }
 
@@ -157,4 +177,6 @@ object StudioMappers {
             }
         }.sortedBy { it.date }
     )
+
+    private const val SECONDS_PER_MINUTE = 60.0
 }

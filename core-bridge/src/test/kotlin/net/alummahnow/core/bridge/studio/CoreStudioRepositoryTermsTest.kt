@@ -47,6 +47,46 @@ class CoreStudioRepositoryTermsTest {
     }
 
     @Test
+    fun `an appeal and a new check are POSTs for that video`() = runTest {
+        val calls = mutableListOf<PathCall>()
+        val repo = CoreStudioRepository(
+            client = { error("client should not be called directly when executePath is injected") },
+            executePath = { call ->
+                calls += call
+                """{"success":true}"""
+            }
+        )
+        repo.appealReview("v1", "It is my own recording.")
+        repo.resubmitReview("v1")
+        assertEquals(listOf("POST", "POST"), calls.map { it.method })
+        assertEquals(listOf("/api/videos/{id}/review/appeal", "/api/videos/{id}/review/resubmit"), calls.map { it.pathTemplate })
+        assertTrue(calls.all { it.pathParams == mapOf("id" to "v1") && it.authRequired })
+        assertEquals("""{"message":"It is my own recording."}""", calls[0].bodyJson)
+        assertEquals(null, calls[1].bodyJson)
+    }
+
+    @Test
+    fun `content asks for the status and reads the queue, the summary reads both counts`() = runTest {
+        val calls = mutableListOf<PathCall>()
+        val repo = CoreStudioRepository(
+            client = { error("client should not be called directly when executePath is injected") },
+            executePath = { call ->
+                calls += call
+                if (call.pathTemplate.endsWith("summary")) {
+                    """{"success":true,"result":{"counts":{"published":3,"in_review":2,"not_approved":1}}}"""
+                } else {
+                    """{"success":true,"result":{"items":[{"id":"v1","studioStatus":"in_review"}],"cursor":null,"reviewQueueMinutes":40}}"""
+                }
+            }
+        )
+        val page = repo.content(ContentQuery("c1", ContentStatus.IN_REVIEW))
+        assertEquals("in_review", calls.single().query["status"])
+        assertEquals(ContentStatus.IN_REVIEW, page.items.single().status)
+        assertEquals(40, page.reviewQueueMinutes)
+        assertEquals(ContentCounts(published = 3, inReview = 2, notApproved = 1), repo.counts("c1"))
+    }
+
+    @Test
     fun `acceptCreatorTerms surfaces 404 as CoreError NotFound`() = runTest {
         val repo = CoreStudioRepository(
             client = { error("unused") },

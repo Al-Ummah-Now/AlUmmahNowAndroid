@@ -70,9 +70,8 @@ import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.components.ErrorState
 import net.alummahnow.design.components.FanousButton
 import net.alummahnow.design.components.FanousButtonKind
-import net.alummahnow.design.components.FanousChip
-import net.alummahnow.design.components.FanousChipRow
 import net.alummahnow.design.components.FanousMaterialKind
+import net.alummahnow.design.components.FanousTabRow
 import net.alummahnow.design.components.Thumbnail
 import net.alummahnow.design.components.fanousMaterial
 import net.alummahnow.design.format.AunFormat
@@ -102,6 +101,7 @@ fun ContentRoute(viewModel: ContentViewModel, onEdit: (String) -> Unit, modifier
             is ContentNotice.Restored -> partial(resources, R.plurals.studio_restored, n.count, n.failed)
             is ContentNotice.Updated -> partial(resources, R.plurals.studio_updated, n.count, n.failed)
             is ContentNotice.Failed -> resources.studioText(n.message)
+            is ContentNotice.Review -> resources.getString(n.message)
         }
         viewModel.consumeNotice()
         snackbar.showSnackbar(text)
@@ -128,7 +128,11 @@ class ContentActions(
     val onRestore: () -> Unit,
     val onDeleteForever: (String) -> Unit,
     val onRetry: () -> Unit,
-    val onLoadMore: () -> Unit
+    val onLoadMore: () -> Unit,
+    val onResubmit: (String) -> Unit = {},
+    val onAppeal: (String) -> Unit = {},
+    val onSendAppeal: (String) -> Unit = {},
+    val onCloseAppeal: () -> Unit = {}
 )
 
 fun ContentViewModel.actions(onEdit: (String) -> Unit) = ContentActions(
@@ -153,7 +157,11 @@ fun ContentViewModel.actions(onEdit: (String) -> Unit) = ContentActions(
     onRestore = { restore() },
     onDeleteForever = ::deleteForever,
     onRetry = ::load,
-    onLoadMore = ::loadMore
+    onLoadMore = ::loadMore,
+    onResubmit = ::resubmit,
+    onAppeal = { openAppeal(it) },
+    onSendAppeal = ::sendAppeal,
+    onCloseAppeal = { closeAppeal() }
 )
 
 private val tabLabels = mapOf(
@@ -161,6 +169,8 @@ private val tabLabels = mapOf(
     ContentStatus.SCHEDULED to R.string.studio_status_scheduled,
     ContentStatus.DRAFTS to R.string.studio_status_drafts,
     ContentStatus.PROCESSING to R.string.studio_status_processing,
+    ContentStatus.IN_REVIEW to R.string.studio_status_in_review,
+    ContentStatus.NOT_APPROVED to R.string.studio_status_not_approved,
     ContentStatus.FAILED to R.string.studio_status_failed,
     ContentStatus.DELETED to R.string.studio_status_deleted
 )
@@ -175,17 +185,13 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
 
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
-            // Status chips, the selected one gold (as Apple's), scrolling sideways on phones.
-            FanousChipRow {
-                tabs.forEach { (status, label) ->
-                    FanousChip(
-                        stringResource(label),
-                        selected = status == state.status,
-                        onClick = { actions.onStatus(status) },
-                        modifier = Modifier.testTag("status-${status.apiValue}")
-                    )
-                }
-            }
+            // Status chips, the selected one gold (as Apple's), in one row; those without room are under More.
+            FanousTabRow(
+                labels = tabs.map { (_, label) -> stringResource(label) },
+                selected = tabs.indexOfFirst { (status, _) -> status == state.status },
+                onSelect = { actions.onStatus(tabs[it].first) },
+                tag = { if (it == null) "status-more" else "status-${tabs[it].first.apiValue}" }
+            )
             if (state.selecting) {
                 SelectionBar(state, deleted, onBulkEdit = { bulkOpen = true }, onDelete = { confirmDelete = true }, actions = actions)
             } else {
@@ -203,7 +209,11 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
                     Text(
                         if (state.query.isBlank()) {
                             stringResource(
-                                R.string.studio_content_empty
+                                when (state.status) {
+                                    ContentStatus.IN_REVIEW -> R.string.studio_empty_in_review
+                                    ContentStatus.NOT_APPROVED -> R.string.studio_empty_not_approved
+                                    else -> R.string.studio_content_empty
+                                }
                             )
                         } else {
                             aunString(R.string.studio_content_empty_search, isolate(state.query))
@@ -217,6 +227,7 @@ fun ContentScreen(state: ContentUiState, actions: ContentActions, modifier: Modi
         }
     }
 
+    state.appeal?.let { AppealDialog(it, onSend = actions.onSendAppeal, onClose = actions.onCloseAppeal) }
     if (bulkOpen) {
         BulkEditSheet(count = state.selected.size, onApply = {
             bulkOpen = false
@@ -372,6 +383,8 @@ private fun VideoList(state: ContentUiState, actions: ContentActions, onDeleteFo
                 selected = v.id in state.selected,
                 selecting = state.selecting,
                 deleted = state.status == ContentStatus.DELETED,
+                busy = state.busy,
+                queueMinutes = state.reviewQueueMinutes,
                 actions = actions,
                 onDeleteForever = { onDeleteForever(v) }
             )
@@ -391,6 +404,8 @@ private fun VideoRow(
     selected: Boolean,
     selecting: Boolean,
     deleted: Boolean,
+    busy: Boolean,
+    queueMinutes: Int?,
     actions: ContentActions,
     onDeleteForever: () -> Unit
 ) {
@@ -419,65 +434,76 @@ private fun VideoRow(
             }
             .testTag("video-${v.id}")
     ) {
-        Row(
-            Modifier.padding(FanousTokens.Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
-        ) {
-            Checkbox(
-                checked = selected,
-                onCheckedChange = { actions.onToggle(v.id) },
-                modifier = Modifier.testTag("select-${v.id}").semantics { contentDescription = selectLabel }
-            )
-            // A smaller thumbnail on narrow phones (360dp) so the title keeps a readable width.
-            val narrow = LocalConfiguration.current.screenWidthDp < NARROW_DP
-            Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(if (narrow) 80.dp else 120.dp))
-            Column(Modifier.weight(1f)) {
-                // A tighter line height than titleSmall: a title that wraps reads as one title, not two lines apart.
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp),
-                    color = f.colors.textPrimary.color,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+        Column {
+            Row(
+                Modifier.padding(FanousTokens.Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+            ) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { actions.onToggle(v.id) },
+                    modifier = Modifier.testTag("select-${v.id}").semantics { contentDescription = selectLabel }
                 )
-                Text(
-                    meta(v, deleted),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = f.colors.textSecondary.color,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                // The date on its own line under the details: a separate column left phones no room for the title.
-                // A video without a date keeps the line (empty), so every row has the same height.
-                if (!deleted) {
-                    val date = v.createdAt?.let { formatDate(it) }
+                // A smaller thumbnail on narrow phones (360dp) so the title keeps a readable width.
+                val narrow = LocalConfiguration.current.screenWidthDp < NARROW_DP
+                Thumbnail(v.thumbnailUrl, v.durationSeconds?.toLong(), Modifier.width(if (narrow) 80.dp else 120.dp))
+                Column(Modifier.weight(1f)) {
+                    // A tighter line height than titleSmall: a title that wraps reads as one title, not two lines apart.
                     Text(
-                        date.orEmpty(),
+                        title,
+                        style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp),
+                        color = f.colors.textPrimary.color,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    reviewLine(v.review, queueMinutes).takeIf { !deleted }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = f.colors.textPrimary.color,
+                            modifier = Modifier.testTag("review-${v.id}")
+                        )
+                    }
+                    Text(
+                        meta(v, deleted),
                         style = MaterialTheme.typography.bodySmall,
-                        color = f.colors.textMuted.color,
-                        maxLines = 1,
-                        modifier = if (date == null) Modifier.clearAndSetSemantics {} else Modifier
+                        color = f.colors.textSecondary.color,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    // The date on its own line under the details: a separate column left phones no room for the title.
+                    // A video without a date keeps the line (empty), so every row has the same height.
+                    if (!deleted) {
+                        val date = v.createdAt?.let { formatDate(it) }
+                        Text(
+                            date.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = f.colors.textMuted.color,
+                            maxLines = 1,
+                            modifier = if (date == null) Modifier.clearAndSetSemantics {} else Modifier
+                        )
+                    }
+                }
+                if (deleted) {
+                    IconButton(onClick = onDeleteForever, modifier = Modifier.testTag("forever-${v.id}")) {
+                        Icon(
+                            Icons.Filled.DeleteForever,
+                            contentDescription = stringResource(R.string.studio_delete_forever),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                } else if (!selecting) {
+                    IconButton(onClick = { actions.onEdit(v.id) }) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = aunString(R.string.studio_video_edit_cd, isolate(title)),
+                            tint = f.colors.textPrimary.color
+                        )
+                    }
                 }
             }
-            if (deleted) {
-                IconButton(onClick = onDeleteForever, modifier = Modifier.testTag("forever-${v.id}")) {
-                    Icon(
-                        Icons.Filled.DeleteForever,
-                        contentDescription = stringResource(R.string.studio_delete_forever),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            } else if (!selecting) {
-                IconButton(onClick = { actions.onEdit(v.id) }) {
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = aunString(R.string.studio_video_edit_cd, isolate(title)),
-                        tint = f.colors.textPrimary.color
-                    )
-                }
-            }
+            if (!selecting && v.status == ContentStatus.NOT_APPROVED) ReviewActions(v, enabled = !busy, actions)
         }
     }
 }

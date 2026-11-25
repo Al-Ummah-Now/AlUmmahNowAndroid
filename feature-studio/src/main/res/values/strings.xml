@@ -204,4 +204,43 @@
         <item quantity="one">Try again in %1$d hour.</item>
         <item quantity="other">Try again in %1$d hours.</item>
     </plurals>
+    <string name="studio_status_in_review">In review</string>
+    <string name="studio_status_not_approved">Not approved</string>
+    <string name="studio_empty_in_review">Nothing is in review.</string>
+    <string name="studio_empty_not_approved">No videos were turned down.</string>
+    <string name="studio_review_held">A reviewer will check it</string>
+    <string name="studio_review_appealed">Appeal sent • a different reviewer will check it</string>
+    <string name="studio_review_rejected">Not approved: %1$s</string>
+    <string name="studio_review_appeal">Appeal</string>
+    <string name="studio_review_resubmit">Check again after editing</string>
+    <string name="studio_review_resubmitted">Sent for checking again.</string>
+    <string name="studio_review_resubmit_failed">Could not send it for checking. Try again.</string>
+    <string name="studio_appeal_title">Appeal this decision</string>
+    <string name="studio_appeal_body">A different reviewer will look at the video again. You can appeal once.</string>
+    <string name="studio_appeal_label">Why should it be approved?</string>
+    <string name="studio_appeal_send">Send appeal</string>
+    <string name="studio_appeal_sent">Appeal sent. A different reviewer will check it.</string>
+    <string name="studio_appeal_failed">Could not send the appeal. Try again.</string>
+    <string name="studio_review_reason_sexual">sexual or indecent content</string>
+    <string name="studio_review_reason_child_safety">content that endangers children</string>
+    <string name="studio_review_reason_graphic_violence">graphic violence</string>
+    <string name="studio_review_reason_self_harm">content that encourages self-harm</string>
+    <string name="studio_review_reason_hate">hate speech</string>
+    <string name="studio_review_reason_violent_extremism">violent extremism</string>
+    <string name="studio_review_reason_harassment">harassment</string>
+    <string name="studio_review_reason_spam_scam">spam or a scam</string>
+    <string name="studio_review_reason_impersonation">impersonation</string>
+    <string name="studio_review_reason_privacy">someone’s private information</string>
+    <string name="studio_review_reason_copyright">content you do not have the rights to share</string>
+    <string name="studio_review_reason_misleading_metadata">a title, thumbnail or description that does not match the video</string>
+    <string name="studio_review_reason_religious_misattribution">words attributed to scholars or sources that they did not say</string>
+    <string name="studio_review_reason_other">it breaks the community guidelines</string>
+    <plurals name="studio_review_checking">
+        <item quantity="one">In review • usually within %1$d minute</item>
+        <item quantity="other">In review • usually within %1$d minutes</item>
+    </plurals>
+    <plurals name="studio_review_held_minutes">
+        <item quantity="one">A reviewer will check it • about %1$d min</item>
+        <item quantity="other">A reviewer will check it • about %1$d min</item>
+    </plurals>
 </resources>

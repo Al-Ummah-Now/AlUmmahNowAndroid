@@ -15,6 +15,7 @@ import net.alummahnow.core.bridge.studio.ContentPage
 import net.alummahnow.core.bridge.studio.ContentQuery
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
+import net.alummahnow.core.bridge.studio.ReviewStep
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
@@ -25,6 +26,7 @@ import net.alummahnow.core.bridge.studio.StudioSuggestion
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.UserFeatures
 import net.alummahnow.core.bridge.studio.VideoEdit
+import net.alummahnow.core.bridge.studio.VideoReview
 import net.alummahnow.fixtures.BrandChannel
 
 val sampleAccount = StudioAccount("u1", "Amina Yusuf", "amina.yusuf@example.org", null, null, false)
@@ -172,7 +174,8 @@ class FakeRepository : StudioRepository {
         if (query.status == ContentStatus.DELETED) deletedError?.let { throw it }
         contentErrors[query.status]?.let { throw it }
         val source = if (query.status == ContentStatus.DELETED) deleted else videos.filter { it.status == query.status }
-        return ContentPage(source.filter { query.text.isBlank() || it.title.contains(query.text, ignoreCase = true) }, null)
+        val found = source.filter { query.text.isBlank() || it.title.contains(query.text, ignoreCase = true) }
+        return ContentPage(found, null, reviewQueueMinutes)
     }
 
     override suspend fun commentsSummary(channelId: String): CommentsSummary {
@@ -191,7 +194,9 @@ class FakeRepository : StudioRepository {
         scheduled = 1,
         drafts = 2,
         processing = 0,
-        failed = 1
+        failed = 1,
+        inReview = videos.count { it.status == ContentStatus.IN_REVIEW },
+        notApproved = videos.count { it.status == ContentStatus.NOT_APPROVED }
     )
 
     override suspend fun suggestions(channelId: String, text: String) =
@@ -249,6 +254,27 @@ class FakeRepository : StudioRepository {
 
     override suspend fun deletePermanently(id: String, channelId: String) {
         deleted.removeAll { it.id == id }
+    }
+
+    var reviewError: Exception? = null
+    var reviewQueueMinutes: Int? = null
+    val appeals = mutableListOf<Pair<String, String>>()
+    val resubmits = mutableListOf<String>()
+
+    override suspend fun appealReview(id: String, message: String) {
+        reviewError?.let { throw it }
+        appeals += id to message
+        inReview(id, VideoReview(ReviewStep.APPEALED, appealUsed = true))
+    }
+
+    override suspend fun resubmitReview(id: String) {
+        reviewError?.let { throw it }
+        resubmits += id
+        inReview(id, VideoReview(ReviewStep.CHECKING))
+    }
+
+    private fun inReview(id: String, review: VideoReview) {
+        videos.replaceAll { if (it.id == id) it.copy(status = ContentStatus.IN_REVIEW, review = review) else it }
     }
 
     override suspend fun playlists(channelId: String) = listOf(

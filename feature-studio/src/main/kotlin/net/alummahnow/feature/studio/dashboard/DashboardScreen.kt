@@ -283,6 +283,8 @@ private fun statusLabel(s: ContentStatus): Int = when (s) {
     ContentStatus.SCHEDULED -> R.string.studio_status_scheduled
     ContentStatus.DRAFTS -> R.string.studio_draft
     ContentStatus.PROCESSING -> R.string.studio_status_processing
+    ContentStatus.IN_REVIEW -> R.string.studio_status_in_review
+    ContentStatus.NOT_APPROVED -> R.string.studio_status_not_approved
     ContentStatus.FAILED -> R.string.studio_status_failed
     ContentStatus.DELETED -> R.string.studio_status_deleted
 }

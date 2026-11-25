@@ -47,17 +47,49 @@ enum class ChannelRole(val apiValue: String) {
     }
 }
 
-/** Studio content tabs. [DELETED] lists soft-deleted videos that can still be restored. */
+/** Studio content tabs, the server's statuses in its order. [DELETED] lists soft-deleted videos that can still be restored. */
 enum class ContentStatus(val apiValue: String) {
     PUBLISHED("published"),
     SCHEDULED("scheduled"),
     DRAFTS("drafts"),
     PROCESSING("processing"),
+
+    /** Checked, or waiting for a person, before anyone but its team sees it. */
+    IN_REVIEW("in_review"),
+
+    /** A reviewer turned it down. */
+    NOT_APPROVED("not_approved"),
     FAILED("failed"),
     DELETED("deleted");
 
     companion object {
         fun from(value: String?): ContentStatus? = entries.firstOrNull { it.apiValue == value }
+    }
+}
+
+/** Where a video is in review. Statuses that change nothing for the creator (approved, checked afterwards) are none. */
+enum class ReviewStep(val apiValue: String) {
+    CHECKING("checking"),
+    HELD("in_review"),
+    APPEALED("appealed"),
+    REJECTED("rejected");
+
+    companion object {
+        fun from(value: String?): ReviewStep? = entries.firstOrNull { it.apiValue == value }
+    }
+}
+
+data class VideoReview(
+    val step: ReviewStep,
+    /** How long the automated check usually takes. */
+    val etaMinutes: Int = DEFAULT_ETA_MINUTES,
+    /** Why it was turned down: one of the server's reason codes. */
+    val reason: String? = null,
+    /** It can be appealed once. */
+    val appealUsed: Boolean = false
+) {
+    companion object {
+        const val DEFAULT_ETA_MINUTES = 5
     }
 }
 
@@ -101,17 +133,25 @@ data class StudioVideo(
     val deletedAt: String? = null,
     /** ISO 8601: restore is possible until then (30 days after delete). */
     val restorableUntil: String? = null,
-    val uploadFailureReason: String? = null
+    val uploadFailureReason: String? = null,
+    val review: VideoReview? = null
 )
 
-data class ContentPage(val items: List<StudioVideo>, val cursor: String?)
+data class ContentPage(
+    val items: List<StudioVideo>,
+    val cursor: String?,
+    /** How long a held video waits for a person now, when that is known. */
+    val reviewQueueMinutes: Int? = null
+)
 
 data class ContentCounts(
     val published: Int = 0,
     val scheduled: Int = 0,
     val drafts: Int = 0,
     val processing: Int = 0,
-    val failed: Int = 0
+    val failed: Int = 0,
+    val inReview: Int = 0,
+    val notApproved: Int = 0
 )
 
 /** A single-video edit (`PUT /api/videos/{id}`): only non-null fields change. */

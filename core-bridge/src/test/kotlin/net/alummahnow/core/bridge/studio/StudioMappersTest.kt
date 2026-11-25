@@ -43,6 +43,41 @@ class StudioMappersTest {
     }
 
     @Test
+    fun `a video in review has its own status, after processing and before scheduled`() {
+        for (step in listOf("checking", "in_review", "appealed")) {
+            assertEquals(step, ContentStatus.IN_REVIEW, StudioMappers.deriveStatus(obj("""{"review":{"status":"$step"}}""")))
+        }
+        assertEquals(ContentStatus.NOT_APPROVED, StudioMappers.deriveStatus(obj("""{"review":{"status":"rejected"},"isDraft":true}""")))
+        assertEquals(
+            ContentStatus.IN_REVIEW,
+            StudioMappers.deriveStatus(obj("""{"review":{"status":"checking"},"scheduledPublishStatus":"scheduled"}"""))
+        )
+        assertEquals(
+            ContentStatus.PROCESSING,
+            StudioMappers.deriveStatus(obj("""{"review":{"status":"checking"},"processingStatus":"processing"}"""))
+        )
+        for (step in listOf("approved", "post_review", "something_new")) {
+            assertEquals(step, ContentStatus.PUBLISHED, StudioMappers.deriveStatus(obj("""{"review":{"status":"$step"}}""")))
+        }
+    }
+
+    @Test
+    fun `a review is read whole, and what it leaves out has a default`() {
+        fun review(json: String) = StudioMappers.video(obj("""{"id":"v1","review":$json}"""))!!.review
+        assertEquals(
+            VideoReview(ReviewStep.CHECKING, etaMinutes = 12),
+            review("""{"status":"checking","since":"2026-11-25T10:00:00Z","etaAt":"2026-11-25T10:12:10Z"}""")
+        )
+        assertEquals(VideoReview(ReviewStep.CHECKING, etaMinutes = 5), review("""{"status":"checking","since":"2026-11-25T10:00:00Z"}"""))
+        assertEquals(
+            VideoReview(ReviewStep.REJECTED, reason = "copyright", appealUsed = true),
+            review("""{"status":"rejected","since":"x","reasonCode":"copyright","appealUsed":true}""")
+        )
+        assertNull(review("""{"status":"approved","since":"2026-11-25T10:00:00Z"}"""))
+        assertNull(StudioMappers.video(obj("""{"id":"v1"}"""))!!.review)
+    }
+
+    @Test
     fun `video maps view fields and prefers the server studio status`() {
         val v = StudioMappers.video(
             obj(

@@ -28,6 +28,12 @@ interface StudioRepository {
     suspend fun delete(ids: List<String>, channelId: String): BulkResult
     suspend fun restore(ids: List<String>, channelId: String): BulkResult
     suspend fun deletePermanently(id: String, channelId: String)
+
+    /** Asks a different reviewer to look again at a video that was turned down. Once per decision. */
+    suspend fun appealReview(id: String, message: String)
+
+    /** Asks for a new check of a video that was turned down, after it was edited. */
+    suspend fun resubmitReview(id: String)
     suspend fun playlists(channelId: String): List<StudioPlaylist>
     suspend fun schedule(videoId: String, channelId: String, publishAtIso: String, timezone: String)
     suspend fun addToPlaylists(videoId: String, channelId: String, playlistIds: List<String>, orderKey: String)
