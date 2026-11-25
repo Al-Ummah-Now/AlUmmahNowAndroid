@@ -11,20 +11,28 @@ question ids, which change; fill the form from the tables below (about five minu
 
 | Question | Answer | Why (source) |
 |---|---|---|
-| Does your app collect or share any of the required user data types? | Viewer and TV: **No**. Studio and Admin: **Yes** | tables below |
+| Does your app collect or share any of the required user data types? | TV: **No**. Viewer, Studio and Admin: **Yes** | tables below |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** | every base URL is `https://` (`build-logic/convention/src/main/kotlin/AndroidApplicationConventionPlugin.kt`); Admin traffic refuses plain HTTP on every hop (`core-bridge/.../admin/PrivateHttp.kt`) |
-| Do you provide a way for users to request that their data is deleted? | **Yes**: `https://profile.auth.alummahnow.net/delete-account` (AlUmmahNowAuth#532) and, in Studio, Account sheet → Delete account (`DELETE /api/privacy/data`, then `DELETE /account`, #62) | `core-bridge/.../studio/deletion/`, `feature-studio/.../deletion/` |
+| Do you provide a way for users to request that their data is deleted? | **Yes**: `https://profile.auth.alummahnow.net/delete-account` (AlUmmahNowAuth#532) and, in Studio, Account sheet → Delete account (`DELETE /api/privacy/data`, then `DELETE /account`, #62). Viewer: **Yes**, because its one item is removed automatically (Play accepts automatic deletion within 90 days) | `core-bridge/.../studio/deletion/`, `feature-studio/.../deletion/` |
 | Data shared with third parties? | **No** for every type. Bunny / Cloudflare store and deliver media for us (service providers, which Play does not count as sharing) | — |
 | Crash logs, diagnostics, analytics, advertising ID | **Not collected** by any app: logging goes to the device log only (`core-bridge/.../AunLog.kt`); no analytics, crash-reporting or ads SDK in `gradle/libs.versions.toml` | — |
 | Location, contacts, messages, audio, calendar, health, financial info | **Not collected** | no such permissions in any `AndroidManifest.xml` |
 
-## Viewer (`net.alummahnow.app`) and TV (`net.alummahnow.tv`)
+## TV (`net.alummahnow.tv`)
 
-**No data collected, no data shared.** The viewer has no account (`GuestOnlyAuthBridge` in
+**No data collected, no data shared.** The TV app has no network features yet.
+
+## Viewer (`net.alummahnow.app`)
+
+| Category → type | Collected | Shared | Ephemeral | Required? | Purposes | When / what (source) |
+|---|---|---|---|---|---|---|
+| Device or other IDs | Yes | No | Yes | Required | App functionality | only while a live stream plays: the live viewer ID below (`LiveWatchViewModel.kt`, `HttpLiveRepository.kt`) |
+
+Play asks for ephemeral data in the form, and does not show it on the listing. Nothing else is collected. The viewer has no account (`GuestOnlyAuthBridge` in
 `viewer-mobile/.../AppContainer.kt`). It reads the public catalogue (`TemporaryCatalogRepository.kt`) and public live
 streams and their chat (`HttpLiveRepository.kt`). Theme and language choices (`DisplayPrefsStore.kt`) and the list of
 blocked channels and chat users (`ViewerBlockStore.kt`) stay on the device. Report opens the public report page in the
-browser (`ViewerReportUrls`), outside the app. The TV app has no network features yet.
+browser (`ViewerReportUrls`), outside the app.
 
 The one thing the viewer sends is the **live viewer ID**: while a live stream plays, a random ID
 (`LiveWatchViewModel.kt`, `HttpLiveRepository.beat`), so that the people watching can be counted. It is new for each live
@@ -32,8 +40,8 @@ screen, is never stored on the device, and belongs to no account, device or inst
 only, with the time of the last heartbeat and a hash of the network address and the stream, and it stops counting 75
 seconds after the last heartbeat, or at once when the screen closes; nothing is written to a database or a log
 (AlUmmahNow `apps/websocket-server/src/live-viewers.ts`, `apps/api-videos/src/lib/live/viewers.ts`). So it is
-**processed ephemerally**, for app functionality only, and the answer stays "no data collected". If it is ever stored,
-kept longer, or made the same across screens, declare **Device or other IDs** here, in the CSV and in the Console.
+**processed ephemerally**, for app functionality only. If it is ever stored, kept longer, or made the same across
+screens, **Ephemeral** becomes No here, in the CSV and in the Console, and the listing then shows it.
 
 ## Studio (`net.alummahnow.studio`)
 
