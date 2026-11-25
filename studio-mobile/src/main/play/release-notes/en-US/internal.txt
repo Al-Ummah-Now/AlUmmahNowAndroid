@@ -1,1 +1,1 @@
-Fixes and improvements.
+The first version of Al Ummah Now Studio for Android: upload several videos at once, edit and schedule them, and see your channel's dashboard and analytics.

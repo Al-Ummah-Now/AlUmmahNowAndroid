@@ -21,8 +21,19 @@ question ids, which change; fill the form from the tables below (about five minu
 ## Viewer (`net.alummahnow.app`) and TV (`net.alummahnow.tv`)
 
 **No data collected, no data shared.** The viewer has no account (`GuestOnlyAuthBridge` in
-`viewer-mobile/.../AppContainer.kt`) and only reads the public catalogue (`TemporaryCatalogRepository.kt`). Theme and
-language choices stay on the device (`DisplayPrefsStore.kt`). The TV app has no network features yet.
+`viewer-mobile/.../AppContainer.kt`). It reads the public catalogue (`TemporaryCatalogRepository.kt`) and public live
+streams and their chat (`HttpLiveRepository.kt`). Theme and language choices (`DisplayPrefsStore.kt`) and the list of
+blocked channels and chat users (`ViewerBlockStore.kt`) stay on the device. Report opens the public report page in the
+browser (`ViewerReportUrls`), outside the app. The TV app has no network features yet.
+
+The one thing the viewer sends is the **live viewer ID**: while a live stream plays, a random ID
+(`LiveWatchViewModel.kt`, `HttpLiveRepository.beat`), so that the people watching can be counted. It is new for each live
+screen, is never stored on the device, and belongs to no account, device or installation. The server keeps it in memory
+only, with the time of the last heartbeat and a hash of the network address and the stream, and it stops counting 75
+seconds after the last heartbeat, or at once when the screen closes; nothing is written to a database or a log
+(AlUmmahNow `apps/websocket-server/src/live-viewers.ts`, `apps/api-videos/src/lib/live/viewers.ts`). So it is
+**processed ephemerally**, for app functionality only, and the answer stays "no data collected". If it is ever stored,
+kept longer, or made the same across screens, declare **Device or other IDs** here, in the CSV and in the Console.
 
 ## Studio (`net.alummahnow.studio`)
 

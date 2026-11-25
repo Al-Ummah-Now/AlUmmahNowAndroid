@@ -46,8 +46,9 @@ Play's limits, en/ar parity and the copy-tone words; CI runs it):
 **Screenshots** come from the real Compose screens with fixture data (`*/src/test/.../StoreScreenshots.kt`,
 Roborazzi): phone 1080×1920, 7" tablet 1200×1920, 10" tablet 2560×1600, TV 1920×1080, en + ar, dark (+ light on
 phones). Actions → **Store screenshots** → Run gives them as an artifact; the release job regenerates them before it
-uploads a listing. Locally: `./gradlew -PaunStoreScreenshots=true --tests '*StoreScreenshots*'
-:viewer-mobile:testProdDebugUnitTest :studio-mobile:testProdDebugUnitTest :viewer-tv:testProdGoogleDebugUnitTest`.
+uploads a listing. Locally: `./gradlew -PaunStoreScreenshots=true
+:viewer-mobile:testProdDebugUnitTest --tests '*StoreScreenshots*' :studio-mobile:testProdDebugUnitTest --tests '*StoreScreenshots*'
+:viewer-tv:testProdGoogleDebugUnitTest --tests '*StoreScreenshots*'` (`--tests` filters the task before it).
 The TV app's UI is still a placeholder (feature-tv), so its screenshots show that until the TV screens land: keep
 `PLAY_TV_READY` off until then.
 

@@ -150,7 +150,7 @@ class CreatorTermsViewModel(private val repository: StudioRepository) : ViewMode
             )
         }
         if (access.termsAccepted != false) return CreatorTermsUiState.Accepted
-        val next = gate.copy(saving = false, errorRes = R.string.studio_terms_error).showing(access.termsVersion)
+        val next = gate.copy(saving = false, errorRes = R.string.studio_terms_error, before = null).showing(access.termsVersion)
         return when {
             access.termsVersion == null || !changed -> next
             else -> next.copy(errorRes = R.string.studio_terms_changed, round = gate.round + 1)
