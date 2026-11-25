@@ -107,8 +107,11 @@ class AccountDeletionTest {
 
     @Test
     fun `while it works there is a way out, until it is taken`() {
-        state = state.copy(working = true, passes = 2)
         dialog()
+        compose.onNodeWithTag("delete-account-input").performTextInput("DELETE")
+        compose.onNodeWithTag("delete-account-confirm").assertIsEnabled()
+        state = state.copy(working = true, passes = 2)
+        compose.waitForIdle()
         compose.onNodeWithTag("delete-account-cancel").assertIsEnabled().performClick()
         assertEquals(1, closed)
         compose.onNodeWithTag("delete-account-confirm").assertIsNotEnabled()

@@ -2,8 +2,12 @@ package net.alummahnow.feature.studio.deletion
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,24 +32,28 @@ import net.alummahnow.feature.studio.R
 fun DeletionBanner(record: DeletionRecord, onFinish: () -> Unit, modifier: Modifier = Modifier) {
     val erased = record.stage == DeletionStage.CONTENT_ERASED
     Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         modifier = modifier.fillMaxWidth().testTag("deletion-banner").semantics { liveRegion = LiveRegionMode.Polite }
     ) {
         Column(
             Modifier.padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.md),
             verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)
         ) {
-            Text(
-                stringResource(
-                    when {
-                        erased && record.leftover == Leftover.CHANNEL -> R.string.studio_delete_open_channel
-                        erased && record.leftover == null -> R.string.studio_delete_open_content_erased
-                        else -> R.string.studio_delete_open
-                    }
-                ),
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
+                Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                Text(
+                    stringResource(
+                        when {
+                            erased && record.leftover == Leftover.CHANNEL -> R.string.studio_delete_open_channel
+                            erased && record.leftover == null -> R.string.studio_delete_open_content_erased
+                            else -> R.string.studio_delete_open
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             FanousButton(
                 stringResource(R.string.studio_delete_finish),
                 onFinish,

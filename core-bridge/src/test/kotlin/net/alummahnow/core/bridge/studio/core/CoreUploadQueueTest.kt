@@ -165,6 +165,7 @@ class CoreUploadQueueTest {
         assertEquals(emptyList<File>(), staged)
         assertFalse(File(context.filesDir, "uploads/a").exists())
         assertFalse(queue().hasWork())
+        assertFalse("Talk" in File(context.filesDir, "uploads/queue.json").readText())
     }
 
     @Test
@@ -191,27 +192,28 @@ class CoreUploadQueueTest {
         val engine = engines.getOrPut("a") { FakeEngine() }
         engine.next = UploadState.UPLOADING to null
         queue.enqueue(listOf(draft()))
+        var round = 0
         queue.process {
-            if (engine.requests.isNotEmpty()) engine.next = UploadState.DONE to null
-            queue.releaseOnce(engine)
+            round++
+            kotlinx.coroutines.runBlocking {
+                when (round) {
+                    1 -> {
+                        queue.holdUploads("a")
+                        assertEquals(UploadPhase.PAUSED, queue.items.value.first { it.id == "up-1" }.phase)
+                        queue.enqueue(listOf(draft()))
+                    }
+                    // Two rounds later the new one is still not handed to the engine.
+                    3 -> {
+                        assertEquals(1, engine.requests.size)
+                        queue.releaseUploads("a")
+                    }
+                    5 -> engine.finishAll()
+                    else -> Unit
+                }
+            }
         }
         assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
-    }
-
-    private var releasedOnce = false
-
-    /** Holds the running upload once, checks that a new one is not started meanwhile, and lets it go on and finish. */
-    private fun CoreUploadQueue.releaseOnce(engine: FakeEngine) {
-        if (releasedOnce) return
-        releasedOnce = true
-        kotlinx.coroutines.runBlocking {
-            holdUploads("a")
-            assertEquals(UploadPhase.PAUSED, items.value.first { it.id == "up-1" }.phase)
-            enqueue(listOf(draft()))
-            assertEquals(1, engine.requests.size)
-            releaseUploads("a")
-            engine.finishAll()
-        }
+        assertEquals(2, engine.requests.size)
     }
 
     /** aun-upload's engine as the queue uses it; its uploads end as [next] says. */

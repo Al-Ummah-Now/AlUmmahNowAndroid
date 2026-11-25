@@ -1,6 +1,7 @@
 package net.alummahnow.feature.studio.deletion
 
 import android.animation.ValueAnimator
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -93,12 +95,18 @@ fun DeleteAccountDialog(
             }
         },
         dismissButton = {
+            var focused by remember { mutableStateOf(false) }
             TextButton(
                 onClick = onClose,
                 enabled = !state.stopping,
+                border = if (focused) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                 colors = ButtonDefaults.textButtonColors(disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant),
                 // Focusable by itself: a button alone takes no focus in touch mode, and TalkBack should start here.
-                modifier = Modifier.focusRequester(cancelFocus).focusable().testTag("delete-account-cancel")
+                modifier = Modifier
+                    .focusRequester(cancelFocus)
+                    .onFocusChanged { focused = it.hasFocus }
+                    .focusable()
+                    .testTag("delete-account-cancel")
             ) {
                 Text(
                     stringResource(
