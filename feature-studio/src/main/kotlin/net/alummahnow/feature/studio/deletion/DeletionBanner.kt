@@ -45,8 +45,8 @@ fun DeletionBanner(record: DeletionRecord, onFinish: () -> Unit, modifier: Modif
                 Text(
                     stringResource(
                         when {
-                            erased && record.leftover == Leftover.CHANNEL -> R.string.studio_delete_open_channel
-                            erased && record.leftover == null -> R.string.studio_delete_open_content_erased
+                            erased && record.leftover == setOf(Leftover.CHANNEL) -> R.string.studio_delete_open_channel
+                            erased && record.leftover.isEmpty() -> R.string.studio_delete_open_content_erased
                             else -> R.string.studio_delete_open
                         }
                     ),

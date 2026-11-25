@@ -318,6 +318,32 @@ class StudioAppTest {
     }
 
     @Test
+    fun `a channel and other records are said as both, before and after`() {
+        val both = DeletionAnswer(200, """{"success":true,"complete":true,"errors":["channel_unreadable:c9","backups_unbound"]}""")
+        container.deletionApi.erases += listOf(both, both)
+        show()
+        openDelete()
+        typeAndConfirm()
+        waitForText("except for a channel and some records we could not remove")
+        waitForText("Delete anyway")
+        compose.onNodeWithTag("delete-account-confirm").performClick()
+        waitForText("account was deleted and your Videos content was erased, except for a channel and some records")
+        assertEquals("account a", container.deletionApi.calls.last())
+    }
+
+    @Test
+    fun `uploads that can't be held stop the deletion before anything is removed`() {
+        container.uploads.holdError = IllegalStateException("a request is out")
+        show()
+        openDelete()
+        typeAndConfirm()
+        waitForText("nothing was removed by this attempt")
+        assertEquals(emptyList<String>(), container.deletionApi.calls)
+        compose.onNodeWithTag("delete-account-cancel").performClick()
+        compose.onNodeWithTag("deletion-banner").assertDoesNotExist()
+    }
+
+    @Test
     fun `an unreadable channel is said and the person decides`() {
         container.deletionApi.erases +=
             DeletionAnswer(200, """{"success":true,"complete":true,"errors":["channel_unreadable:c9"]}""")

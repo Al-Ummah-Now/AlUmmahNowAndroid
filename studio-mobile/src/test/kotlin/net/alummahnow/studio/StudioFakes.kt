@@ -113,7 +113,9 @@ class FakeUploadQueue(private val session: FakeSession) : UploadQueue {
     val held = mutableSetOf<String>()
     val purged = mutableListOf<String>()
     var purgeError: Exception? = null
+    var holdError: Exception? = null
     override suspend fun holdUploads(userId: String) {
+        holdError?.let { throw it }
         held += userId
     }
     override suspend fun releaseUploads(userId: String) {

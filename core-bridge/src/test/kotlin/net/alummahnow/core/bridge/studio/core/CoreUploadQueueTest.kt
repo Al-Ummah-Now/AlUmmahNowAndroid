@@ -39,7 +39,8 @@ class CoreUploadQueueTest {
         clientFor = { error("no client") },
         repository = { error("no repository") },
         onWorkNeeded = { workAsked++ },
-        newEngine = { userId, _ -> engines.getOrPut(userId) { FakeEngine() } }
+        newEngine = { userId, _ -> engines.getOrPut(userId) { FakeEngine() }.also { it.open() } },
+        holdTimeoutMs = 1_500
     )
 
     private fun draft() = UploadDraft(source.path, "talk.mp4", 5, "video/mp4", "Talk", channelId = "c1")
@@ -216,6 +217,126 @@ class CoreUploadQueueTest {
         assertEquals(2, engine.requests.size)
     }
 
+    private suspend fun uploading(queue: CoreUploadQueue, state: UploadState = UploadState.UPLOADING): FakeEngine {
+        val engine = engines.getOrPut("a") { FakeEngine() }
+        engine.next = state to null
+        queue.enqueue(listOf(draft()))
+        // One round: it is handed to the engine.
+        runCatching { queue.process { error("one round") } }
+        return engine
+    }
+
+    private fun held(queue: CoreUploadQueue) = runCatching { kotlinx.coroutines.runBlocking { queue.holdUploads("a") } }
+
+    @Test
+    fun `a file that is being copied when uploads are held is not handed on until they go on`() = runTest {
+        val queue = queue()
+        val uri = android.net.Uri.parse("content://picker/talk")
+        var copies = 0
+        org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+            if (copies++ == 0) assertTrue(held(queue).isSuccess)
+            "video".byteInputStream()
+        }
+        queue.enqueue(listOf(draft().copy(source = uri.toString())))
+        var round = 0
+        queue.process {
+            if (++round == 1) {
+                assertEquals(emptyList<UploadRequest>(), engines["a"]?.requests.orEmpty())
+                assertEquals(emptyList<File>(), staged)
+                assertEquals(UploadPhase.PREPARING, queue.items.value.single().phase)
+                kotlinx.coroutines.runBlocking { queue.releaseUploads("a") }
+            } else {
+                engines.getValue("a").finishAll()
+            }
+        }
+        assertEquals(2, copies)
+        assertEquals(1, engines.getValue("a").requests.size)
+    }
+
+    @Test
+    fun `holding fails when an upload can't be paused, and a release lets it go on`() = runTest {
+        val queue = queue()
+        val engine = uploading(queue)
+        engine.pauseFails = true
+        assertEquals("no such upload", held(queue).exceptionOrNull()?.message)
+        queue.releaseUploads("a")
+        assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
+    }
+
+    @Test
+    fun `holding waits for a request that is out, and pauses what its answer started again`() = runTest {
+        val queue = queue()
+        val engine = uploading(queue, UploadState.INITIATING)
+        // Two tries find the store in use; then the answer is in and the upload would go on.
+        engine.requestsOut += {}
+        engine.requestsOut += { engine.set("up-1", UploadState.UPLOADING) }
+        assertTrue(held(queue).isSuccess)
+        assertEquals(0, engine.requestsOut.size)
+        assertEquals(listOf("pause up-1", "pause up-1"), engine.actions)
+        assertEquals(UploadState.PAUSED, engine.get("up-1")?.state)
+        assertFalse(engine.stopped)
+    }
+
+    @Test
+    fun `holding fails when an upload keeps starting again`() = runTest {
+        val queue = queue()
+        val engine = uploading(queue)
+        engine.afterShutdown = { engine.set("up-1", UploadState.UPLOADING) }
+        assertTrue(held(queue).isFailure)
+        assertTrue(engine.actions.size in 2..20)
+    }
+
+    @Test
+    fun `holding fails when a request stays out`() = runTest {
+        val queue = queue()
+        val engine = uploading(queue)
+        repeat(100) { engine.requestsOut += {} }
+        val failure = held(queue).exceptionOrNull()
+        assertTrue("$failure", failure is IllegalStateException && failure !is kotlinx.coroutines.CancellationException)
+        // Its staged file is kept: what can't be read has not ended.
+        runCatching { queue.process { error("one round") } }
+        assertEquals(1, staged.size)
+        queue.releaseUploads("a")
+        runCatching { queue.process { error("one round") } }
+        assertEquals(1, staged.size)
+    }
+
+    @Test
+    fun `nothing is resumed, retried or settled while uploads are held`() = runTest {
+        val queue = queue()
+        val engine = uploading(queue)
+        assertTrue(held(queue).isSuccess)
+        engine.set("up-1", UploadState.FAILED)
+        queue.retry("up-1")
+        assertEquals(UploadState.FAILED, engine.get("up-1")?.state)
+        engine.set("up-1", UploadState.PAUSED)
+        queue.resume("up-1")
+        assertEquals(UploadState.PAUSED, engine.get("up-1")?.state)
+        engine.set("up-1", UploadState.DONE)
+        runCatching { queue.process { error("one round") } }
+        assertEquals(1, staged.size)
+        engine.set("up-1", UploadState.FAILED)
+        queue.releaseUploads("a")
+        assertEquals(UploadState.QUEUED, engine.get("up-1")?.state)
+    }
+
+    @Test
+    fun `what the person pauses while uploads are held stays paused`() = runTest {
+        val queue = queue()
+        val engine = uploading(queue)
+        assertTrue(held(queue).isSuccess)
+        queue.pause("up-1")
+        queue.releaseUploads("a")
+        assertEquals(UploadState.PAUSED, engine.get("up-1")?.state)
+    }
+
+    @Test
+    fun `an account with nothing left here can be held`() = runTest {
+        val queue = queue()
+        queue.purgeAccount("a")
+        assertTrue(held(queue).isSuccess)
+    }
+
     /** aun-upload's engine as the queue uses it; its uploads end as [next] says. */
     private class FakeEngine(private val uploads: MutableMap<String, UploadInfo> = linkedMapOf()) :
         UploadEngineInterface by unusedEngine() {
@@ -227,11 +348,17 @@ class CoreUploadQueueTest {
 
         fun finishAll() = uploads.keys.toList().forEach { set(it, UploadState.DONE) }
 
-        private fun set(id: String, state: UploadState) {
+        /** What ends, in this order, while the store is tried again after a shutdown: nothing opens before. */
+        val requestsOut = ArrayDeque<() -> Unit>()
+        var pauseFails = false
+        var afterShutdown: () -> Unit = {}
+
+        fun set(id: String, state: UploadState) {
             uploads[id] = uploads.getValue(id).copy(state = state)
         }
         override fun pause(id: String) {
             actions += "pause $id"
+            check(!pauseFails) { "no such upload" }
             set(id, UploadState.PAUSED)
         }
         override fun resume(id: String) {
@@ -241,6 +368,19 @@ class CoreUploadQueueTest {
         override suspend fun cancel(id: String) = set(id, UploadState.CANCELLED)
         override fun shutdown() {
             stopped = true
+            afterShutdown()
+        }
+
+        /** As the core opens its store: not while a request of the old engine is out, and what ran is queued. */
+        fun open() {
+            if (stopped) {
+                requestsOut.removeFirstOrNull()?.let {
+                    it()
+                    error("in use")
+                }
+                uploads.values.filter { it.state in LOADED_QUEUED }.forEach { set(it.id, UploadState.QUEUED) }
+            }
+            stopped = false
         }
 
         override fun enqueue(request: UploadRequest): String {
@@ -273,6 +413,14 @@ class CoreUploadQueueTest {
         }
     }
 }
+
+private val LOADED_QUEUED = setOf(
+    UploadState.HASHING,
+    UploadState.INITIATING,
+    UploadState.UPLOADING,
+    UploadState.COMPLETING,
+    UploadState.WAITING
+)
 
 private fun unusedEngine(): UploadEngineInterface = Proxy.newProxyInstance(
     UploadEngineInterface::class.java.classLoader,

@@ -28,16 +28,16 @@ class AccountDeletionTest {
 
     private val gone = DeletionAnswer(200, """{"deleted":true,"deletedAt":1}""")
 
-    private suspend fun run(accept: Leftover? = null, stop: () -> Boolean = { false }) =
+    private suspend fun run(accept: Set<Leftover> = emptySet(), stop: () -> Boolean = { false }) =
         deletion.run("u1", "u1@example.org", accept, stop)
 
     @Test
     fun `erases pass by pass, then deletes the account, then uploads, session and record`() = runTest {
         api.erases += listOf(more("t1"), more("t2"), done)
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         assertEquals(
             listOf(
-                "save STARTED -", "hold", "erase u1 -", "save STARTED t1", "erase u1 t1", "save STARTED t2", "erase u1 t2",
+                "hold", "save STARTED -", "erase u1 -", "save STARTED t1", "erase u1 t1", "save STARTED t2", "erase u1 t2",
                 "save CONTENT_ERASED -", "account u1", "save DELETED -", "purge", "end", "remove"
             ),
             log
@@ -49,6 +49,8 @@ class AccountDeletionTest {
     fun `nothing is called when the record can't be saved or read`() = runTest {
         records.failPut = true
         assertEquals(DeletionOutcome.NoRecord(ErasedSoFar.NOTHING), run())
+        assertEquals(listOf("hold", "release"), log)
+        log.clear()
         records.failPut = false
         records.failGet = true
         assertEquals(DeletionOutcome.NoRecord(ErasedSoFar.SOME), run())
@@ -58,15 +60,15 @@ class AccountDeletionTest {
     @Test
     fun `every attempt erases again, also when only the account was left`() = runTest {
         records.records.value = listOf(record(DeletionStage.CONTENT_ERASED))
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         assertEquals(listOf("erase u1 -", "account u1"), calls())
     }
 
     @Test
     fun `an unfinished run goes on with its saved token, a restarted one with the new token`() = runTest {
-        records.records.value = listOf(record(token = "old", leftover = Leftover.CHANNEL))
+        records.records.value = listOf(record(token = "old", leftover = setOf(Leftover.CHANNEL)))
         api.erases += listOf(more("new", ""","restarted":true"""), done)
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         assertEquals(listOf("erase u1 old", "erase u1 new", "account u1"), calls())
     }
 
@@ -76,7 +78,7 @@ class AccountDeletionTest {
         assertEquals(DeletionOutcome.NeedsSignIn(300, ErasedSoFar.NOTHING), run())
         assertEquals(emptyList<String>(), log)
         records.records.value = listOf(record())
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         records.records.value = listOf(record())
         device.authTime = now - 571
         assertEquals(DeletionOutcome.NeedsSignIn(300, ErasedSoFar.SOME), run())
@@ -87,7 +89,7 @@ class AccountDeletionTest {
         api.now = now
         now += 5_000 // the phone is fast
         device.authTime = api.now!! - 10
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         api.now = now
         now -= 20_000 // the phone is slow
         device.authTime = api.now!! - 4_000
@@ -149,7 +151,18 @@ class AccountDeletionTest {
         assertEquals(DeletionOutcome.Wait((now + 1) * 1000, ErasedSoFar.SOME), run())
         assertEquals(listOf("erase u1 -"), calls())
         now += 2
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
+    }
+
+    @Test
+    fun `a long Retry-After is kept whole, also for a new attempt`() = runTest {
+        api.erases += DeletionAnswer(503, "{}", "86400")
+        val until = (now + 86_400) * 1000
+        assertEquals(DeletionOutcome.Wait(until, ErasedSoFar.SOME), run())
+        assertEquals(until, records.get("u1")?.notBeforeMs)
+        now += 86_399
+        assertEquals(DeletionOutcome.Wait(until, ErasedSoFar.SOME), run())
+        assertEquals(listOf("erase u1 -"), calls())
     }
 
     @Test
@@ -160,16 +173,18 @@ class AccountDeletionTest {
     }
 
     @Test
-    fun `Retry-After is read as a number or a date, within reason`() {
+    fun `Retry-After is read as a number or a date, and never shortened`() {
         val at = 1_000_000_000_000L
         assertEquals(120L, AccountDeletion.retryAfterSeconds("120", at))
         assertEquals(300L, AccountDeletion.retryAfterSeconds(null, at))
         assertEquals(300L, AccountDeletion.retryAfterSeconds("soon", at))
         assertEquals(300L, AccountDeletion.retryAfterSeconds("-5", at))
-        assertEquals(300L, AccountDeletion.retryAfterSeconds("99999999999999999999", at))
-        assertEquals(3_600L, AccountDeletion.retryAfterSeconds("86400", at))
+        // Too large for a clock: ten years.
+        assertEquals(315_360_000L, AccountDeletion.retryAfterSeconds("99999999999999999999", at))
+        assertEquals(86_400L, AccountDeletion.retryAfterSeconds("86400", at))
         // 2001-09-09T01:46:40Z is `at`; ten minutes later.
         assertEquals(600L, AccountDeletion.retryAfterSeconds("Sun, 09 Sep 2001 01:56:40 GMT", at))
+        assertEquals(172_800L, AccountDeletion.retryAfterSeconds("Tue, 11 Sep 2001 01:46:40 GMT", at))
     }
 
     @Test
@@ -190,30 +205,51 @@ class AccountDeletionTest {
 
     @Test
     fun `an unreadable channel is told before the account goes, and the person goes on or not`() = runTest {
-        api.erases += complete("channel_unreadable:ch-1", "x")
-        assertEquals(DeletionOutcome.LeftBehind(Leftover.CHANNEL), run())
+        api.erases += complete("channel_unreadable:ch-1")
+        assertEquals(DeletionOutcome.LeftBehind(setOf(Leftover.CHANNEL)), run())
         assertTrue(calls().none { it.startsWith("account") })
-        assertEquals(Leftover.CHANNEL, records.get("u1")?.leftover)
+        assertEquals(setOf(Leftover.CHANNEL), records.get("u1")?.leftover)
         // Going on erases again, and deletes the account although the channel stays.
         api.erases += complete("channel_unreadable:ch-1")
-        assertEquals(DeletionOutcome.Deleted(Leftover.CHANNEL), run(accept = Leftover.CHANNEL))
+        assertEquals(DeletionOutcome.Deleted(setOf(Leftover.CHANNEL)), run(accept = setOf(Leftover.CHANNEL)))
         assertEquals(listOf("erase u1 -", "erase u1 -", "account u1"), calls())
     }
 
     @Test
     fun `other errors are the same choice, and nobody goes on with more than they were told`() = runTest {
+        val channel = setOf(Leftover.CHANNEL)
+        val other = setOf(Leftover.OTHER)
         api.erases += complete("backups_unbound")
-        assertEquals(DeletionOutcome.LeftBehind(Leftover.OTHER), run())
+        assertEquals(DeletionOutcome.LeftBehind(other), run())
         api.erases += complete("channel_unreadable:ch-1")
-        assertEquals(DeletionOutcome.LeftBehind(Leftover.CHANNEL), run(accept = Leftover.OTHER))
+        assertEquals(DeletionOutcome.LeftBehind(channel), run(accept = other))
+        // A channel says nothing about other records.
         api.erases += complete("backups_unbound")
-        assertEquals(DeletionOutcome.Deleted(Leftover.OTHER), run(accept = Leftover.CHANNEL))
+        assertEquals(DeletionOutcome.LeftBehind(other), run(accept = channel))
+        assertTrue(calls().none { it.startsWith("account") })
+    }
+
+    @Test
+    fun `a channel and other records are both told, and both needed to go on`() = runTest {
+        val both = setOf(Leftover.CHANNEL, Leftover.OTHER)
+        for (accepted in listOf(emptySet(), setOf(Leftover.CHANNEL), setOf(Leftover.OTHER))) {
+            api.erases += complete("backups_unbound", "channel_unreadable:ch-1")
+            assertEquals("$accepted", DeletionOutcome.LeftBehind(both), run(accept = accepted))
+            assertEquals("$accepted", both, records.get("u1")?.leftover)
+        }
+        // Also when two passes of one run reported one each.
+        api.erases += listOf(more("t1", ""","errors":["channel_unreadable:ch-1"]"""), complete("backups_unbound"))
+        assertEquals(DeletionOutcome.LeftBehind(both), run(accept = setOf(Leftover.CHANNEL)))
+        assertTrue(calls().none { it.startsWith("account") })
+        // Less than they were told is no new question.
+        api.erases += complete("backups_unbound")
+        assertEquals(DeletionOutcome.Deleted(setOf(Leftover.OTHER)), run(accept = both))
     }
 
     @Test
     fun `an error reported by an earlier pass is not forgotten by the last one`() = runTest {
         api.erases += listOf(more("t1", ""","errors":["channel_unreadable:ch-1"]"""), done)
-        assertEquals(DeletionOutcome.LeftBehind(Leftover.CHANNEL), run())
+        assertEquals(DeletionOutcome.LeftBehind(setOf(Leftover.CHANNEL)), run())
     }
 
     @Test
@@ -231,7 +267,7 @@ class AccountDeletionTest {
     @Test
     fun `a lost answer of step 2 is asked again, and stays unknown when it stays lost`() = runTest {
         api.accounts += listOf(null, gone)
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         log.clear()
         api.accounts += listOf(null, null)
         assertEquals(DeletionOutcome.Unknown, run())
@@ -246,7 +282,7 @@ class AccountDeletionTest {
     @Test
     fun `404 not_found right after the erase is deleted, any other 404 and a bare 200 are not`() = runTest {
         api.accounts += DeletionAnswer(404, """{"error":"not_found"}""")
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         for (answer in listOf(
             DeletionAnswer(404, "<html>"),
             DeletionAnswer(404, """{"error":"user_not_found"}"""),
@@ -266,7 +302,7 @@ class AccountDeletionTest {
         // With something left behind, it doesn't say that the content is gone.
         api.erases += complete("x")
         api.accounts += DeletionAnswer(401, """{"error":"insufficient_user_authentication"}""")
-        assertEquals(DeletionOutcome.NeedsSignIn(300, ErasedSoFar.SOME), run(accept = Leftover.OTHER))
+        assertEquals(DeletionOutcome.NeedsSignIn(300, ErasedSoFar.SOME), run(accept = setOf(Leftover.OTHER)))
     }
 
     @Test
@@ -277,9 +313,22 @@ class AccountDeletionTest {
     }
 
     @Test
+    fun `nothing is called or recorded while uploads can't be held, and they go on`() = runTest {
+        device.holdFails = true
+        assertEquals(DeletionOutcome.Failed(ErasedSoFar.NOTHING), run())
+        assertEquals(listOf("hold", "release"), log)
+        records.records.value = listOf(record(token = "t1"))
+        assertEquals(DeletionOutcome.Failed(ErasedSoFar.SOME), run())
+        assertEquals("t1", records.get("u1")?.resumeToken)
+        assertEquals(emptyList<String>(), calls())
+        device.holdFails = false
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
+    }
+
+    @Test
     fun `a cleanup that fails never turns success into an error and is finished at the next start`() = runTest {
         device.purgeFails = true
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         assertEquals(DeletionStage.DELETED, records.get("u1")?.stage)
         assertTrue("end" in log)
         log.clear()
@@ -299,17 +348,17 @@ class AccountDeletionTest {
 
     @Test
     fun `an account restored after a finished deletion starts from the beginning`() = runTest {
-        records.records.value = listOf(record(DeletionStage.DELETED, token = "old", leftover = Leftover.CHANNEL))
+        records.records.value = listOf(record(DeletionStage.DELETED, token = "old", leftover = setOf(Leftover.CHANNEL)))
         device.authTime = now - 400 // a new deletion has the first pass's margin
         assertEquals(DeletionOutcome.NeedsSignIn(300, ErasedSoFar.NOTHING), run())
         device.authTime = now - 10
-        assertEquals(DeletionOutcome.Deleted(null), run())
+        assertEquals(DeletionOutcome.Deleted(emptySet()), run())
         assertEquals("erase u1 -", calls().first())
     }
 
     private fun calls() = log.filter { it.startsWith("erase") || it.startsWith("account") }
 
-    private fun record(stage: DeletionStage = DeletionStage.STARTED, token: String? = null, leftover: Leftover? = null) =
+    private fun record(stage: DeletionStage = DeletionStage.STARTED, token: String? = null, leftover: Set<Leftover> = emptySet()) =
         DeletionRecord("u1", "u1@example.org", stage, token, leftover, startedAtMs = 1)
 
     private fun jwt(payload: String): String {
@@ -358,9 +407,11 @@ class AccountDeletionTest {
         var authTime = now - 10
         var tokenFor: () -> String? = { tokenOf("u1") }
         var purgeFails = false
+        var holdFails = false
         override suspend fun token(userId: String) = tokenFor()
         override suspend fun holdUploads(userId: String) {
             log += "hold"
+            check(!holdFails) { "a request is out" }
         }
         override suspend fun releaseUploads(userId: String) {
             log += "release"

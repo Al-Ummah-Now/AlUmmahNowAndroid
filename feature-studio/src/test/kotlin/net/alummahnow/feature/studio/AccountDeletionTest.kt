@@ -139,6 +139,16 @@ class AccountDeletionTest {
     }
 
     @Test
+    fun `a long wait is said in hours, never less than is left`() {
+        state = state.copy(message = R.string.studio_delete_wait, isError = true, notBeforeMs = now + 119 * 60_000)
+        dialog()
+        compose.onNodeWithTag("delete-account-wait", useUnmergedTree = true).assertTextContains("Try again in 119 minutes.")
+        state = state.copy(notBeforeMs = now + 121 * 60_000)
+        compose.waitForIdle()
+        compose.onNodeWithTag("delete-account-wait", useUnmergedTree = true).assertTextContains("Try again in 3 hours.")
+    }
+
+    @Test
     fun `at a large font, what happened is in view`() {
         RuntimeEnvironment.setFontScale(2f)
         RuntimeEnvironment.setQualifiers("en-ldltr-w411dp-h700dp-port")
@@ -325,6 +335,31 @@ class AccountDeletionTest {
         DeleteAction.DELETE_ANYWAY
     )
 
+    @Test fun leftBothEnDark() = left(Look.EN_DARK)
+
+    @Test fun leftBothArLight() = left(Look.AR_LIGHT)
+
+    @Test fun leftBothArDark200() = left(Look.AR_DARK, 2f)
+
+    private fun left(look: Look, fontScale: Float = 1f) = shootDialog("left_both", look, word(look), fontScale = fontScale) {
+        copy(message = R.string.studio_delete_left_both, action = DeleteAction.DELETE_ANYWAY)
+    }
+
+    @Test fun doneBothEnLight() = signedOut("done_both", Look.EN_LIGHT) { doneBoth() }
+
+    @Test fun doneBothArDark() = signedOut("done_both", Look.AR_DARK) { doneBoth() }
+
+    @Composable
+    private fun doneBoth() = aunString(R.string.studio_delete_done_both) + " " + aunString(R.string.studio_delete_done_purge, 30)
+
+    @Test fun waitHoursEnDark() = hours(Look.EN_DARK)
+
+    @Test fun waitHoursArLight() = hours(Look.AR_LIGHT)
+
+    private fun hours(look: Look) = shootDialog("wait_hours", look, word(look)) {
+        copy(message = R.string.studio_delete_wait, isError = true, notBeforeMs = now + 24 * 3_600_000)
+    }
+
     @Test fun waitEnLight() = shootDialog("wait", Look.EN_LIGHT, "DELETE") {
         copy(message = R.string.studio_delete_wait, isError = true, notBeforeMs = now + 300_000)
     }
@@ -349,7 +384,11 @@ class AccountDeletionTest {
     @Test fun bannerArDark200() = banner(Look.AR_DARK, started, fontScale = 2f)
 
     @Test fun bannerChannelEnLight() =
-        banner(Look.EN_LIGHT, started.copy(stage = DeletionStage.CONTENT_ERASED, leftover = Leftover.CHANNEL), name = "banner_channel")
+        banner(
+            Look.EN_LIGHT,
+            started.copy(stage = DeletionStage.CONTENT_ERASED, leftover = setOf(Leftover.CHANNEL)),
+            name = "banner_channel"
+        )
 
     @Test fun sheetEnDark() = shoot("sheet", Look.EN_DARK) { Sheet(emptySet()) }
 

@@ -200,6 +200,7 @@
     <string name="studio_delete_other_account">الحساب المسجّل دخوله ليس الحساب الذي أكّدت حذفه، فتوقف الحذف.</string>
     <string name="studio_delete_left_channel">مُحي محتواك في المرئيات، ما عدا قناة لم نتمكن من إزالتها، وتبقى حتى يزيلها فريقنا، وقد أُبلغ بها. حسابك ما زال موجودًا: احذفه الآن، أو ألغِ وحاول لاحقًا.</string>
     <string name="studio_delete_left_other">مُحي محتواك في المرئيات، ما عدا بعض السجلات التي لم نتمكن من إزالتها تلقائيًا. حسابك ما زال موجودًا: احذفه الآن، أو ألغِ وحاول لاحقًا.</string>
+    <string name="studio_delete_left_both">مُحي محتواك في المرئيات، ما عدا قناة وبعض السجلات التي لم نتمكن من إزالتها. تبقى القناة حتى يزيلها فريقنا، وقد أُبلغ بها. حسابك ما زال موجودًا: احذفه الآن، أو ألغِ وحاول لاحقًا.</string>
     <string name="studio_delete_wait">اضطررنا إلى التوقف مؤقتًا. ربما أُزيل بعض محتواك، وحسابك ما زال موجودًا.</string>
     <string name="studio_delete_busy_nothing">الخدمة مشغولة الآن، ولم تُزِل هذه المحاولة شيئًا.</string>
     <string name="studio_delete_stopped">توقف الحذف. ربما أُزيل بعض محتواك، وحسابك ما زال موجودًا. أكّد مرة أخرى للمتابعة.</string>
@@ -217,6 +218,7 @@
     <string name="studio_delete_done">مُحي محتواك في المرئيات وحُذف حسابك في الأمة الآن، وسُجّل خروجك من جميع التطبيقات.</string>
     <string name="studio_delete_done_channel">حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا قناة لم نتمكن من إزالتها، وتبقى حتى يزيلها فريقنا، وقد أُبلغ بها.</string>
     <string name="studio_delete_done_other">حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا بعض السجلات التي لم نتمكن من إزالتها تلقائيًا.</string>
+    <string name="studio_delete_done_both">حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا قناة وبعض السجلات التي لم نتمكن من إزالتها. تبقى القناة حتى يزيلها فريقنا، وقد أُبلغ بها.</string>
     <string name="studio_delete_done_purge">يُزال سجل تسجيل الدخول المحذوف نهائيًا خلال %1$d يومًا، وقد تبقى نسخ مخزّنة من ملفات المرئيات والصور.</string>
     <plurals name="studio_delete_channels_count">
         <item quantity="zero">لا تملك أي قناة.</item>
@@ -233,5 +235,13 @@
         <item quantity="few">حاول مرة أخرى بعد %1$d دقائق.</item>
         <item quantity="many">حاول مرة أخرى بعد %1$d دقيقة.</item>
         <item quantity="other">حاول مرة أخرى بعد %1$d دقيقة.</item>
+    </plurals>
+    <plurals name="studio_delete_wait_hours">
+        <item quantity="zero">حاول مرة أخرى الآن.</item>
+        <item quantity="one">حاول مرة أخرى بعد ساعة.</item>
+        <item quantity="two">حاول مرة أخرى بعد ساعتين.</item>
+        <item quantity="few">حاول مرة أخرى بعد %1$d ساعات.</item>
+        <item quantity="many">حاول مرة أخرى بعد %1$d ساعة.</item>
+        <item quantity="other">حاول مرة أخرى بعد %1$d ساعة.</item>
     </plurals>
 </resources>

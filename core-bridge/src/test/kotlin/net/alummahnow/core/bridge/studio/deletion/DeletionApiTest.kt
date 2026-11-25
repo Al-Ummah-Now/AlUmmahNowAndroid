@@ -71,11 +71,21 @@ class DeletionApiTest {
         val storage = Storage()
         val first = SecureDeletionRecords(storage)
         first.put(DeletionRecord("u1", "a@example.org", resumeToken = "t", startedAtMs = 5))
-        first.put(DeletionRecord("u2", "b@example.org", DeletionStage.CONTENT_ERASED, leftover = Leftover.CHANNEL))
+        first.put(
+            DeletionRecord(
+                "u2",
+                "b@example.org",
+                DeletionStage.CONTENT_ERASED,
+                leftover = Leftover.entries.toSet(),
+                notBeforeMs = 86_400_000_000
+            )
+        )
         first.put(DeletionRecord("u1", "a@example.org", resumeToken = "t2", startedAtMs = 5))
         val next = SecureDeletionRecords(storage)
         assertEquals(listOf("u2", "u1"), next.records.value.map { it.userId })
         assertEquals("t2", next.get("u1")?.resumeToken)
+        assertEquals(setOf(Leftover.CHANNEL, Leftover.OTHER), next.get("u2")?.leftover)
+        assertEquals(86_400_000_000, next.get("u2")?.notBeforeMs)
         next.remove("u2")
         assertEquals(listOf("u1"), SecureDeletionRecords(storage).records.value.map { it.userId })
         storage.broken = true

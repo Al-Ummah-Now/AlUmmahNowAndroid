@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import net.alummahnow.core.ApiClient
@@ -53,7 +54,8 @@ class CoreUploadQueue(
     private val repository: () -> StudioRepository,
     /** Starts the background worker. */
     private val onWorkNeeded: () -> Unit,
-    newEngine: ((userId: String, dir: File) -> UploadEngineInterface)? = null
+    newEngine: ((userId: String, dir: File) -> UploadEngineInterface)? = null,
+    private val holdTimeoutMs: Long = HOLD_TIMEOUT_MS
 ) : UploadQueue {
     private val app = context.applicationContext
     private val newEngine = newEngine ?: { userId, dir ->
@@ -70,6 +72,9 @@ class CoreUploadQueue(
 
     /** Accounts whose uploads wait, and what was paused for it. */
     private val held = mutableMapOf<String, MutableSet<String>>()
+
+    /** Held while a finished upload's settings are applied. */
+    private val settling = Mutex()
     private val json = J.json
 
     private val mutableItems = MutableStateFlow<List<UploadItem>>(emptyList())
@@ -212,7 +217,9 @@ class CoreUploadQueue(
                 // Purged while it was copied: nothing of it is written back.
                 val gone = isPurged(next.userId)
                 val followUps = result.getOrNull()?.takeUnless { gone }?.let { s.followUps + it } ?: s.followUps
-                save(s.copy(pending = s.pending.filterNot { it.localId == next.localId }, followUps = followUps))
+                val waits = result.isSuccess && result.getOrNull() == null && !gone
+                val pending = if (waits) s.pending else s.pending.filterNot { it.localId == next.localId }
+                save(s.copy(pending = pending, followUps = followUps))
                 gone
             }
             if (purged) {
@@ -223,7 +230,8 @@ class CoreUploadQueue(
         }
     }
 
-    private fun stage(p: Pending): FollowUp {
+    /** Null when its account's uploads are held: then nothing of it was handed on. */
+    private fun stage(p: Pending): FollowUp? {
         val ext = p.fileName.substringAfterLast('.', "").takeIf { it.length in 1..MAX_EXT }?.let { ".$it" } ?: ".mp4"
         val target = File(staged, p.localId + ext)
         val uri = Uri.parse(p.source)
@@ -237,34 +245,34 @@ class CoreUploadQueue(
             } else {
                 File(uri.path ?: p.source).copyTo(target, overwrite = true)
             }
-            engine(p.userId).enqueue(
-                UploadRequest(
-                    filePath = target.absolutePath,
-                    title = p.title,
-                    description = p.description.ifBlank { null },
-                    mimeType = p.mimeType,
-                    channelId = p.channelId,
-                    isPublic = p.isPublic,
-                    tags = p.tags.joinToString(",").ifBlank { null },
-                    category = p.category,
-                    titleLocalized = emptyMap(),
-                    descriptionLocalized = emptyMap(),
-                    priority = 0
-                )
-            ).also { queued = true }
+            val request = UploadRequest(
+                filePath = target.absolutePath,
+                title = p.title,
+                description = p.description.ifBlank { null },
+                mimeType = p.mimeType,
+                channelId = p.channelId,
+                isPublic = p.isPublic,
+                tags = p.tags.joinToString(",").ifBlank { null },
+                category = p.category,
+                titleLocalized = emptyMap(),
+                descriptionLocalized = emptyMap(),
+                priority = 0
+            )
+            // Held while it was copied: it stays in the queue, and is copied again afterwards.
+            synchronized(held) { if (p.userId in held) null else engine(p.userId).enqueue(request) }.also { queued = it != null }
         } catch (e: AunException) {
             throw mapCoreError(e)
         } finally {
             // Whatever stopped it (no space, a purge, a refused file), no copy is left that nothing will send.
             if (!queued) target.delete()
         }
-        return FollowUp(id, target.absolutePath, p)
+        return id?.let { FollowUp(it, target.absolutePath, p) }
     }
 
     private suspend fun applyFollowUps() {
         val todo = mutex.withLock { load().followUps }.filterNot { it.applied }
         for (f in todo) {
-            if (settle(f)) {
+            if (settling.withLock { !isHeld(f.draft.userId) && settle(f) }) {
                 mutex.withLock {
                     val s = load()
                     save(s.copy(followUps = s.followUps.map { if (it.uploadId == f.uploadId) it.copy(applied = true) else it }))
@@ -279,9 +287,11 @@ class CoreUploadQueue(
             File(f.stagedPath).delete()
             return true
         }
-        val info = runCatching { engine(f.draft.userId).get(f.uploadId) }.getOrNull()
+        // Not known is not ended: its staged file is still needed.
+        val known = runCatching { engine(f.draft.userId).get(f.uploadId) }
+        val info = known.getOrNull()
         val state = info?.state
-        if (state != null && state !in ENDED) return false
+        if (known.isFailure || (state != null && state !in ENDED)) return false
         File(f.stagedPath).delete()
         val videoId = info?.videoId
         if (state != UploadState.DONE || videoId == null) return true
@@ -322,15 +332,13 @@ class CoreUploadQueue(
         refresh()
     }
 
-    override fun pause(id: String) = withEngine { pause(id) }
-    override fun resume(id: String) {
-        withEngine { resume(id) }
-        onWorkNeeded()
+    override fun pause(id: String) {
+        activeUserId()?.let { user -> synchronized(held) { held[user]?.remove(id) } }
+        withEngine { pause(id) }
     }
-    override fun retry(id: String) {
-        withEngine { retry(id) }
-        onWorkNeeded()
-    }
+
+    override fun resume(id: String) = startAgain(id)
+    override fun retry(id: String) = startAgain(id)
 
     override suspend fun cancel(id: String) {
         val userId = activeUserId() ?: return
@@ -360,23 +368,68 @@ class CoreUploadQueue(
     }
 
     override suspend fun holdUploads(userId: String) {
-        val paused = mutableSetOf<String>()
-        synchronized(held) { held[userId] = paused }
-        withContext(Dispatchers.IO) {
-            val engine = runCatching { engine(userId) }.getOrNull() ?: return@withContext
-            engine.list().filter { it.state in RUNNING }.forEach { info ->
-                runCatching { engine.pause(info.id) }.onSuccess { synchronized(held) { paused += info.id } }
+        // From here on nothing new reaches the engine: [stage], [resume] and [retry] look under the same lock.
+        synchronized(held) { held.getOrPut(userId) { mutableSetOf() } }
+        // Purged: nothing of it is there, and nothing of it starts.
+        if (isPurged(userId)) return
+        val quiet = withContext(Dispatchers.IO) {
+            withTimeoutOrNull(holdTimeoutMs) {
+                // A finished upload's settings that are being applied are waited for.
+                settling.withLock { }
+                var engine = engine(userId)
+                do {
+                    val running = engine.list().filter { it.state in RUNNING }
+                    running.forEach { info ->
+                        synchronized(held) { held[userId]?.add(info.id) }
+                        engine.pause(info.id)
+                    }
+                    // A paused upload's request may still be out, and its answer may start it again.
+                    engine = reopen(userId, engine)
+                    val again = engine.list().any { it.state in RUNNING }
+                    if (again) delay(HOLD_POLL_MS)
+                } while (again)
+                true
             }
         }
         refresh()
+        // Not a cancellation: the caller is told.
+        checkNotNull(quiet) { "uploads still under way" }
+    }
+
+    /** Replaces [userId]'s engine. Its store can only be opened again when the last request of the old one has ended. */
+    private suspend fun reopen(userId: String, old: UploadEngineInterface): UploadEngineInterface {
+        synchronized(engines) {
+            engines.remove(userId)
+            old.shutdown()
+        }
+        while (true) {
+            val opened = runCatching { engine(userId) }
+            opened.getOrNull()?.let { return it }
+            if (isPurged(userId)) throw CoreError.NotSignedIn()
+            AunLog.i("upload", "waiting for a request to end", "type" to opened.exceptionOrNull()?.javaClass?.simpleName)
+            delay(HOLD_POLL_MS)
+        }
     }
 
     override suspend fun releaseUploads(userId: String) {
         val paused = synchronized(held) { held.remove(userId) } ?: return
         withContext(Dispatchers.IO) {
-            runCatching { engine(userId) }.getOrNull()?.let { engine -> paused.forEach { id -> runCatching { engine.resume(id) } } }
+            runCatching { engine(userId) }.getOrNull()?.let { engine ->
+                paused.forEach { id -> runCatching { engine.goOn(id) } }
+            }
         }
         refresh()
+        onWorkNeeded()
+    }
+
+    private fun UploadEngineInterface.goOn(id: String) = if (get(id)?.state == UploadState.FAILED) retry(id) else resume(id)
+
+    /** Starts [id] again, or later when its account's uploads are held. */
+    private fun startAgain(id: String) {
+        val userId = activeUserId() ?: return
+        synchronized(held) {
+            held[userId]?.add(id) ?: withEngine { goOn(id) }
+        }
         onWorkNeeded()
     }
 
@@ -421,6 +474,10 @@ class CoreUploadQueue(
 
     private companion object {
         const val POLL_MS = 1_000L
+
+        /** Longer than a request may take, shorter than anyone waits for a button. */
+        const val HOLD_TIMEOUT_MS = 60_000L
+        const val HOLD_POLL_MS = 200L
         const val BATCH_ID_LENGTH = 12
         const val MAX_EXT = 5
         const val COPY_BUFFER = 1 shl 20
