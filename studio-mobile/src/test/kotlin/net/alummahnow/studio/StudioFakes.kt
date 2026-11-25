@@ -101,7 +101,13 @@ class FakeUploadQueue(private val session: FakeSession) : UploadQueue {
     val byUser = mutableMapOf<String, List<UploadItem>>()
     override val items = MutableStateFlow<List<UploadItem>>(emptyList())
     val retried = mutableListOf<String>()
-    override fun refresh(): List<UploadItem> = byUser[session.active.value?.userId].orEmpty().also { items.value = it }
+
+    /** While set, a refresh waits: the list of the account before is still there. */
+    var refreshWaits: java.util.concurrent.CountDownLatch? = null
+    override fun refresh(): List<UploadItem> {
+        refreshWaits?.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        return byUser[session.active.value?.userId].orEmpty().also { items.value = it }
+    }
     override suspend fun enqueue(drafts: List<UploadDraft>) = Unit
     override fun pause(id: String) = Unit
     override fun resume(id: String) = Unit
