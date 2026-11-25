@@ -76,13 +76,15 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
         val current = viewModelScope.launch {
             val access = async { attempt("studio", "creator access") { repository.creatorAccess() }.getOrNull() }
             val counts = async { section("counts") { repository.counts(channelId) } }
+            val processing = async { attempt("studio", "processing") { list(ContentStatus.PROCESSING) } }
+            val published = async { attempt("studio", "published") { list(ContentStatus.PUBLISHED) } }
             val recent = async {
                 section("recent") {
                     // A video that waits for review, or was turned down, is a recent upload too.
                     val reviewed = (counts.await() as? DashboardSection.Ready)?.value
                     val held = if ((reviewed?.inReview ?: 0) > 0) list(ContentStatus.IN_REVIEW) else emptyList()
                     val rejected = if ((reviewed?.notApproved ?: 0) > 0) list(ContentStatus.NOT_APPROVED) else emptyList()
-                    (list(ContentStatus.PROCESSING) + held + rejected + list(ContentStatus.PUBLISHED))
+                    (processing.await().getOrThrow() + held + rejected + published.await().getOrThrow())
                         .sortedByDescending { it.createdAt.orEmpty() }
                         .take(SECTION_SIZE)
                 }

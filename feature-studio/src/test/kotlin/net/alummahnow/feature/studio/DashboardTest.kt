@@ -1,14 +1,20 @@
 package net.alummahnow.feature.studio
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -79,6 +85,30 @@ class DashboardTest {
         val vm = DashboardViewModel(repo, "c1")
         advanceUntilIdle()
         assertEquals(listOf("r1", "n1", "p1"), (content(vm).recent as DashboardSection.Ready).value.take(3).map { it.id })
+    }
+
+    @Test
+    fun `the recent lists don't wait for the counts`() = runTest(dispatcher) {
+        val repo = repoWithEverything().apply { countsGate = CompletableDeferred() }
+        DashboardViewModel(repo, "c1")
+        advanceUntilIdle()
+        assertTrue(repo.queries.map { it.status }.containsAll(listOf(ContentStatus.PROCESSING, ContentStatus.PUBLISHED)))
+    }
+
+    @Test
+    fun `the counts have In review and Not approved only with a video in them`() {
+        RuntimeEnvironment.setQualifiers("en-ldltr-w1280dp-h800dp-land")
+        var state by mutableStateOf(full(canUpload = true))
+        compose.setContent { AunTheme { DashboardScreen(state, {}) } }
+        compose.onNodeWithText("In review").assertDoesNotExist()
+        compose.onNodeWithText("Not approved").assertDoesNotExist()
+        state = state.copy(counts = BrandChannel.counts.copy(inReview = 2, notApproved = 1))
+        compose.waitForIdle()
+        compose.onNodeWithText("In review").assertIsDisplayed()
+        compose.onNodeWithText("Not approved").assertIsDisplayed()
+        val top = { label: String -> compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top }
+        assertEquals(top("In review"), top("Failed"))
+        assertTrue(top("In review") > top("Processing")) // four and three, not five and two
     }
 
     @Test
@@ -245,6 +275,16 @@ class DashboardTest {
     @Test fun dashboardSectionsEnDark() = shoot("dashboard_sections", Lang.EN, ThemeMode.DARK, content = on)
 
     @Test fun dashboardSectionsArLight() = shoot("dashboard_sections", Lang.AR, ThemeMode.LIGHT, content = on)
+
+    private val reviewed = @androidx.compose.runtime.Composable {
+        DashboardScreen(full(canUpload = true).copy(counts = BrandChannel.counts.copy(inReview = 2, notApproved = 1)), {})
+    }
+
+    @Test fun dashboardReviewEnLight() = shoot("dashboard_review", Lang.EN, ThemeMode.LIGHT, content = reviewed)
+
+    @Test fun dashboardReviewArDark() = shoot("dashboard_review", Lang.AR, ThemeMode.DARK, content = reviewed)
+
+    @Test fun dashboardReviewTabletArLight() = shoot("dashboard_review", Lang.AR, ThemeMode.LIGHT, Device.TABLET, reviewed)
 
     @Test fun dashboardSectionsNoUploadEnLight() = shoot("dashboard_sections_no_upload", Lang.EN, ThemeMode.LIGHT, content = off)
 

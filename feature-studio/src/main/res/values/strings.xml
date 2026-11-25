@@ -215,10 +215,14 @@
     <string name="studio_review_resubmit">Check again after editing</string>
     <string name="studio_review_resubmitted">Sent for checking again.</string>
     <string name="studio_review_resubmit_failed">Could not send it for checking. Try again.</string>
+    <string name="studio_review_changed">This video\'s review has moved on. Here is the latest.</string>
+    <string name="studio_review_appeal_cd">Appeal: %1$s</string>
+    <string name="studio_review_resubmit_cd">Check again after editing: %1$s</string>
     <string name="studio_appeal_title">Appeal this decision</string>
     <string name="studio_appeal_body">A different reviewer will look at the video again. You can appeal once.</string>
     <string name="studio_appeal_label">Why should it be approved?</string>
     <string name="studio_appeal_send">Send appeal</string>
+    <string name="studio_appeal_sending">Sending…</string>
     <string name="studio_appeal_sent">Appeal sent. A different reviewer will check it.</string>
     <string name="studio_appeal_failed">Could not send the appeal. Try again.</string>
     <string name="studio_review_reason_sexual">sexual or indecent content</string>

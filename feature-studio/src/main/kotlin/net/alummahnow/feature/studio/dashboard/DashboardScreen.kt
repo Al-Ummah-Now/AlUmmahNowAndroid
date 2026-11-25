@@ -150,21 +150,25 @@ private fun Counts(c: ContentCounts, columns: Int) {
         color = LocalFanous.current.colors.textPrimary.color,
         modifier = Modifier.semantics { heading() }
     )
-    val tiles = listOf(
+    // In review and Not approved only with a video in them, as Content's tabs.
+    val tiles = listOfNotNull(
         stringResource(R.string.studio_status_published) to c.published,
         stringResource(R.string.studio_status_scheduled) to c.scheduled,
         stringResource(R.string.studio_status_drafts) to c.drafts,
         stringResource(R.string.studio_status_processing) to c.processing,
+        (stringResource(R.string.studio_status_in_review) to c.inReview).takeIf { c.inReview > 0 },
+        (stringResource(R.string.studio_status_not_approved) to c.notApproved).takeIf { c.notApproved > 0 },
         stringResource(R.string.studio_status_failed) to c.failed
     )
-    // Equal tiles in rows that fill the width: five across on tablets, three or two on phones.
-    tiles.chunked(columns).forEachIndexed { row, chunk ->
+    // Equal tiles in rows that fill the width: five across on tablets (more make two even rows), three or two on phones.
+    val across = if (columns < STATUSES || tiles.size <= STATUSES) columns else (tiles.size + 1) / 2
+    tiles.chunked(across).forEachIndexed { row, chunk ->
         Row(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)) {
             chunk.forEachIndexed { i, (label, value) ->
-                val failed = row * columns + i == tiles.lastIndex
+                val failed = row * across + i == tiles.lastIndex
                 StatTile(label, value, Modifier.weight(1f), alert = failed && value.toLong() > 0)
             }
-            repeat(columns - chunk.size) { Spacer(Modifier.weight(1f)) }
+            repeat(across - chunk.size) { Spacer(Modifier.weight(1f)) }
         }
     }
 }

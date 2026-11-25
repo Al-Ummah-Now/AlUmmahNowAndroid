@@ -95,22 +95,24 @@ internal fun ReviewActions(v: StudioVideo, enabled: Boolean, actions: ContentAct
         horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm, Alignment.End),
         verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xs)
     ) {
-        val resubmit = stringResource(R.string.studio_review_resubmit)
-        val appeal = stringResource(R.string.studio_review_appeal)
+        val appealLabel = aunString(R.string.studio_review_appeal_cd, title)
+        val resubmitLabel = aunString(R.string.studio_review_resubmit_cd, title)
         if (v.review?.appealUsed != true) {
             FanousButton(
-                appeal,
+                stringResource(R.string.studio_review_appeal),
                 { actions.onAppeal(v.id) },
                 kind = FanousButtonKind.Ghost,
                 enabled = enabled,
-                modifier = Modifier.testTag("appeal-${v.id}").semantics { contentDescription = "$appeal $title" }
+                wrap = true,
+                modifier = Modifier.testTag("appeal-${v.id}").semantics { contentDescription = appealLabel }
             )
         }
         FanousButton(
-            resubmit,
+            stringResource(R.string.studio_review_resubmit),
             { actions.onResubmit(v.id) },
             enabled = enabled,
-            modifier = Modifier.testTag("resubmit-${v.id}").semantics { contentDescription = "$resubmit $title" }
+            wrap = true,
+            modifier = Modifier.testTag("resubmit-${v.id}").semantics { contentDescription = resubmitLabel }
         )
     }
 }
@@ -173,7 +175,12 @@ internal fun AppealDialog(state: AppealState, onSend: (String) -> Unit, onClose:
                 enabled = text.isNotBlank() && !state.sending,
                 colors = ButtonDefaults.textButtonColors(disabledContentColor = disabled),
                 modifier = Modifier.testTag("appeal-send")
-            ) { Text(stringResource(R.string.studio_appeal_send)) }
+            ) {
+                Text(
+                    stringResource(if (state.sending) R.string.studio_appeal_sending else R.string.studio_appeal_send),
+                    modifier = if (state.sending) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier
+                )
+            }
         }
     )
 }

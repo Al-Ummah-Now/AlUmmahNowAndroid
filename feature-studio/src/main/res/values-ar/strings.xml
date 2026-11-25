@@ -255,10 +255,14 @@
     <string name="studio_review_resubmit">المراجعة مرة أخرى بعد التعديل</string>
     <string name="studio_review_resubmitted">أُرسل للمراجعة مرة أخرى.</string>
     <string name="studio_review_resubmit_failed">تعذّر إرساله للمراجعة. حاول مرة أخرى.</string>
+    <string name="studio_review_changed">تغيّرت حالة مراجعة هذا المرئي. هذه أحدث حالة.</string>
+    <string name="studio_review_appeal_cd">اعتراض: %1$s</string>
+    <string name="studio_review_resubmit_cd">المراجعة مرة أخرى بعد التعديل: %1$s</string>
     <string name="studio_appeal_title">الاعتراض على هذا القرار</string>
     <string name="studio_appeal_body">سيراجع مراجع آخر المرئي مرة أخرى. يمكنك الاعتراض مرة واحدة.</string>
     <string name="studio_appeal_label">لماذا يجب الموافقة عليه؟</string>
     <string name="studio_appeal_send">إرسال الاعتراض</string>
+    <string name="studio_appeal_sending">جارٍ الإرسال…</string>
     <string name="studio_appeal_sent">أُرسل الاعتراض. سيراجعه مراجع آخر.</string>
     <string name="studio_appeal_failed">تعذّر إرسال الاعتراض. حاول مرة أخرى.</string>
     <string name="studio_review_reason_sexual">محتوى جنسي أو غير لائق</string>
