@@ -1,6 +1,7 @@
 package net.alummahnow.viewer
 
 import android.content.ComponentName
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import net.alummahnow.core.bridge.catalog.TemporaryCatalogRepository
 import net.alummahnow.design.components.VIDEO_CARD_TAG
 import net.alummahnow.player.AunPlaybackService
 import org.junit.Assert.assertEquals
@@ -34,7 +36,14 @@ class ViewerFlowTest {
     @Test
     fun homeLoadsAndVideoPlays() {
         val trending = compose.activity.getString(net.alummahnow.design.R.string.aun_rail_trending)
-        compose.waitUntil(30_000) { compose.onAllNodesWithText(trending).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            compose.waitUntil(30_000) { compose.onAllNodesWithText(trending).fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: ComposeTimeoutException) {
+            // Is it the app or the server: ask again for what Home shows.
+            val rails = runCatching { runBlocking { TemporaryCatalogRepository(BuildConfig.API_BASE_URL).homeRails() } }
+                .fold({ rails -> rails.joinToString(prefix = "rails: [", postfix = "]") { "${it.kind} ${it.videos.size}" } }, { "$it" })
+            throw AssertionError("Home has no Trending rail; the server says: $rails", e)
+        }
 
         // First card of the first rail, found by tag so the test works in Arabic and English.
         val cards = compose.onAllNodesWithTag(VIDEO_CARD_TAG)
