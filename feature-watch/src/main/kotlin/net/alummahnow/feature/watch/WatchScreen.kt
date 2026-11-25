@@ -1,5 +1,6 @@
 package net.alummahnow.feature.watch
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -341,7 +342,12 @@ private fun WatchSafetyMenu(video: VideoDetail, safety: WatchSafetyActions) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+            // The card under it can have the same colour: the edge tells them apart.
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        ) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.watch_report_video)) },
                 onClick = {

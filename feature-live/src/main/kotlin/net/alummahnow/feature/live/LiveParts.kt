@@ -1,5 +1,6 @@
 package net.alummahnow.feature.live
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -275,7 +276,12 @@ internal fun LiveDetails(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                        // The card under it can have the same colour: the edge tells them apart.
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    ) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.live_report_stream)) },
                             onClick = {
@@ -415,7 +421,12 @@ private fun Message(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                    // The card under it can have the same colour: the edge tells them apart.
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                ) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.live_report_message)) },
                         onClick = {
