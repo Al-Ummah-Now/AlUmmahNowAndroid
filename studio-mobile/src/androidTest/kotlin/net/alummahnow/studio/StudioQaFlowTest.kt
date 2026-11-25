@@ -3,6 +3,7 @@ package net.alummahnow.studio
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -10,7 +11,6 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,10 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.studio.ContentQuery
+import net.alummahnow.core.bridge.studio.ContentStatus
+import net.alummahnow.core.bridge.studio.StudioError
 import net.alummahnow.core.bridge.studio.UploadDraft
 import net.alummahnow.core.bridge.studio.UploadPhase
 import net.alummahnow.core.bridge.studio.Visibility
@@ -71,8 +75,25 @@ class StudioQaFlowTest {
             if (access.termsAccepted == false) access.termsVersion?.let { app.container.repository.acceptCreatorTerms(it) }
         }
 
-        // Upload: a 3-second clip, private, with a unique title, through the real queue + worker.
         val title = "android-qa-${System.currentTimeMillis()}"
+        try {
+            uploadEditAndDelete(channel, title)
+        } catch (failure: Throwable) {
+            removeLeftovers(channel, title, failure)
+            throw failure
+        }
+
+        // Sign out (revokes the refresh token, opens the auth logout page in the browser).
+        compose.onNodeWithTag("account-button").performClick()
+        val user = app.container.session.active.value!!.userId
+        compose.onNodeWithTag("sign-out-$user").performClick()
+        compose.onNodeWithTag("confirm-ok").performClick()
+        compose.waitUntil(LIST_TIMEOUT_MS) { app.container.session.accounts.value.none { it.userId == user } }
+        device.pressBack()
+    }
+
+    private fun uploadEditAndDelete(channel: String, title: String) {
+        // Upload: a 3-second clip, private, with a unique title, through the real queue + worker.
         val clip = copyAsset(compose.activity, "qa-test-clip.mp4")
         runBlocking {
             app.container.uploads.enqueue(
@@ -100,7 +121,7 @@ class StudioQaFlowTest {
         compose.onNodeWithTag("tab-content").performClick()
         compose.onNodeWithTag("content-search").performTextInput(title)
         // A fresh upload is under Processing until the server finishes, then Published.
-        findInAnyTab(videoId)
+        findInAnyTab(videoId, channel, title)
         compose.onNodeWithTag("video-$videoId").performTouchInput { longClick() }
         compose.onNodeWithTag("bulk-edit").performClick()
         compose.onNodeWithTag("bulk-add-tags").performTextInput("qa-bulk")
@@ -110,43 +131,81 @@ class StudioQaFlowTest {
         // Delete through the UI (asks first), restore it from Recently deleted, then delete it for good.
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("selection-bar").fetchSemanticsNodes().isEmpty() }
         deleteFromList(videoId)
-        compose.onNodeWithTag("status-deleted").performScrollTo().performClick()
+        openTab("status-deleted")
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("video-$videoId").performClick() // selects in this tab
         compose.onNodeWithTag("bulk-restore").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isEmpty() }
         assertEquals(title, runBlocking { app.container.repository.video(videoId) }.title)
 
-        compose.onNodeWithTag("status-processing").performScrollTo().performClick()
-        findInAnyTab(videoId)
+        openTab("status-processing")
+        findInAnyTab(videoId, channel, title)
         deleteFromList(videoId)
-        compose.onNodeWithTag("status-deleted").performScrollTo().performClick()
+        openTab("status-deleted")
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("forever-$videoId").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("forever-$videoId").performClick()
         compose.onNodeWithTag("confirm-ok").performClick()
         compose.waitUntil(LIST_TIMEOUT_MS) { compose.onAllNodesWithTag("video-$videoId").fetchSemanticsNodes().isEmpty() }
-
-        // Sign out (revokes the refresh token, opens the auth logout page in the browser).
-        compose.onNodeWithTag("account-button").performClick()
-        val user = app.container.session.active.value!!.userId
-        compose.onNodeWithTag("sign-out-$user").performClick()
-        compose.onNodeWithTag("confirm-ok").performClick()
-        compose.waitUntil(LIST_TIMEOUT_MS) { app.container.session.accounts.value.none { it.userId == user } }
-        device.pressBack()
     }
+
+    /** A failed run leaves nothing on QA: what it uploaded is deleted for good, whatever tab it is (or isn't) in. */
+    private fun removeLeftovers(channel: String, title: String, failure: Throwable) {
+        val repository = app.container.repository
+        runCatching {
+            runBlocking {
+                val queued = app.container.uploads.items.value.filter { it.title == title }
+                queued.filterNot { it.isFinished }.forEach { app.container.uploads.cancel(it.id) }
+                val found = ContentStatus.entries.flatMap { status ->
+                    runCatching { repository.content(ContentQuery(channel, status, title)).items }.getOrDefault(emptyList())
+                }.filter { it.title == title }.map { it.id }
+                (queued.mapNotNull { it.videoId } + found).distinct().forEach { id ->
+                    // Already in Recently deleted is fine: only the second step has to succeed.
+                    runCatching { repository.delete(listOf(id), channel) }
+                    // Not there any more is what it is for.
+                    runCatching { repository.deletePermanently(id, channel) }
+                        .onFailure { if (it !is CoreError.NotFound && it !is StudioError.NotSupported) throw it }
+                }
+            }
+        }.onFailure { failure.addSuppressed(AssertionError("left on QA: $title", it)) }
+    }
+
+    /** What the server says about the video, for a list that does not show it: is it the app or the server? */
+    private fun serverSays(videoId: String, channel: String, title: String): String = runBlocking {
+        val repository = app.container.repository
+        val record = runCatching { repository.video(videoId) }.fold({ "status=${it.status} public=${it.isPublic}" }, { "$it" })
+        val lists = (ContentStatus.entries - ContentStatus.DELETED).map { status ->
+            val named = runCatching { repository.content(ContentQuery(channel, status, title)).items }
+            val all = runCatching { repository.content(ContentQuery(channel, status)).items }
+            "${status.apiValue}: ${size(named)} with the title, ${size(all)} on the first page"
+        }.joinToString()
+        val counts = runCatching { repository.counts(channel) }.fold({ "$it" }, { "$it" })
+        "video by id: $record; lists: $lists; counts: $counts"
+    }
+
+    private fun size(answer: Result<List<*>>): String = answer.fold({ "${it.size}" }, { "$it" })
 
     /** Waits until the video shows in one of the live tabs. Where it shows depends on the server's
      *  processing (Processing, then Published; Failed if the clip could not be processed). */
-    private fun findInAnyTab(videoId: String) {
+    private fun findInAnyTab(videoId: String, channel: String, title: String) {
         var i = 0
-        compose.waitUntil(UPLOAD_TIMEOUT_MS) {
-            val found = has("video-$videoId")
-            if (!found) {
-                runCatching { compose.onNodeWithTag(LIVE_TABS[i++ % LIVE_TABS.size]).performScrollTo().performClick() }
-                Thread.sleep(TAB_SWITCH_MS)
+        try {
+            compose.waitUntil(UPLOAD_TIMEOUT_MS) {
+                val found = has("video-$videoId")
+                if (!found) {
+                    openTab(LIVE_TABS[i++ % LIVE_TABS.size])
+                    Thread.sleep(TAB_SWITCH_MS)
+                }
+                found
             }
-            found
+        } catch (e: ComposeTimeoutException) {
+            throw AssertionError("the new video is in no tab; the server says: ${serverSays(videoId, channel, title)}", e)
         }
+    }
+
+    /** Taps a status tab; one that doesn't fit the row is in its More menu. A tab that isn't there fails the test. */
+    private fun openTab(tag: String) {
+        if (!has(tag)) compose.onNodeWithTag("status-more").performClick()
+        compose.onNodeWithTag(tag).performClick()
     }
 
     private fun deleteFromList(videoId: String) {

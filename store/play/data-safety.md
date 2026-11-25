@@ -1,6 +1,6 @@
 # Play data safety answers
 
-Drawn from what the code really sends off the device (audited 2026-11-14). The machine-readable copy is
+Drawn from what the code really sends off the device (audited 2026-11-25). The machine-readable copy is
 [`data-safety.csv`](data-safety.csv): one row per data type, with the source file for each answer.
 `./gradlew checkStoreListings` fails if a cited source file disappears, so a refactor flags this page for review.
 
@@ -13,7 +13,7 @@ question ids, which change; fill the form from the tables below (about five minu
 |---|---|---|
 | Does your app collect or share any of the required user data types? | TV: **No**. Viewer, Studio and Admin: **Yes** | tables below |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** | every base URL is `https://` (`build-logic/convention/src/main/kotlin/AndroidApplicationConventionPlugin.kt`); Admin traffic refuses plain HTTP on every hop (`core-bridge/.../admin/PrivateHttp.kt`) |
-| Do you provide a way for users to request that their data is deleted? | **Yes**: `https://profile.auth.alummahnow.net/delete-account` (AlUmmahNowAuth#532) and, in Studio, Account sheet → Delete account (`DELETE /api/privacy/data`, then `DELETE /account`, #62). Viewer: **Yes**, because its one item is removed automatically (Play accepts automatic deletion within 90 days) | `core-bridge/.../studio/deletion/`, `feature-studio/.../deletion/` |
+| Do you provide a way for users to request that their data is deleted? | **Yes**: `https://profile.auth.alummahnow.net/delete-account` (AlUmmahNowAuth#532) and, in Studio, Account sheet → Delete account (`DELETE /api/privacy/data`, then `DELETE /account`, #62). Viewer: **Yes**, because its one item is removed automatically (Play accepts automatic deletion within 90 days); where the form asks how accounts are created, "My app does not allow users to create an account", so the URL above is not entered for it | `core-bridge/.../studio/deletion/`, `feature-studio/.../deletion/` |
 | Data shared with third parties? | **No** for every type. Bunny / Cloudflare store and deliver media for us (service providers, which Play does not count as sharing) | — |
 | Crash logs, diagnostics, analytics, advertising ID | **Not collected** by any app: logging goes to the device log only (`core-bridge/.../AunLog.kt`); no analytics, crash-reporting or ads SDK in `gradle/libs.versions.toml` | — |
 | Location, contacts, messages, audio, calendar, health, financial info | **Not collected** | no such permissions in any `AndroidManifest.xml` |
@@ -29,7 +29,7 @@ question ids, which change; fill the form from the tables below (about five minu
 | Device or other IDs | Yes | No | Yes | Required | App functionality | only while a live stream plays: the live viewer ID below (`LiveWatchViewModel.kt`, `HttpLiveRepository.kt`) |
 
 Play asks for ephemeral data in the form, and does not show it on the listing. Nothing else is collected. The viewer has no account (`GuestOnlyAuthBridge` in
-`viewer-mobile/.../AppContainer.kt`). It reads the public catalogue (`TemporaryCatalogRepository.kt`) and public live
+`viewer-mobile/.../AppContainer.kt`). It reads the public catalog (`TemporaryCatalogRepository.kt`) and public live
 streams and their chat (`HttpLiveRepository.kt`). Theme and language choices (`DisplayPrefsStore.kt`) and the list of
 blocked channels and chat users (`ViewerBlockStore.kt`) stay on the device. Report opens the public report page in the
 browser (`ViewerReportUrls`), outside the app.
