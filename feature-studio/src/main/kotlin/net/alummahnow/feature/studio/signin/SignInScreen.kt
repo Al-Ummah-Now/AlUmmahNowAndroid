@@ -48,7 +48,9 @@ fun SignInScreen(
     modifier: Modifier = Modifier,
     passkeySupported: Boolean = false,
     passkeyWorking: Boolean = false,
-    onPasskey: () -> Unit = {}
+    onPasskey: () -> Unit = {},
+    /** What happened to an account on this device (deleted, or a deletion that is not finished). */
+    notices: List<String> = emptyList()
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
@@ -82,6 +84,15 @@ fun SignInScreen(
                 if (busy) {
                     CircularProgressIndicator(Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                     Text(stringResource(R.string.studio_signin_working), style = MaterialTheme.typography.bodyMedium)
+                }
+                notices.forEachIndexed { i, notice ->
+                    Text(
+                        notice,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("signin-notice-$i").semantics { liveRegion = LiveRegionMode.Polite }
+                    )
                 }
                 if (state is SignInUiState.Error) {
                     Text(

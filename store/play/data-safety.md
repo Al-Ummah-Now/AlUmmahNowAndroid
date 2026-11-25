@@ -13,7 +13,7 @@ question ids, which change; fill the form from the tables below (about five minu
 |---|---|---|
 | Does your app collect or share any of the required user data types? | Viewer and TV: **No**. Studio and Admin: **Yes** | tables below |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** | every base URL is `https://` (`build-logic/convention/src/main/kotlin/AndroidApplicationConventionPlugin.kt`); Admin traffic refuses plain HTTP on every hop (`core-bridge/.../admin/PrivateHttp.kt`) |
-| Do you provide a way for users to request that their data is deleted? | **Yes**: `https://profile.auth.alummahnow.net/delete-account` (AlUmmahNowAuth#532) and Studio's in-app Delete account flow (#62) | accounts live on the Auth server, not in the app |
+| Do you provide a way for users to request that their data is deleted? | **Yes**: `https://profile.auth.alummahnow.net/delete-account` (AlUmmahNowAuth#532) and, in Studio, Account sheet → Delete account (`DELETE /api/privacy/data`, then `DELETE /account`, #62) | `core-bridge/.../studio/deletion/`, `feature-studio/.../deletion/` |
 | Data shared with third parties? | **No** for every type. Bunny / Cloudflare store and deliver media for us (service providers, which Play does not count as sharing) | — |
 | Crash logs, diagnostics, analytics, advertising ID | **Not collected** by any app: logging goes to the device log only (`core-bridge/.../AunLog.kt`); no analytics, crash-reporting or ads SDK in `gradle/libs.versions.toml` | — |
 | Location, contacts, messages, audio, calendar, health, financial info | **Not collected** | no such permissions in any `AndroidManifest.xml` |
@@ -28,7 +28,7 @@ language choices stay on the device (`DisplayPrefsStore.kt`). The TV app has no 
 
 | Category → type | Collected | Shared | Ephemeral | Required? | Purposes | When / what (source) |
 |---|---|---|---|---|---|---|
-| Personal info → User IDs | Yes | No | No | Required | App functionality, Account management | signed-in calls carry the account's access token (`CoreAccountSession.kt`). The email and password are typed into the Auth web page in a browser tab, not into the app |
+| Personal info → User IDs | Yes | No | No | Required | App functionality, Account management | signed-in calls carry the account's access token, the two account-deletion calls included (`CoreAccountSession.kt`, `DeletionApi.kt`). The email and password are typed into the Auth web page in a browser tab, not into the app |
 | Personal info → Other info | Yes | No | No | Optional | Account management | only when adding or using a passkey: the WebAuthn response goes to the Auth server (`PasskeyApi.kt`) |
 | Photos and videos → Videos | Yes | No | No | Optional | App functionality | only the files the person picks to upload (`UploadScreen.kt`, `CoreUploadQueue.kt`) |
 | App activity → Other user-generated content | Yes | No | No | Optional | App functionality | titles, descriptions, tags, category, language, playlists, schedules (`CoreStudioRepository.kt`) |

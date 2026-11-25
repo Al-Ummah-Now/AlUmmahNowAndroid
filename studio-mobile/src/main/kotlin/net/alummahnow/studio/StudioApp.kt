@@ -2,8 +2,10 @@ package net.alummahnow.studio
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -11,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -46,12 +49,16 @@ import kotlinx.coroutines.withContext
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.StudioSection
+import net.alummahnow.core.bridge.studio.ChannelRole
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
+import net.alummahnow.core.bridge.studio.deletion.DeletionStage
 import net.alummahnow.design.components.FanousHeaderBar
 import net.alummahnow.design.components.FanousHeaderButton
 import net.alummahnow.design.components.FanousHeaderTitle
+import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.currentLocale
+import net.alummahnow.design.format.isolate
 import net.alummahnow.feature.editor.EditorRoute
 import net.alummahnow.feature.editor.EditorViewModel
 import net.alummahnow.feature.editor.RetrieverDurationProbe
@@ -60,6 +67,7 @@ import net.alummahnow.feature.passkey.PasskeyHost
 import net.alummahnow.feature.passkey.PasskeyUiState
 import net.alummahnow.feature.passkey.PasskeyViewModel
 import net.alummahnow.feature.passkey.rememberPasskeyAuthenticator
+import net.alummahnow.feature.studio.R as StudioR
 import net.alummahnow.feature.studio.analytics.AnalyticsScreen
 import net.alummahnow.feature.studio.analytics.AnalyticsViewModel
 import net.alummahnow.feature.studio.attempt
@@ -73,6 +81,11 @@ import net.alummahnow.feature.studio.content.ContentViewModel
 import net.alummahnow.feature.studio.dashboard.DashboardScreen
 import net.alummahnow.feature.studio.dashboard.DashboardUiState
 import net.alummahnow.feature.studio.dashboard.DashboardViewModel
+import net.alummahnow.feature.studio.deletion.AccountDeletionViewModel
+import net.alummahnow.feature.studio.deletion.DeleteAccountDialog
+import net.alummahnow.feature.studio.deletion.DeletionBanner
+import net.alummahnow.feature.studio.deletion.DeletionNotice
+import net.alummahnow.feature.studio.deletion.PURGE_DAYS
 import net.alummahnow.feature.studio.edit.VideoEditScreen
 import net.alummahnow.feature.studio.edit.VideoEditViewModel
 import net.alummahnow.feature.studio.features.StudioFeaturesViewModel
@@ -108,8 +121,23 @@ fun StudioApp(
     val passkeyAddHidden by passkeys.addHidden.collectAsStateWithLifecycle()
     val authenticator = rememberPasskeyAuthenticator()
 
-    // A redirect may also be the re-sign-in "Add a passkey" asked for; the passkey model retries the add if so.
-    LaunchedEffect(Unit) { redirects.collect { signIn.complete(it) { passkeys.signedIn(session.active.value) } } }
+    val deletion: AccountDeletionViewModel = viewModel {
+        AccountDeletionViewModel(session, container.deletion, forgetClient = container::forget)
+    }
+    val deletionState by deletion.state.collectAsStateWithLifecycle()
+    val deletionRecords by container.deletionRecords.records.collectAsStateWithLifecycle()
+    val openDeletions = deletionRecords.filter { it.stage != DeletionStage.DELETED }
+
+    // A redirect may also be the re-sign-in "Add a passkey" or a deletion asked for; each only takes its own.
+    LaunchedEffect(Unit) {
+        redirects.collect { url ->
+            signIn.complete(url, onError = deletion::signInFailed) {
+                val signedIn = session.active.value
+                passkeys.signedIn(signedIn)
+                deletion.signInCompleted(url, signedIn)
+            }
+        }
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { signIn.browserClosed() }
     // An App Link waits here until the person is signed in and the link's channel is loaded.
     var pendingLink by remember { mutableStateOf<AppLink.Studio?>(null) }
@@ -134,12 +162,22 @@ fun StudioApp(
     if (current == null) {
         SignInScreen(
             state = signInState,
-            onSignIn = { startSignIn(SignInMode.DEFAULT) },
+            onSignIn = {
+                deletion.noticeShown()
+                startSignIn(SignInMode.DEFAULT)
+            },
             onAddAccount = null,
             onBack = null,
             passkeySupported = authenticator.isSupported,
             passkeyWorking = passkeyState == PasskeyUiState.Working(adding = false),
-            onPasskey = { passkeys.signIn(authenticator) }
+            onPasskey = {
+                deletion.noticeShown()
+                passkeys.signIn(authenticator)
+            },
+            notices = listOfNotNull(
+                deletionState.notice?.let { deletionNoticeText(it) },
+                openDeletions.firstOrNull()?.let { aunString(StudioR.string.studio_delete_open_signed_out, isolate(it.label)) }
+            )
         )
         return
     }
@@ -177,6 +215,17 @@ fun StudioApp(
         }
     }
     val selected = (channelsState as? ChannelsUiState.Content)?.selected
+    // Unknown when the list is not there, or may be cut off at the server's page size.
+    val ownedChannels = (channelsState as? ChannelsUiState.Content)?.channels
+        ?.takeIf { it.size < CHANNEL_PAGE }?.count { it.role == ChannelRole.OWNER }
+    val openDeletion = openDeletions.firstOrNull { it.userId == current.userId }
+    val notice = deletionState.notice
+    val noticeText = notice?.let { deletionNoticeText(it) }
+    LaunchedEffect(notice?.serial) {
+        if (noticeText == null) return@LaunchedEffect
+        snackbar.showSnackbar(noticeText, withDismissAction = true, duration = SnackbarDuration.Indefinite)
+        deletion.noticeShown()
+    }
     LaunchedEffect(pendingLink, channelsState) {
         val link = pendingLink ?: return@LaunchedEffect
         val loaded = channelsState as? ChannelsUiState.Content ?: return@LaunchedEffect
@@ -208,108 +257,114 @@ fun StudioApp(
         },
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
-        val body = Modifier.fillMaxSize().padding(padding)
-        if (selected == null) {
-            ChannelPickerScreen(channelsState, onSelect = channels::select, onRetry = channels::load, modifier = body)
-        } else {
-            var editing by rememberSaveable(selected.id) { mutableStateOf<String?>(null) }
-            LaunchedEffect(pendingLink, selected.id) {
-                val link = pendingLink ?: return@LaunchedEffect
-                if (link.channelId != null && link.channelId != selected.id) return@LaunchedEffect
-                link.section?.let { tab = it.toTab() }
-                link.videoId?.let { editing = it }
-                pendingLink = null
-            }
-            val key = "${current.userId}-${selected.id}"
-            val content: ContentViewModel = viewModel(key = "content-$key") { ContentViewModel(container.repository, selected.id) }
-            // Per account and channel, so a switch reads features again; re-read whenever the app is back in front.
-            val featuresModel: StudioFeaturesViewModel =
-                viewModel(key = "features-$key") { StudioFeaturesViewModel(container.repository, selected.id) }
-            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { featuresModel.refresh() }
-            val features by featuresModel.state.collectAsStateWithLifecycle()
-            // Made with the channel, so a "not here" answer removes the tab before anyone taps it.
-            val analytics: AnalyticsViewModel =
-                viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
-            val analyticsState by analytics.state.collectAsStateWithLifecycle()
-            val dashboard: DashboardViewModel = viewModel(key = "dashboard-$key") { DashboardViewModel(container.repository, selected.id) }
-            val dashboardState by dashboard.state.collectAsStateWithLifecycle()
-            val dashboardVisible = (dashboardState as? DashboardUiState.Content)?.nothingLeft != true
-            val tabs = studioTabs(features, analyticsState.visible, dashboardVisible)
-            // A tab that went away (or a link to one) falls back to the first one there: Content when the Dashboard is gone.
-            val shown = if (tab in tabs) tab else tabs.first()
-            val openVideo = editing
-            if (openVideo != null) {
-                val edit: VideoEditViewModel = viewModel(key = "edit-$key-$openVideo") {
-                    VideoEditViewModel(container.repository, selected.id, openVideo)
-                }
-                val editState by edit.state.collectAsStateWithLifecycle()
-                VideoEditScreen(editState, edit::update, edit::save, edit::load, onClose = {
-                    editing = null
-                    content.load()
-                }, modifier = body)
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            if (openDeletion != null) DeletionBanner(openDeletion, onFinish = { deletion.open(current, ownedChannels) })
+            val body = Modifier.fillMaxWidth().weight(1f)
+            if (selected == null) {
+                ChannelPickerScreen(channelsState, onSelect = channels::select, onRetry = channels::load, modifier = body)
             } else {
-                StudioHome(
-                    tabs,
-                    shown,
-                    onSelect = { tab = it },
-                    modifier = body,
-                    railHeader = { IdentityButton(selected, onClick = { sheetOpen = true }) }
-                ) { t ->
-                    when (t) {
-                        StudioTab.CONTENT -> ContentRoute(content, onEdit = { editing = it })
-                        StudioTab.UPLOAD -> {
-                            StudioUploadTab(
-                                termsState = termsState,
-                                onRetryTerms = termsModel::load,
-                                onAgreeTerms = termsModel::accept,
-                                onOpenUrl = ::openExternalLink,
-                                webHost = BuildConfig.WEB_HOST
-                            ) {
+                var editing by rememberSaveable(selected.id) { mutableStateOf<String?>(null) }
+                LaunchedEffect(pendingLink, selected.id) {
+                    val link = pendingLink ?: return@LaunchedEffect
+                    if (link.channelId != null && link.channelId != selected.id) return@LaunchedEffect
+                    link.section?.let { tab = it.toTab() }
+                    link.videoId?.let { editing = it }
+                    pendingLink = null
+                }
+                val key = "${current.userId}-${selected.id}"
+                val content: ContentViewModel = viewModel(key = "content-$key") { ContentViewModel(container.repository, selected.id) }
+                // Per account and channel, so a switch reads features again; re-read whenever the app is back in front.
+                val featuresModel: StudioFeaturesViewModel =
+                    viewModel(key = "features-$key") { StudioFeaturesViewModel(container.repository, selected.id) }
+                LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { featuresModel.refresh() }
+                val features by featuresModel.state.collectAsStateWithLifecycle()
+                // Made with the channel, so a "not here" answer removes the tab before anyone taps it.
+                val analytics: AnalyticsViewModel =
+                    viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
+                val analyticsState by analytics.state.collectAsStateWithLifecycle()
+                val dashboard: DashboardViewModel =
+                    viewModel(key = "dashboard-$key") { DashboardViewModel(container.repository, selected.id) }
+                val dashboardState by dashboard.state.collectAsStateWithLifecycle()
+                val dashboardVisible = (dashboardState as? DashboardUiState.Content)?.nothingLeft != true
+                val tabs = studioTabs(features, analyticsState.visible, dashboardVisible)
+                // A tab that went away (or a link to one) falls back to the first one there: Content when the Dashboard is gone.
+                val shown = if (tab in tabs) tab else tabs.first()
+                val openVideo = editing
+                if (openVideo != null) {
+                    val edit: VideoEditViewModel = viewModel(key = "edit-$key-$openVideo") {
+                        VideoEditViewModel(container.repository, selected.id, openVideo)
+                    }
+                    val editState by edit.state.collectAsStateWithLifecycle()
+                    VideoEditScreen(editState, edit::update, edit::save, edit::load, onClose = {
+                        editing = null
+                        content.load()
+                    }, modifier = body)
+                } else {
+                    StudioHome(
+                        tabs,
+                        shown,
+                        onSelect = { tab = it },
+                        modifier = body,
+                        railHeader = { IdentityButton(selected, onClick = { sheetOpen = true }) }
+                    ) { t ->
+                        when (t) {
+                            StudioTab.CONTENT -> ContentRoute(content, onEdit = { editing = it })
+                            StudioTab.UPLOAD -> {
+                                StudioUploadTab(
+                                    termsState = termsState,
+                                    onRetryTerms = termsModel::load,
+                                    onAgreeTerms = termsModel::accept,
+                                    onOpenUrl = ::openExternalLink,
+                                    webHost = BuildConfig.WEB_HOST
+                                ) {
+                                    val upload: UploadViewModel = viewModel(key = "upload-$key") {
+                                        UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
+                                    }
+                                    val mine = current.userId to selected.id
+                                    LaunchedEffect(mine, mine in exportsWaiting) {
+                                        if (mine !in exportsWaiting) return@LaunchedEffect
+                                        val taken = container.exports.take(current.userId, selected.id)
+                                        if (taken.files.isNotEmpty()) upload.addFiles(taken.files)
+                                        if (taken.missing > 0) {
+                                            scope.launch { snackbar.showSnackbar(resources.getString(R.string.studio_export_gone)) }
+                                        }
+                                    }
+                                    UploadRoute(upload, termsRefused = termsRefused)
+                                }
+                            }
+                            StudioTab.ANALYTICS -> AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
+                            StudioTab.EDITOR -> {
+                                val editor: EditorViewModel = viewModel(key = "editor-$key") {
+                                    EditorViewModel(
+                                        RetrieverDurationProbe(appContext),
+                                        TransformerExport(appContext),
+                                        exportDir = { container.exports.dir(current.userId) }
+                                    )
+                                }
+                                // The same view model the Upload tab uses, so the export joins its queue.
                                 val upload: UploadViewModel = viewModel(key = "upload-$key") {
                                     UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
                                 }
-                                val mine = current.userId to selected.id
-                                LaunchedEffect(mine, mine in exportsWaiting) {
-                                    if (mine !in exportsWaiting) return@LaunchedEffect
-                                    val taken = container.exports.take(current.userId, selected.id)
-                                    if (taken.files.isNotEmpty()) upload.addFiles(taken.files)
-                                    if (taken.missing > 0) {
-                                        scope.launch { snackbar.showSnackbar(resources.getString(R.string.studio_export_gone)) }
+                                // Until the Terms are accepted, an export waits for this account and channel.
+                                val send: ((String, String, Long) -> Unit)? = if (StudioTab.UPLOAD in tabs) {
+                                    { uri, name, size ->
+                                        val file = PickedFile(uri, name, size, "video/mp4")
+                                        if (termsState == CreatorTermsUiState.Accepted) {
+                                            upload.addFiles(listOf(file))
+                                        } else {
+                                            container.exports.add(current.userId, selected.id, file)
+                                        }
+                                        tab = StudioTab.UPLOAD
                                     }
+                                } else {
+                                    null
                                 }
-                                UploadRoute(upload, termsRefused = termsRefused)
+                                EditorRoute(editor, onSendToUpload = send)
                             }
+                            StudioTab.DASHBOARD -> DashboardScreen(dashboardState, onRetry = dashboard::load, onOpenVideo = {
+                                editing = it
+                            })
                         }
-                        StudioTab.ANALYTICS -> AnalyticsScreen(analyticsState, analytics::setRange, analytics::load)
-                        StudioTab.EDITOR -> {
-                            val editor: EditorViewModel = viewModel(key = "editor-$key") {
-                                EditorViewModel(
-                                    RetrieverDurationProbe(appContext),
-                                    TransformerExport(appContext),
-                                    exportDir = { container.exports.dir(current.userId) }
-                                )
-                            }
-                            // The same view model the Upload tab uses, so the export joins its queue.
-                            val upload: UploadViewModel = viewModel(key = "upload-$key") {
-                                UploadViewModel(container.uploads, container.repository, selected.id, selected.name)
-                            }
-                            // Until the Terms are accepted, an export waits for this account and channel.
-                            val send: ((String, String, Long) -> Unit)? = if (StudioTab.UPLOAD in tabs) {
-                                { uri, name, size ->
-                                    val file = PickedFile(uri, name, size, "video/mp4")
-                                    if (termsState == CreatorTermsUiState.Accepted) {
-                                        upload.addFiles(listOf(file))
-                                    } else {
-                                        container.exports.add(current.userId, selected.id, file)
-                                    }
-                                    tab = StudioTab.UPLOAD
-                                }
-                            } else {
-                                null
-                            }
-                            EditorRoute(editor, onSendToUpload = send)
-                        }
-                        StudioTab.DASHBOARD -> DashboardScreen(dashboardState, onRetry = dashboard::load, onOpenVideo = { editing = it })
                     }
                 }
             }
@@ -331,7 +386,8 @@ fun StudioApp(
             },
             onSignOut = { userId ->
                 sheetOpen = false
-                scope.launch {
+                // Signing out the last account removes this screen: the rest must still run.
+                container.appScope.launch {
                     attempt("auth", "sign-out") { session.signOut(userId) }.fold(
                         onSuccess = { logoutUrl ->
                             container.forget(userId)
@@ -356,9 +412,26 @@ fun StudioApp(
                 null
             },
             onOpenUrl = ::openExternalLink,
-            webHost = BuildConfig.WEB_HOST
+            webHost = BuildConfig.WEB_HOST,
+            onDeleteAccount = {
+                sheetOpen = false
+                deletion.open(current, ownedChannels)
+            },
+            deletionStarted = openDeletions.map { it.userId }.toSet()
         )
     }
+    if (deletionState.target != null) {
+        DeleteAccountDialog(deletionState, onConfirm = { deletion.confirm(openInBrowser) }, onClose = deletion::close)
+    }
+}
+
+/** The server's page of `GET /api/channels?scope=mine`. */
+private const val CHANNEL_PAGE = 100
+
+@Composable
+private fun deletionNoticeText(notice: DeletionNotice): String {
+    val text = stringResource(notice.text)
+    return if (notice.withPurge) text + " " + aunString(StudioR.string.studio_delete_done_purge, PURGE_DAYS) else text
 }
 
 private fun StudioSection.toTab(): StudioTab = when (this) {

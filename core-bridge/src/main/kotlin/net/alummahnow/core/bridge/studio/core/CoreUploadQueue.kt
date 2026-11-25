@@ -23,6 +23,7 @@ import net.alummahnow.core.UploadInfo
 import net.alummahnow.core.UploadRequest
 import net.alummahnow.core.UploadState
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.UploadDraft
 import net.alummahnow.core.bridge.studio.UploadItem
@@ -63,6 +64,12 @@ class CoreUploadQueue(
     private val stateFile = File(root, "queue.json")
     private val engines = mutableMapOf<String, UploadEngineInterface>()
     private val mutex = Mutex()
+
+    /** Deleted accounts: nothing of theirs is staged, uploaded or written back. Saved with the queue. */
+    private val purgedUsers = mutableSetOf<String>()
+
+    /** Accounts whose uploads wait, and what was paused for it. */
+    private val held = mutableMapOf<String, MutableSet<String>>()
     private val json = J.json
 
     private val mutableItems = MutableStateFlow<List<UploadItem>>(emptyList())
@@ -94,7 +101,19 @@ class CoreUploadQueue(
     private data class FollowUp(val uploadId: String, val stagedPath: String, val draft: Pending, val applied: Boolean = false)
 
     @Serializable
-    private data class State(val pending: List<Pending> = emptyList(), val followUps: List<FollowUp> = emptyList())
+    private data class State(
+        val pending: List<Pending> = emptyList(),
+        val followUps: List<FollowUp> = emptyList(),
+        val purgedUsers: Set<String> = emptySet()
+    )
+
+    init {
+        synchronized(purgedUsers) { purgedUsers += load().purgedUsers }
+    }
+
+    private fun isPurged(userId: String): Boolean = synchronized(purgedUsers) { userId in purgedUsers }
+
+    private fun isHeld(userId: String): Boolean = synchronized(held) { userId in held }
 
     private fun load(): State = runCatching { json.decodeFromString<State>(stateFile.readText()) }.getOrDefault(State())
 
@@ -107,15 +126,15 @@ class CoreUploadQueue(
         }
     }
 
+    private fun engineDir(userId: String) = File(root, userId.replace(Regex("[^A-Za-z0-9_-]"), "_"))
+
     private fun engine(userId: String): UploadEngineInterface = synchronized(engines) {
-        engines.getOrPut(userId) {
-            val dir = File(root, userId.replace(Regex("[^A-Za-z0-9_-]"), "_")).apply { mkdirs() }
-            newEngine(userId, dir)
-        }
+        if (isPurged(userId)) throw CoreError.NotSignedIn()
+        engines.getOrPut(userId) { newEngine(userId, engineDir(userId).apply { mkdirs() }) }
     }
 
     override suspend fun enqueue(drafts: List<UploadDraft>) {
-        val userId = activeUserId() ?: throw net.alummahnow.core.bridge.CoreError.NotSignedIn()
+        val userId = activeUserId() ?: throw CoreError.NotSignedIn()
         val batch = UUID.randomUUID().toString().take(BATCH_ID_LENGTH)
         mutex.withLock {
             withContext(Dispatchers.IO) {
@@ -148,7 +167,9 @@ class CoreUploadQueue(
                         index = i
                     )
                 }
-                save(s.copy(pending = s.pending + added))
+                // Signed in and uploading: the account is live (again).
+                synchronized(purgedUsers) { purgedUsers -= userId }
+                save(s.copy(pending = s.pending + added, purgedUsers = s.purgedUsers - userId))
             }
         }
         AunLog.i("upload", "queued", "count" to drafts.size)
@@ -161,12 +182,13 @@ class CoreUploadQueue(
      * until nothing is active, applying follow-ups. [onUpdate] is called about once a second.
      */
     suspend fun process(onUpdate: (List<UploadItem>) -> Unit) {
-        stagePending()
         while (true) {
+            // Every round: a batch queued while another uploads is staged too.
+            stagePending()
             applyFollowUps()
             val now = refresh()
             onUpdate(now)
-            if (now.none { it.isActive } && load().pending.isEmpty()) break
+            if (now.none { it.isActive } && load().pending.none { !isHeld(it.userId) }) break
             delay(POLL_MS)
         }
     }
@@ -183,12 +205,19 @@ class CoreUploadQueue(
 
     private suspend fun stagePending() = withContext(Dispatchers.IO) {
         while (true) {
-            val next = mutex.withLock { load().pending.firstOrNull() } ?: break
+            val next = mutex.withLock { load().pending.firstOrNull { !isPurged(it.userId) && !isHeld(it.userId) } } ?: break
             val result = runCatching { stage(next) }
-            mutex.withLock {
+            val purged = mutex.withLock {
                 val s = load()
-                val followUps = result.getOrNull()?.let { s.followUps + it } ?: s.followUps
+                // Purged while it was copied: nothing of it is written back.
+                val gone = isPurged(next.userId)
+                val followUps = result.getOrNull()?.takeUnless { gone }?.let { s.followUps + it } ?: s.followUps
                 save(s.copy(pending = s.pending.filterNot { it.localId == next.localId }, followUps = followUps))
+                gone
+            }
+            if (purged) {
+                result.getOrNull()?.let { File(it.stagedPath).delete() }
+                removeEngine(next.userId)
             }
             result.onFailure { AunLog.e("upload", "could not queue file", it) }
         }
@@ -198,15 +227,16 @@ class CoreUploadQueue(
         val ext = p.fileName.substringAfterLast('.', "").takeIf { it.length in 1..MAX_EXT }?.let { ".$it" } ?: ".mp4"
         val target = File(staged, p.localId + ext)
         val uri = Uri.parse(p.source)
-        if (uri.scheme == "content") {
-            app.contentResolver.openInputStream(uri).use { input ->
-                requireNotNull(input) { "cannot open the picked file" }
-                target.outputStream().use { input.copyTo(it, COPY_BUFFER) }
-            }
-        } else {
-            File(uri.path ?: p.source).copyTo(target, overwrite = true)
-        }
+        var queued = false
         val id = try {
+            if (uri.scheme == "content") {
+                app.contentResolver.openInputStream(uri).use { input ->
+                    requireNotNull(input) { "cannot open the picked file" }
+                    target.outputStream().use { input.copyTo(it, COPY_BUFFER) }
+                }
+            } else {
+                File(uri.path ?: p.source).copyTo(target, overwrite = true)
+            }
             engine(p.userId).enqueue(
                 UploadRequest(
                     filePath = target.absolutePath,
@@ -221,10 +251,12 @@ class CoreUploadQueue(
                     descriptionLocalized = emptyMap(),
                     priority = 0
                 )
-            )
+            ).also { queued = true }
         } catch (e: AunException) {
-            target.delete()
             throw mapCoreError(e)
+        } finally {
+            // Whatever stopped it (no space, a purge, a refused file), no copy is left that nothing will send.
+            if (!queued) target.delete()
         }
         return FollowUp(id, target.absolutePath, p)
     }
@@ -243,6 +275,10 @@ class CoreUploadQueue(
 
     /** True once [f] needs nothing more: its upload ended (settings applied when it succeeded). */
     private suspend fun settle(f: FollowUp): Boolean {
+        if (isPurged(f.draft.userId)) {
+            File(f.stagedPath).delete()
+            return true
+        }
         val info = runCatching { engine(f.draft.userId).get(f.uploadId) }.getOrNull()
         val state = info?.state
         if (state != null && state !in ENDED) return false
@@ -313,10 +349,74 @@ class CoreUploadQueue(
     override fun remove(id: String) {
         val userId = activeUserId() ?: return
         withEngine { remove(id) }
-        // The engine forgot it, so nothing will retry it: its staged copy goes too.
+        // The engine forgot it, so nothing will retry it: its staged copy and its row go too.
         if (mutableItems.value.none { it.id == id }) {
-            load().followUps.firstOrNull { it.uploadId == id && it.draft.userId == userId }?.let { File(it.stagedPath).delete() }
+            val s = load()
+            s.followUps.firstOrNull { it.uploadId == id && it.draft.userId == userId }?.let { f ->
+                File(f.stagedPath).delete()
+                save(s.copy(followUps = s.followUps - f))
+            }
         }
+    }
+
+    override suspend fun holdUploads(userId: String) {
+        val paused = mutableSetOf<String>()
+        synchronized(held) { held[userId] = paused }
+        withContext(Dispatchers.IO) {
+            val engine = runCatching { engine(userId) }.getOrNull() ?: return@withContext
+            engine.list().filter { it.state in RUNNING }.forEach { info ->
+                runCatching { engine.pause(info.id) }.onSuccess { synchronized(held) { paused += info.id } }
+            }
+        }
+        refresh()
+    }
+
+    override suspend fun releaseUploads(userId: String) {
+        val paused = synchronized(held) { held.remove(userId) } ?: return
+        withContext(Dispatchers.IO) {
+            runCatching { engine(userId) }.getOrNull()?.let { engine -> paused.forEach { id -> runCatching { engine.resume(id) } } }
+        }
+        refresh()
+        onWorkNeeded()
+    }
+
+    override suspend fun purgeAccount(userId: String) {
+        synchronized(purgedUsers) { purgedUsers += userId }
+        withContext(Dispatchers.IO) {
+            val gone = mutex.withLock {
+                val s = load()
+                save(
+                    s.copy(
+                        pending = s.pending.filterNot { it.userId == userId },
+                        followUps = s.followUps.filterNot { it.draft.userId == userId },
+                        purgedUsers = s.purgedUsers + userId
+                    )
+                )
+                s
+            }
+            val followUps = gone.followUps.filter { it.draft.userId == userId }
+            val sources = gone.pending.filter { it.userId == userId }.map { it.source } + followUps.map { it.draft.source }
+            removeEngine(userId)
+            followUps.forEach { File(it.stagedPath).delete() }
+            sources.distinct().map(Uri::parse).filter { it.scheme == "content" }.forEach { uri ->
+                runCatching {
+                    app.contentResolver.releasePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+        }
+        synchronized(held) { held.remove(userId) }
+        refresh()
+    }
+
+    /** Stops [userId]'s engine and removes what it kept on disk. */
+    private suspend fun removeEngine(userId: String) {
+        val engine = synchronized(engines) { engines.remove(userId) }
+        if (engine != null) {
+            runCatching { engine.list() }.getOrDefault(emptyList()).forEach { info -> runCatching { engine.cancel(info.id) } }
+            runCatching { engine.shutdown() }
+            runCatching { (engine as? AutoCloseable)?.close() }
+        }
+        engineDir(userId).deleteRecursively()
     }
 
     private companion object {
@@ -327,6 +427,14 @@ class CoreUploadQueue(
 
         /** Nothing more can happen to it. A failed upload is not one: it can be retried, with its staged file. */
         val ENDED = setOf(UploadState.DONE, UploadState.CANCELLED)
+        val RUNNING = setOf(
+            UploadState.QUEUED,
+            UploadState.WAITING,
+            UploadState.HASHING,
+            UploadState.INITIATING,
+            UploadState.UPLOADING,
+            UploadState.COMPLETING
+        )
     }
 }
 

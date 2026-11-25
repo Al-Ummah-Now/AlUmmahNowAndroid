@@ -152,6 +152,9 @@ private class FakeQueue : UploadQueue {
     override fun retry(id: String) = Unit
     override suspend fun cancel(id: String) = Unit
     override fun remove(id: String) = Unit
+    override suspend fun holdUploads(userId: String) = Unit
+    override suspend fun releaseUploads(userId: String) = Unit
+    override suspend fun purgeAccount(userId: String) = Unit
 }
 
 private class FakeRepo : StudioRepository {

@@ -1,8 +1,11 @@
 package net.alummahnow.studio
 
+import kotlinx.coroutines.CoroutineScope
 import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.UploadQueue
+import net.alummahnow.core.bridge.studio.deletion.AccountDeletion
+import net.alummahnow.core.bridge.studio.deletion.DeletionRecords
 
 /** What [StudioApp] needs. [AppContainer] is the real one; tests hand in fakes. */
 interface StudioContainer {
@@ -15,6 +18,13 @@ interface StudioContainer {
 
     /** Acts as [userId] only, whoever is active: for a record that must never land on another account. */
     fun repositoryFor(userId: String): StudioRepository
+
+    /** Deletions that started on this device, and the one way to run them. */
+    val deletionRecords: DeletionRecords
+    val deletion: AccountDeletion
+
+    /** For work that must finish although the screen that asked for it is gone (the last sign-out, a deletion). */
+    val appScope: CoroutineScope
 
     /** Drops what is held for a signed-out account. */
     fun forget(userId: String)

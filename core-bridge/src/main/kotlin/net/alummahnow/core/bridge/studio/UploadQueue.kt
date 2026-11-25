@@ -57,4 +57,16 @@ interface UploadQueue {
     fun retry(id: String)
     suspend fun cancel(id: String)
     fun remove(id: String)
+
+    /** Pauses [userId]'s uploads and starts none, until [releaseUploads] (or the app restarts: then each can be resumed). */
+    suspend fun holdUploads(userId: String)
+
+    /** Resumes what [holdUploads] paused. */
+    suspend fun releaseUploads(userId: String)
+
+    /**
+     * Removes [userId]'s queued and staged uploads for good, for a deleted account. A saved marker comes first, so an
+     * upload that is still running can't write back. Throws when it could not be saved.
+     */
+    suspend fun purgeAccount(userId: String)
 }

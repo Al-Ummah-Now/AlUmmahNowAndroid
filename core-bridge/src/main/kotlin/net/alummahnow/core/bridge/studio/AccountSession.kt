@@ -49,6 +49,12 @@ interface AccountSession {
      */
     suspend fun signOut(userId: String): String
 
+    /** Removes [userId] from this device without asking the server: its account is gone there. */
+    suspend fun removeLocally(userId: String): Unit = throw CoreError.Unavailable("remove")
+
+    /** The auth server's logout page, to end the browser's session too. */
+    val logoutUrl: String? get() = null
+
     /** A fresh access token for the active account, or null when signed out. */
     suspend fun accessToken(): String?
 
