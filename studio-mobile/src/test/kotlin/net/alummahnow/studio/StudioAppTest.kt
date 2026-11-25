@@ -1,6 +1,7 @@
 package net.alummahnow.studio
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -29,7 +30,9 @@ import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.UploadPhase
 import net.alummahnow.core.bridge.studio.deletion.DeletionAnswer
 import net.alummahnow.core.bridge.studio.deletion.DeletionRecord
+import net.alummahnow.core.bridge.studio.deletion.DeletionStage
 import net.alummahnow.design.theme.AunTheme
+import net.alummahnow.feature.studio.deletion.AccountDeletionViewModel
 import net.alummahnow.feature.upload.PickedFile
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -70,9 +73,9 @@ class StudioAppTest {
     private val opened = mutableListOf<String>()
     private val redirects = MutableSharedFlow<String>(extraBufferCapacity = 4)
 
-    private fun show() {
+    private fun show(until: String = "tab-upload") {
         compose.setContent { AunTheme { StudioApp(container, redirects, openInBrowser = { opened.add(it) }) } }
-        waitFor("tab-upload")
+        waitFor(until)
     }
 
     private fun waitFor(tag: String) =
@@ -455,6 +458,99 @@ class StudioAppTest {
         }
         waitFor("signin-notice-0")
         compose.onNodeWithTag("signin-notice-0").assertTextContains("Sign in to that account to finish", substring = true)
+    }
+
+    private val gone = DeletionAnswer(200, """{"deleted":true}""")
+
+    /** A deletion whose answer never came. */
+    private fun lost(userId: String = "a") =
+        DeletionRecord(
+            userId,
+            "$userId@example.org",
+            DeletionStage.CONTENT_ERASED,
+            receipt = "r-$userId",
+            receiptExpiresAtMs = Long.MAX_VALUE,
+            unsure = true
+        )
+
+    @Test
+    fun `a deletion that worked although its answer was lost is said at the next start, and cleaned up`() {
+        session.accounts.value = session.accounts.value.take(1)
+        container.deletionRecords.put(lost())
+        container.deletionApi.status = gone
+        show(until = "signin-notice-0")
+        compose.onNodeWithTag("signin-notice-0").assertTextContains("your Al Ummah Now account was deleted", substring = true)
+        assertEquals(listOf("status r-a"), container.deletionApi.calls)
+        assertEquals(listOf("a"), container.uploads.purged)
+        assertEquals(listOf("a"), container.forgotten)
+        assertTrue(container.deletionRecords.records.value.isEmpty())
+        assertTrue(opened.isEmpty()) // nobody asked for a browser
+    }
+
+    @Test
+    fun `until it is known, the app doesn't say that the account is there, and Finish asks again`() {
+        container.deletionRecords.put(lost())
+        container.deletionApi.status = null
+        show()
+        waitFor("deletion-banner")
+        waitForText("It may even be finished.")
+        compose.onNodeWithTag("deletion-finish").performClick()
+        waitFor("delete-account-dialog")
+        container.deletionApi.status = gone
+        typeAndConfirm()
+        waitForText("your Al Ummah Now account was deleted")
+        assertEquals("b", session.active.value?.userId)
+        assertTrue(container.deletionApi.calls.all { it == "status r-a" })
+    }
+
+    @Test
+    fun `that it isn't known can be put away, an unfinished deletion can't`() {
+        container.deletionRecords.put(lost())
+        container.deletionApi.status = null
+        show()
+        waitFor("deletion-banner")
+        compose.onNodeWithTag("deletion-dismiss").performClick()
+        waitGone("deletion-banner")
+        compose.runOnUiThread { container.deletionRecords.put(DeletionRecord("a", "a@example.org", startedAtMs = 1)) }
+        waitFor("deletion-banner")
+        compose.onNodeWithTag("deletion-dismiss").assertDoesNotExist()
+    }
+
+    @Test
+    fun `with nobody signed in it says that it isn't known`() {
+        container.deletionRecords.put(lost())
+        container.deletionApi.status = null
+        session.accounts.value = emptyList()
+        session.active.value = null
+        show(until = "signin-notice-0")
+        compose.onNodeWithTag("signin-notice-0").assertTextContains("We do not know whether the deletion of", substring = true)
+        compose.onNodeWithTag("signin-notice-dismiss").performClick()
+        waitGone("signin-notice-0")
+    }
+
+    @Test
+    fun `an account deleted elsewhere is removed, and nothing is said to be erased`() {
+        container.deletionApi.receipt = DeletionAnswer(404, """{"error":"not_found"}""")
+        show()
+        openDelete()
+        typeAndConfirm()
+        waitForText("We could not check here that all its content was erased.")
+        assertEquals(emptyList<String>(), container.deletionApi.calls)
+        assertEquals(listOf("a"), container.uploads.purged)
+        compose.onAllNodes(hasText("purged after", substring = true)).assertCountEquals(0)
+        assertEquals("b", session.active.value?.userId)
+    }
+
+    @Test
+    fun `another account's open dialog stays when a lost deletion is settled`() {
+        container.deletionRecords.put(lost("b"))
+        container.deletionApi.status = null
+        val model = AccountDeletionViewModel(session, container.deletion, container::forget)
+        model.open(session.active.value!!, 1)
+        container.deletionApi.status = gone
+        model.settle()
+        compose.waitUntil(TIMEOUT_MS) { model.state.value.notice != null }
+        assertEquals("a", model.state.value.target?.userId)
     }
 
     @Test

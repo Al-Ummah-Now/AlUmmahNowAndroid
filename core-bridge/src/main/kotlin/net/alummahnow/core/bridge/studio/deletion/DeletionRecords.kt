@@ -38,7 +38,18 @@ data class DeletionRecord(
     val leftover: Set<Leftover> = emptySet(),
     val startedAtMs: Long = 0,
     /** The server asked to wait until then. */
-    val notBeforeMs: Long = 0
+    val notBeforeMs: Long = 0,
+    /** Auth's receipt for this account: for 30 days it answers whether the account is deleted, and opens nothing. */
+    val receipt: String? = null,
+    /** `DELETE /account` was sent and its answer isn't known, so the account may be gone. */
+    val unsure: Boolean = false,
+    /** The receipt answers until then. */
+    val receiptExpiresAtMs: Long = 0,
+    /** How often the app asked by itself, and when last. */
+    val asks: Int = 0,
+    val lastAskMs: Long = 0,
+    /** The person doesn't want to be told any more that it isn't known. */
+    val dismissed: Boolean = false
 )
 
 /** The deletions that started on this device, by account. */

@@ -29,13 +29,19 @@ import okhttp3.RequestBody.Companion.toRequestBody
 /** A server's answer, as it came: the caller decides what each status means. */
 data class DeletionAnswer(val status: Int, val body: String, val retryAfter: String? = null)
 
-/** The two calls of an account deletion, and the server's time. Each throws [IOException] when no answer came. */
+/** The calls of an account deletion, and the server's time. Each throws [IOException] when no answer came. */
 interface DeletionApi {
     /** `DELETE /api/privacy/data`: one bounded pass. */
     suspend fun erase(token: String, resumeToken: String?): DeletionAnswer
 
     /** `DELETE /account` on Auth. */
     suspend fun deleteAccount(token: String): DeletionAnswer
+
+    /** `POST /account/deletion-receipt` on Auth, with a recent sign-in. */
+    suspend fun deletionReceipt(token: String): DeletionAnswer
+
+    /** `GET /account/status` on Auth: whether the receipt's account is deleted. Takes no access token. */
+    suspend fun accountStatus(receipt: String): DeletionAnswer
 
     /** The server's clock (seconds), or null when it did not say: a phone's clock must not decide what is wiped. */
     suspend fun serverNowSeconds(): Long?
@@ -73,6 +79,12 @@ class HttpDeletionApi(
 
     override suspend fun deleteAccount(token: String): DeletionAnswer = send(request("$auth/account", token).delete().build())
 
+    override suspend fun deletionReceipt(token: String): DeletionAnswer =
+        send(request("$auth/account/deletion-receipt", token).post(ByteArray(0).toRequestBody()).build())
+
+    override suspend fun accountStatus(receipt: String): DeletionAnswer =
+        send(request("$auth/account/status", receipt, scheme = "Deletion-Receipt").get().build())
+
     override suspend fun serverNowSeconds(): Long? = try {
         withContext(Dispatchers.IO) {
             http.newCall(PrivateHttp.request("$auth/.well-known/oauth-authorization-server").header("User-Agent", userAgent).build())
@@ -82,11 +94,11 @@ class HttpDeletionApi(
         null
     }
 
-    private fun request(url: String, token: String): Request.Builder = PrivateHttp.request(url)
+    private fun request(url: String, credential: String, scheme: String = "Bearer"): Request.Builder = PrivateHttp.request(url)
         .header("Accept", "application/json")
         .header("User-Agent", userAgent)
         .header(AunClient.HEADER, clientHeader)
-        .header("Authorization", "Bearer $token")
+        .header("Authorization", "$scheme $credential")
 
     private suspend fun send(request: Request): DeletionAnswer = withContext(Dispatchers.IO) {
         http.newCall(request).execute().use { DeletionAnswer(it.code, it.body.string(), it.header("Retry-After")) }

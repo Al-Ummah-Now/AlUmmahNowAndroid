@@ -3,6 +3,8 @@ package net.alummahnow.core.bridge.studio.deletion
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -11,6 +13,7 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.core.J
 import net.alummahnow.core.bridge.studio.core.a
 import net.alummahnow.core.bridge.studio.core.b
+import net.alummahnow.core.bridge.studio.core.l
 import net.alummahnow.core.bridge.studio.core.obj
 import net.alummahnow.core.bridge.studio.core.s
 import net.alummahnow.core.bridge.studio.core.unwrap
@@ -28,8 +31,11 @@ enum class ErasedSoFar {
 }
 
 sealed interface DeletionOutcome {
-    /** Both steps succeeded. [leftover]: what the person was told stays behind. */
-    data class Deleted(val leftover: Set<Leftover>) : DeletionOutcome
+    /**
+     * Both steps succeeded. [leftover]: what the person was told stays behind. [elsewhere]: Auth says the account is
+     * deleted, but not by this device after its erase, so nothing is known of the content.
+     */
+    data class Deleted(val leftover: Set<Leftover>, val elsewhere: Boolean = false) : DeletionOutcome
 
     /** A recent sign-in of the same person is needed. Nothing more is removed until they confirm again. */
     data class NeedsSignIn(val maxAgeSeconds: Int, val erased: ErasedSoFar) : DeletionOutcome
@@ -77,6 +83,8 @@ interface DeletionDevice {
  * Deletes an account (Play account deletion policy; wiki guides/data-lifecycle.md, the rules for every client):
  * the Videos data, pass by pass, then the sign-in account, then this device's own copy. Every attempt starts with the
  * erase again: the account was live in between. The record is saved before the first call and removed last.
+ * A deleted account can't start anything again (its erase is refused, its session is gone), so after a lost answer the
+ * first question is always Auth's `GET /account/status`, with the receipt that every attempt asks for and saves first.
  */
 // Each return is one row of the shared rules; a failing store, device or key must end in an outcome, never in a crash.
 @Suppress("ReturnCount", "CyclomaticComplexMethod", "TooGenericExceptionCaught")
@@ -86,6 +94,8 @@ class AccountDeletion(
     private val device: DeletionDevice,
     private val nowMs: () -> Long = System::currentTimeMillis
 ) {
+    private val mutex = Mutex()
+
     /**
      * One confirmed attempt for [userId]. [acceptLeftover]: what the person was told stays and went on with.
      * [onPass] after each pass that left more; [stopRequested] is asked between passes.
@@ -96,20 +106,34 @@ class AccountDeletion(
         acceptLeftover: Set<Leftover> = emptySet(),
         stopRequested: () -> Boolean = { false },
         onPass: (pass: Int, restarted: Boolean) -> Unit = { _, _ -> }
+    ): DeletionOutcome = mutex.withLock { attempt(userId, label, acceptLeftover, stopRequested, onPass) }
+
+    private suspend fun attempt(
+        userId: String,
+        label: String,
+        acceptLeftover: Set<Leftover>,
+        stopRequested: () -> Boolean,
+        onPass: (Int, Boolean) -> Unit
     ): DeletionOutcome {
         // A record of a finished deletion whose account is live again (restored by staff) belongs to the past.
-        val saved = try {
+        val read = try {
             records.get(userId)?.takeIf { it.stage != DeletionStage.DELETED }
         } catch (e: Exception) {
             AunLog.e("auth", "deletion record unreadable", e)
             return DeletionOutcome.NoRecord(ErasedSoFar.SOME)
+        }
+        val saved = when (val now = read?.let { settle(it) }) {
+            null -> null
+            is Settled.Gone -> return now.outcome
+            is Settled.NoAnswer -> if (now.record.unsure) return DeletionOutcome.Unknown else now.record
+            is Settled.Open -> now.record
         }
         val before = if (saved == null) ErasedSoFar.NOTHING else ErasedSoFar.SOME
         if (saved != null && saved.notBeforeMs > nowMs()) return DeletionOutcome.Wait(saved.notBeforeMs, before)
         val maxAge = if (saved == null) FIRST_MAX_AGE_S else CONTINUE_MAX_AGE_S
         when (val ready = pinnedToken(userId)) {
             Pinned.Other -> return DeletionOutcome.OtherAccount(before)
-            Pinned.NoAnswer -> return DeletionOutcome.Failed(before)
+            Pinned.NoAnswer -> return if (saved?.unsure == true) DeletionOutcome.Unknown else DeletionOutcome.Failed(before)
             is Pinned.Token -> {
                 val now = api.serverNowSeconds() ?: (nowMs() / MS_PER_S)
                 if (!DeletionToken.isRecent(ready.value, now, maxAge)) return DeletionOutcome.NeedsSignIn(FIRST_MAX_AGE_S, before)
@@ -122,7 +146,8 @@ class AccountDeletion(
             label,
             resumeToken = resume?.resumeToken,
             leftover = resume?.leftover.orEmpty(),
-            startedAtMs = saved?.startedAtMs ?: nowMs()
+            startedAtMs = saved?.startedAtMs ?: nowMs(),
+            unsure = saved?.unsure == true
         )
         var outcome: DeletionOutcome? = null
         try {
@@ -132,8 +157,15 @@ class AccountDeletion(
                 AunLog.e("auth", "uploads not held, so no deletion", it)
             }
             if (held.isFailure) return DeletionOutcome.Failed(before)
-            if (!save(record)) return DeletionOutcome.NoRecord(before)
-            return Attempt(record, startedBefore = saved != null, acceptLeftover, stopRequested, onPass).run().also { outcome = it }
+            // Before anything is removed: without it nobody could say later what became of the account.
+            val started = when (val asked = askReceipt(userId, saved)) {
+                is Receipt.Got -> record.copy(receipt = asked.value, receiptExpiresAtMs = asked.expiresAtMs)
+                Receipt.NoRoute -> record.copy(receipt = saved?.receipt, receiptExpiresAtMs = saved?.receiptExpiresAtMs ?: 0)
+                Receipt.Gone -> return finish(saved ?: record).also { outcome = it }
+                is Receipt.Stop -> return asked.outcome
+            }
+            if (!save(started)) return DeletionOutcome.NoRecord(before)
+            return Attempt(started, saved, acceptLeftover, stopRequested, onPass).run().also { outcome = it }
         } finally {
             if (outcome !is DeletionOutcome.Deleted) {
                 withContext(NonCancellable) { runCatching { device.releaseUploads(userId) } }
@@ -146,14 +178,145 @@ class AccountDeletion(
         records.records.value.filter { it.stage == DeletionStage.DELETED }.forEach { cleanUp(it.userId) }
     }
 
+    /**
+     * Asks what became of deletions whose answer was lost, and finishes the cleanup of those that worked: their person
+     * can't sign in to come back to them. The accounts that are deleted. Does nothing while an attempt runs, and asks
+     * a limited number of times for each attempt.
+     */
+    suspend fun settleLost(): Map<String, DeletionOutcome.Deleted> {
+        if (!mutex.tryLock()) return emptyMap()
+        return try {
+            records.records.value
+                .filter { it.stage != DeletionStage.DELETED && it.receipt != null && it.asks < MAX_ASKS }
+                .filter { nowMs() - it.lastAskMs !in 0 until ASK_AGAIN_MS }
+                .mapNotNull { record ->
+                    // Counted first: a call that kills the app counts too.
+                    val asked = record.copy(asks = record.asks + 1, lastAskMs = nowMs())
+                    if (save(asked)) (settle(asked) as? Settled.Gone)?.let { record.userId to it.outcome } else null
+                }
+                .toMap()
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    /** Stops saying that it isn't known what became of [userId]'s deletion. It is said again when that changes. */
+    fun dismiss(userId: String) {
+        runCatching { records.get(userId)?.takeIf { it.unsure }?.let { records.put(it.copy(dismissed = true)) } }
+            .onFailure { AunLog.e("auth", "deletion notice not dismissed", it) }
+    }
+
+    private sealed interface Settled {
+        data class Gone(val outcome: DeletionOutcome.Deleted) : Settled
+        data class NoAnswer(val record: DeletionRecord) : Settled
+        data class Open(val record: DeletionRecord) : Settled
+    }
+
+    /** What became of the account of this record, if that can be asked. */
+    private suspend fun settle(record: DeletionRecord): Settled {
+        if (record.receipt == null) return Settled.Open(record)
+        return when (standing(record)) {
+            Standing.DELETED -> Settled.Gone(finish(record))
+            Standing.NO_ANSWER -> Settled.NoAnswer(record)
+            // The receipt is kept: a request that was lost may still be under way.
+            Standing.LIVE -> Settled.Open(record.copy(unsure = false, dismissed = false).also { if (it != record) save(it) })
+            Standing.NO_ROUTE -> Settled.Open(record)
+            // Nothing more can be asked with it.
+            Standing.EXPIRED -> Settled.Open(record.copy(receipt = null, receiptExpiresAtMs = 0).also { save(it) })
+        }
+    }
+
+    private sealed interface Receipt {
+        data class Got(val value: String, val expiresAtMs: Long) : Receipt
+
+        /** Auth's own answer for the verified token's account: it is deleted, or purged. */
+        data object Gone : Receipt
+
+        /** A server without receipts. */
+        data object NoRoute : Receipt
+        data class Stop(val outcome: DeletionOutcome) : Receipt
+    }
+
+    private suspend fun askReceipt(userId: String, saved: DeletionRecord?): Receipt {
+        val before = if (saved == null) ErasedSoFar.NOTHING else ErasedSoFar.SOME
+        val failed = Receipt.Stop(if (saved?.unsure == true) DeletionOutcome.Unknown else DeletionOutcome.Failed(before))
+        val token = when (val pinned = pinnedToken(userId)) {
+            Pinned.Other -> return Receipt.Stop(DeletionOutcome.OtherAccount(before))
+            Pinned.NoAnswer -> return failed
+            is Pinned.Token -> pinned.value
+        }
+        val answer = try {
+            api.deletionReceipt(token)
+        } catch (e: IOException) {
+            AunLog.w("auth", "deletion receipt unanswered", "type" to e.javaClass.simpleName)
+            return failed
+        }
+        val body = runCatching { J.parse(answer.body).obj() }.getOrNull()
+        val receipt = body?.s("receipt")?.takeIf { RECEIPT.matches(it) }
+        val expiresAt = body?.l("expiresAt") ?: 0
+        return when {
+            answer.status in HTTP_OK -> if (receipt != null && expiresAt > 0) Receipt.Got(receipt, expiresAt) else failed
+            answer.status == HTTP_NOT_FOUND -> if (body?.s("error") == "not_found") Receipt.Gone else Receipt.NoRoute
+            needsSignIn(answer) -> Receipt.Stop(DeletionOutcome.NeedsSignIn(FIRST_MAX_AGE_S, before))
+            answer.status == HTTP_TOO_MANY || answer.status == HTTP_UNAVAILABLE -> Receipt.Stop(waitFor(answer, before, saved))
+            else -> failed
+        }
+    }
+
+    /** The server asked to wait; remembered where there is a record. */
+    private fun waitFor(answer: DeletionAnswer, so: ErasedSoFar, record: DeletionRecord?): DeletionOutcome {
+        val until = nowMs() + retryAfterSeconds(answer.retryAfter, nowMs()) * MS_PER_S
+        record?.let { save(it.copy(notBeforeMs = until)) }
+        return DeletionOutcome.Wait(until, so)
+    }
+
+    /** The account is deleted: the marker and the cleanup belong together. */
+    private suspend fun finish(record: DeletionRecord): DeletionOutcome.Deleted = withContext(NonCancellable) {
+        AunLog.i("auth", "account deleted")
+        save(record.copy(stage = DeletionStage.DELETED, resumeToken = null, receipt = null, unsure = false, dismissed = false))
+        cleanUp(record.userId)
+        // Step 2 is sent only after an erase over everything.
+        val ours = record.stage == DeletionStage.CONTENT_ERASED
+        DeletionOutcome.Deleted(if (ours) record.leftover else emptySet(), elsewhere = !ours)
+    }
+
+    private enum class Standing { DELETED, LIVE, NO_ANSWER, NO_ROUTE, EXPIRED }
+
+    /** What Auth says of the account of [record], which its receipt was saved with. */
+    private suspend fun standing(record: DeletionRecord): Standing {
+        val receipt = record.receipt ?: return Standing.EXPIRED
+        // The phone's clock alone must not end it.
+        if (record.receiptExpiresAtMs <= nowMs() && record.receiptExpiresAtMs <= (api.serverNowSeconds()?.times(MS_PER_S) ?: nowMs())) {
+            return Standing.EXPIRED
+        }
+        val answer = try {
+            api.accountStatus(receipt)
+        } catch (e: IOException) {
+            AunLog.w("auth", "account status unanswered", "type" to e.javaClass.simpleName)
+            return Standing.NO_ANSWER
+        }
+        val deleted = runCatching { J.parse(answer.body).obj()?.b("deleted") }.getOrNull()
+        return when (answer.status) {
+            in HTTP_OK -> when (deleted) {
+                true -> Standing.DELETED
+                false -> Standing.LIVE
+                null -> Standing.NO_ANSWER
+            }
+            HTTP_UNAUTHORIZED -> Standing.EXPIRED
+            HTTP_NOT_FOUND -> Standing.NO_ROUTE
+            else -> Standing.NO_ANSWER
+        }
+    }
+
     private inner class Attempt(
         private var record: DeletionRecord,
-        private var startedBefore: Boolean,
+        private val previous: DeletionRecord?,
         private val acceptLeftover: Set<Leftover>,
         private val stopRequested: () -> Boolean,
         private val onPass: (Int, Boolean) -> Unit
     ) {
         private val userId = record.userId
+        private var startedBefore = previous != null
         private val erased get() = if (startedBefore) ErasedSoFar.SOME else ErasedSoFar.NOTHING
 
         suspend fun run(): DeletionOutcome {
@@ -169,6 +332,14 @@ class AccountDeletion(
                 } catch (e: IOException) {
                     AunLog.w("auth", "erase pass unanswered", "type" to e.javaClass.simpleName)
                     return DeletionOutcome.Failed(ErasedSoFar.SOME)
+                }
+                if (answer.status == HTTP_UNAUTHORIZED && !needsSignIn(answer)) {
+                    // Also how a deleted account's erase is refused.
+                    when (standing(record)) {
+                        Standing.DELETED -> return finish(if (pass == 1 && previous != null) previous else record)
+                        Standing.LIVE -> Unit
+                        else -> if (record.unsure) return DeletionOutcome.Unknown
+                    }
                 }
                 refusal(answer)?.let { return it }
                 val body = json(answer.body)
@@ -198,20 +369,14 @@ class AccountDeletion(
             in HTTP_OK -> null
             HTTP_TOO_MANY -> {
                 val so = nothingMore()
-                waitFor(answer, so)
+                waitFor(answer, so, record.takeIf { so != ErasedSoFar.NOTHING })
             }
-            HTTP_UNAVAILABLE -> waitFor(answer, ErasedSoFar.SOME)
+            HTTP_UNAVAILABLE -> waitFor(answer, ErasedSoFar.SOME, record)
             in REFUSED -> {
                 val so = nothingMore()
                 if (needsSignIn(answer)) DeletionOutcome.NeedsSignIn(FIRST_MAX_AGE_S, so) else DeletionOutcome.Failed(so)
             }
             else -> DeletionOutcome.Failed(ErasedSoFar.SOME)
-        }
-
-        private fun waitFor(answer: DeletionAnswer, so: ErasedSoFar): DeletionOutcome {
-            val until = nowMs() + retryAfterSeconds(answer.retryAfter, nowMs()) * MS_PER_S
-            if (so != ErasedSoFar.NOTHING) save(record.copy(notBeforeMs = until))
-            return DeletionOutcome.Wait(until, so)
         }
 
         /** This pass removed nothing: a record made for it would say otherwise, unless something went before. */
@@ -232,10 +397,14 @@ class AccountDeletion(
             var lost = false
             repeat(2) {
                 val token = when (val pinned = pinnedToken(userId)) {
-                    Pinned.Other -> return if (lost) DeletionOutcome.Unknown else DeletionOutcome.OtherAccount(erasedNow)
-                    Pinned.NoAnswer -> return if (lost) DeletionOutcome.Unknown else DeletionOutcome.Failed(erasedNow)
+                    Pinned.Other -> return if (lost) lost() else DeletionOutcome.OtherAccount(erasedNow)
+                    Pinned.NoAnswer -> return if (lost) lost() else DeletionOutcome.Failed(erasedNow)
                     is Pinned.Token -> pinned.value
                 }
+                // Saved first: killed during the call, the next start must know to ask what became of it.
+                val sent = record.copy(unsure = true)
+                if (!save(sent)) return if (lost) lost() else DeletionOutcome.NoRecord(erasedNow)
+                record = sent
                 val answer = try {
                     api.deleteAccount(token)
                 } catch (e: IOException) {
@@ -245,22 +414,25 @@ class AccountDeletion(
                 when {
                     // Auth may have committed although its answer was lost or says otherwise: ask again, once.
                     answer == null || answer.status >= HTTP_SERVER_ERROR -> lost = true
-                    deleted(answer) -> {
-                        done()
-                        return DeletionOutcome.Deleted(leftover)
-                    }
-                    lost -> return DeletionOutcome.Unknown
-                    needsSignIn(answer) -> return DeletionOutcome.NeedsSignIn(FIRST_MAX_AGE_S, erasedNow)
-                    else -> return DeletionOutcome.Failed(erasedNow)
+                    deleted(answer) -> return finish(record)
+                    lost -> return lost()
+                    else -> return refused(answer, erasedNow)
                 }
             }
-            return DeletionOutcome.Unknown
+            return lost()
         }
 
-        private suspend fun done() {
-            AunLog.i("auth", "account deleted")
-            save(record.copy(stage = DeletionStage.DELETED, resumeToken = null))
-            cleanUp(userId)
+        /** An answer to step 2 was lost; a session that ended since says nothing about it, Auth's record does. */
+        private suspend fun lost(): DeletionOutcome =
+            if (standing(record) == Standing.DELETED) finish(record) else DeletionOutcome.Unknown
+
+        /** Step 2 was answered with a no: the account is there, unless it was deleted elsewhere meanwhile. */
+        private suspend fun refused(answer: DeletionAnswer, erasedNow: ErasedSoFar): DeletionOutcome {
+            val signIn = needsSignIn(answer)
+            if (answer.status == HTTP_UNAUTHORIZED && !signIn && standing(record) == Standing.DELETED) return finish(record)
+            record = record.copy(unsure = false)
+            save(record)
+            return if (signIn) DeletionOutcome.NeedsSignIn(FIRST_MAX_AGE_S, erasedNow) else DeletionOutcome.Failed(erasedNow)
         }
     }
 
@@ -309,6 +481,10 @@ class AccountDeletion(
         /** Once a deletion has started: Auth's limit less 30 s, so a long erase is not stopped half-way. */
         const val CONTINUE_MAX_AGE_S = 570
 
+        /** How often the app asks by itself about one attempt, and how soon again. */
+        const val MAX_ASKS = 30
+        const val ASK_AGAIN_MS = 60_000L
+
         private const val DEFAULT_RETRY_S = 300L
 
         /** Ten years: only so that a number too large for a clock stays one. */
@@ -320,6 +496,9 @@ class AccountDeletion(
         private const val HTTP_UNAVAILABLE = 503
         private const val HTTP_SERVER_ERROR = 500
         private val HTTP_OK = 200..299
+
+        /** What may go into a header as it is. */
+        private val RECEIPT = Regex("[A-Za-z0-9._~+/=-]{1,1024}")
 
         /** Refused before the erase began: the pass removed nothing. */
         private val REFUSED = setOf(400, 401, 403, 404)

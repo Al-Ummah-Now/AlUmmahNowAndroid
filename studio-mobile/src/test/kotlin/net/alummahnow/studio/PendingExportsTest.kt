@@ -44,6 +44,17 @@ class PendingExportsTest {
         )
     }
 
+    @Test
+    fun `an account's exports are removed, and no other account's`() {
+        val store = store()
+        for (id in listOf("a", "b")) store.add(id, "c1", store.export(id, "1.mp4"))
+        store.remove("a")
+        assertFalse(store.dir("a").exists())
+        assertEquals(setOf("b" to "c1"), store.waiting.value)
+        assertEquals(1, store().take("b", "c1").files.size)
+        assertEquals(0, store().take("a", "c1").missing)
+    }
+
     private fun account(id: String) = StudioAccount(id, id, "$id@example.org", null, null, false)
 
     @Test

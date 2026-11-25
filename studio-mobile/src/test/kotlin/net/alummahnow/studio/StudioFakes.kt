@@ -154,6 +154,15 @@ class FakeDeletionApi : DeletionApi {
         calls += "account ${DeletionToken.userIdOf(token)}"
         return account
     }
+
+    /** `null`: no answer. */
+    var status: DeletionAnswer? = DeletionAnswer(404, "")
+    var receipt = DeletionAnswer(200, """{"receipt":"r-1","expiresAt":${Long.MAX_VALUE}}""")
+    override suspend fun deletionReceipt(token: String) = receipt
+    override suspend fun accountStatus(receipt: String): DeletionAnswer {
+        calls += "status $receipt"
+        return status ?: throw java.io.IOException("offline")
+    }
     override suspend fun serverNowSeconds() = now
 }
 
@@ -190,7 +199,10 @@ class FakeContainer(base: File, override val session: FakeSession, private val r
             override suspend fun token(userId: String) = if (session.active.value?.userId == userId) session.accessToken() else null
             override suspend fun holdUploads(userId: String) = uploads.holdUploads(userId)
             override suspend fun releaseUploads(userId: String) = uploads.releaseUploads(userId)
-            override suspend fun purgeUploads(userId: String) = uploads.purgeAccount(userId)
+            override suspend fun purgeUploads(userId: String) {
+                uploads.purgeAccount(userId)
+                exports.remove(userId)
+            }
             override suspend fun endSession(userId: String) = session.removeLocally(userId)
         }
     )

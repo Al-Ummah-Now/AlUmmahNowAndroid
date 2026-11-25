@@ -190,6 +190,7 @@
     <string name="studio_delete_stopping">جارٍ الإيقاف…</string>
     <string name="studio_delete_anyway">احذفه على أي حال</string>
     <string name="studio_delete_finish">أكمل الحذف</string>
+    <string name="studio_delete_dismiss">إخفاء</string>
     <string name="studio_delete_sign_in_action">سجّل الدخول مجددًا</string>
     <string name="studio_delete_sign_in">لحماية حسابك، سجّل الدخول مرة أخرى للمتابعة. لن يُزال شيء حتى تؤكد.</string>
     <string name="studio_delete_sign_in_started">ربما أُزيل بعض محتواك. لحماية حسابك، سجّل الدخول مرة أخرى للمتابعة. لن يُزال شيء آخر حتى تؤكد.</string>
@@ -215,10 +216,12 @@
     <string name="studio_delete_open_channel">مُحي محتواك في المرئيات، ما عدا قناة لم نتمكن من إزالتها، وحساب تسجيل الدخول ما زال موجودًا. كل ما تضيفه قبل الإكمال يُحذف أيضًا.</string>
     <string name="studio_delete_open_account">بدأ الحذف ولم يكتمل</string>
     <string name="studio_delete_open_signed_out">بدأ حذف %1$s على هذا الجهاز ولم يكتمل، وربما أُزيل بعض محتواه. سجّل الدخول إلى ذلك الحساب للإكمال. كل ما يُضاف قبل ذلك يُحذف أيضًا.</string>
+    <string name="studio_delete_unsure_signed_out">لا نعلم هل اكتمل حذف %1$s على هذا الجهاز.</string>
     <string name="studio_delete_done">مُحي محتواك في المرئيات وحُذف حسابك في الأمة الآن، وسُجّل خروجك من جميع التطبيقات.</string>
     <string name="studio_delete_done_channel">حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا قناة لم نتمكن من إزالتها، وتبقى حتى يزيلها فريقنا، وقد أُبلغ بها.</string>
     <string name="studio_delete_done_other">حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا بعض السجلات التي لم نتمكن من إزالتها تلقائيًا.</string>
     <string name="studio_delete_done_both">حُذف حسابك في الأمة الآن ومُحي محتواك في المرئيات، ما عدا قناة وبعض السجلات التي لم نتمكن من إزالتها. تبقى القناة حتى يزيلها فريقنا، وقد أُبلغ بها.</string>
+    <string name="studio_delete_done_elsewhere">هذا الحساب في الأمة الآن محذوف بالفعل، فأُزيل من هذا الجهاز. ولم نتمكن هنا من التحقق من محو كل محتواه.</string>
     <string name="studio_delete_done_purge">يُزال سجل تسجيل الدخول المحذوف نهائيًا بعد %1$d يومًا، وقد تبقى نسخ مخزّنة من ملفات المرئيات والصور.</string>
     <plurals name="studio_delete_channels_count">
         <item quantity="zero">لا تملك أي قناة.</item>
