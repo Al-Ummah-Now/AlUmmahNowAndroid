@@ -61,6 +61,12 @@ class PendingExports(private val root: File, private val index: File) {
         }
     }
 
+    /** Deletes what [userId] exported and never sent, also when its session is gone already. */
+    fun remove(userId: String) = synchronized(lock) {
+        dir(userId).deleteRecursively()
+        if (rows.any { it.userId == userId }) save(rows.filterNot { it.userId == userId })
+    }
+
     internal fun keepOnly(userIds: Set<String>) = synchronized(lock) {
         val keep = userIds.map { dir(it).name }.toSet()
         root.listFiles()?.filterNot { it.name in keep }?.forEach { it.deleteRecursively() }

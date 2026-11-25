@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.alummahnow.core.ApiClient
 import net.alummahnow.core.ApiClientConfig
 import net.alummahnow.core.bridge.AunClient
@@ -105,7 +106,10 @@ class AppContainer(context: Context) : StudioContainer {
                 if (session.active.value?.userId == userId) session.accessToken() else null
             override suspend fun holdUploads(userId: String) = uploads.holdUploads(userId)
             override suspend fun releaseUploads(userId: String) = uploads.releaseUploads(userId)
-            override suspend fun purgeUploads(userId: String) = uploads.purgeAccount(userId)
+            override suspend fun purgeUploads(userId: String) {
+                uploads.purgeAccount(userId)
+                withContext(Dispatchers.IO) { exports.remove(userId) }
+            }
             override suspend fun endSession(userId: String) = session.removeLocally(userId)
         }
     )

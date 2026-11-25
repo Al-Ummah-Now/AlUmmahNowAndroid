@@ -41,6 +41,7 @@ import net.alummahnow.feature.studio.deletion.DeleteAccountUiState
 import net.alummahnow.feature.studio.deletion.DeleteAction
 import net.alummahnow.feature.studio.deletion.DeletionBanner
 import net.alummahnow.feature.studio.deletion.isDeleteWord
+import net.alummahnow.feature.studio.signin.SignInNotice
 import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInUiState
 import org.junit.Assert.assertEquals
@@ -418,8 +419,8 @@ class AccountDeletionTest {
 
     @Test fun sheetStartedArDark() = shoot("sheet_started", Look.AR_DARK) { Sheet(setOf("u1"), Look.AR_DARK) }
 
-    private fun signedOut(name: String, look: Look, notice: @Composable () -> String) = shoot(name, look) {
-        SignInScreen(SignInUiState.Idle, {}, null, null, notices = listOf(notice()))
+    private fun signedOut(name: String, look: Look, onDismiss: (() -> Unit)? = null, notice: @Composable () -> String) = shoot(name, look) {
+        SignInScreen(SignInUiState.Idle, {}, null, null, notices = listOf(SignInNotice(notice(), onDismiss)))
     }
 
     private fun done(look: Look, fontScale: Float = 1f) = shoot("done", look, fontScale = fontScale) {
@@ -428,7 +429,7 @@ class AccountDeletionTest {
             {},
             null,
             null,
-            notices = listOf(aunString(R.string.studio_delete_done) + " " + aunString(R.string.studio_delete_done_purge, 30))
+            notices = listOf(SignInNotice(aunString(R.string.studio_delete_done) + " " + aunString(R.string.studio_delete_done_purge, 30)))
         )
     }
 
@@ -451,6 +452,26 @@ class AccountDeletionTest {
     @Test fun doneArDark() = done(Look.AR_DARK)
 
     @Test fun doneArLight() = done(Look.AR_LIGHT)
+
+    private val unsure = started.copy(stage = DeletionStage.CONTENT_ERASED, receipt = "r", unsure = true)
+
+    @Test fun bannerUnsureEnDark() = banner(Look.EN_DARK, unsure, name = "banner_unsure")
+
+    @Test fun bannerUnsureArDark200() = banner(Look.AR_DARK, unsure, fontScale = 2f, name = "banner_unsure")
+
+    @Test fun bannerUnsureArLight() = banner(Look.AR_LIGHT, unsure, name = "banner_unsure")
+
+    private fun unsureSignedOut(look: Look) = signedOut("unsure_signed_out", look, onDismiss = {}) {
+        aunString(R.string.studio_delete_unsure_signed_out, isolate("amina.yusuf@example.org"))
+    }
+
+    @Test fun unsureSignedOutEnLight() = unsureSignedOut(Look.EN_LIGHT)
+
+    @Test fun unsureSignedOutArDark() = unsureSignedOut(Look.AR_DARK)
+
+    @Test fun doneElsewhereEnDark() = signedOut("done_elsewhere", Look.EN_DARK) { aunString(R.string.studio_delete_done_elsewhere) }
+
+    @Test fun doneElsewhereArLight() = signedOut("done_elsewhere", Look.AR_LIGHT) { aunString(R.string.studio_delete_done_elsewhere) }
 
     @Test fun openSignedOutEnLight() = signedOut("open_signed_out", Look.EN_LIGHT) {
         aunString(R.string.studio_delete_open_signed_out, isolate("amina.yusuf@example.org"))

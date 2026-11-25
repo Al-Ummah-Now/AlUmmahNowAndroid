@@ -109,21 +109,40 @@ class AccountDeletionViewModel(
             } finally {
                 mutable.update { it.copy(working = false, stopping = false) }
             }
-            if (outcome is DeletionOutcome.Deleted) deleted(target, outcome, openBrowser) else mutable.update { it.after(outcome) }
+            if (outcome is DeletionOutcome.Deleted) {
+                deleted(target.userId, outcome)
+                // The browser's session ends too; the account itself is gone already, so nothing depends on it.
+                session.logoutUrl?.let(openBrowser)
+            } else {
+                mutable.update { it.after(outcome) }
+            }
         }
     }
 
-    private fun deleted(target: StudioAccount, outcome: DeletionOutcome.Deleted, openBrowser: (String) -> Boolean) {
-        forgetClient(target.userId)
+    /** Asks what became of a deletion whose answer was lost; one that worked is said and cleaned up. */
+    fun settle() {
+        if (mutable.value.working) return
+        viewModelScope.launch { deletion.settleLost().forEach { (userId, outcome) -> deleted(userId, outcome) } }
+    }
+
+    /** Puts "it isn't known what became of it" away. */
+    fun dismiss(userId: String) = deletion.dismiss(userId)
+
+    private fun deleted(userId: String, outcome: DeletionOutcome.Deleted) {
+        forgetClient(userId)
         val text = when {
+            outcome.elsewhere -> R.string.studio_delete_done_elsewhere
             outcome.leftover.isEmpty() -> R.string.studio_delete_done
             Leftover.CHANNEL !in outcome.leftover -> R.string.studio_delete_done_other
             Leftover.OTHER !in outcome.leftover -> R.string.studio_delete_done_channel
             else -> R.string.studio_delete_done_both
         }
-        mutable.value = DeleteAccountUiState(notice = DeletionNotice(text, withPurge = true, serial = ++serial))
-        // The browser's session ends too; the account itself is gone already, so nothing depends on it.
-        session.logoutUrl?.let(openBrowser)
+        val notice = DeletionNotice(text, withPurge = !outcome.elsewhere, serial = ++serial)
+        // Another account's dialog stays open.
+        mutable.update {
+            val other = it.target != null && it.target.userId != userId
+            if (other) it.copy(notice = notice) else DeleteAccountUiState(notice = notice)
+        }
     }
 
     private fun DeleteAccountUiState.after(outcome: DeletionOutcome): DeleteAccountUiState = when (outcome) {

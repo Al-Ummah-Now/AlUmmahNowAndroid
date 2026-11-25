@@ -162,6 +162,7 @@
     <string name="studio_delete_stopping">Stopping…</string>
     <string name="studio_delete_anyway">Delete anyway</string>
     <string name="studio_delete_finish">Finish deleting</string>
+    <string name="studio_delete_dismiss">Dismiss</string>
     <string name="studio_delete_sign_in_action">Sign in again</string>
     <string name="studio_delete_sign_in">For your security, sign in again to continue. Nothing is removed until you confirm.</string>
     <string name="studio_delete_sign_in_started">Some of your content may already be gone. For your security, sign in again to continue. Nothing more is removed until you confirm.</string>
@@ -187,10 +188,12 @@
     <string name="studio_delete_open_channel">Your Videos content was erased, except for a channel we could not remove, and your sign-in account still exists. Anything you add before you finish is deleted too.</string>
     <string name="studio_delete_open_account">Deletion started, not finished</string>
     <string name="studio_delete_open_signed_out">A deletion of %1$s was started on this device and is not finished. Some of its content may already be gone. Sign in to that account to finish. Anything added before then is deleted too.</string>
+    <string name="studio_delete_unsure_signed_out">We do not know whether the deletion of %1$s on this device finished.</string>
     <string name="studio_delete_done">Your Videos content was erased and your Al Ummah Now account was deleted. You are signed out of all apps.</string>
     <string name="studio_delete_done_channel">Your Al Ummah Now account was deleted and your Videos content was erased, except for a channel we could not remove. It stays until our team removes it; they have been told.</string>
     <string name="studio_delete_done_other">Your Al Ummah Now account was deleted and your Videos content was erased, except for some records we could not remove automatically.</string>
     <string name="studio_delete_done_both">Your Al Ummah Now account was deleted and your Videos content was erased, except for a channel and some records we could not remove. The channel stays until our team removes it; they have been told about the channel.</string>
+    <string name="studio_delete_done_elsewhere">This Al Ummah Now account is already deleted, so it was removed from this device. We could not check here that all its content was erased.</string>
     <string name="studio_delete_done_purge">The deleted sign-in record is purged after %1$d days. Stored copies of video and image files can remain.</string>
     <plurals name="studio_delete_channels_count">
         <item quantity="one">You own %1$d channel. It is deleted whole, with what its other admins and members added.</item>

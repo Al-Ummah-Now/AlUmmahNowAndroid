@@ -2,6 +2,8 @@ package net.alummahnow.feature.studio.deletion
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -27,9 +29,13 @@ import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.studio.R
 
-/** Says, on every screen, that a deletion of this account started and isn't finished. It can't be dismissed. */
+/**
+ * Says, on every screen, that a deletion of this account started and isn't finished. Only "not known" can be dismissed
+ * ([onDismiss]).
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DeletionBanner(record: DeletionRecord, onFinish: () -> Unit, modifier: Modifier = Modifier) {
+fun DeletionBanner(record: DeletionRecord, onFinish: () -> Unit, modifier: Modifier = Modifier, onDismiss: () -> Unit = {}) {
     val erased = record.stage == DeletionStage.CONTENT_ERASED
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -45,6 +51,7 @@ fun DeletionBanner(record: DeletionRecord, onFinish: () -> Unit, modifier: Modif
                 Text(
                     stringResource(
                         when {
+                            record.unsure -> R.string.studio_delete_error_unknown
                             erased && record.leftover == setOf(Leftover.CHANNEL) -> R.string.studio_delete_open_channel
                             erased && record.leftover.isEmpty() -> R.string.studio_delete_open_content_erased
                             else -> R.string.studio_delete_open
@@ -54,12 +61,26 @@ fun DeletionBanner(record: DeletionRecord, onFinish: () -> Unit, modifier: Modif
                     modifier = Modifier.weight(1f)
                 )
             }
-            FanousButton(
-                stringResource(R.string.studio_delete_finish),
-                onFinish,
-                kind = FanousButtonKind.Secondary,
-                modifier = Modifier.align(Alignment.End).testTag("deletion-finish")
-            )
+            FlowRow(
+                Modifier.align(Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.xs)
+            ) {
+                if (record.unsure) {
+                    FanousButton(
+                        stringResource(R.string.studio_delete_dismiss),
+                        onDismiss,
+                        kind = FanousButtonKind.Ghost,
+                        modifier = Modifier.testTag("deletion-dismiss")
+                    )
+                }
+                FanousButton(
+                    stringResource(R.string.studio_delete_finish),
+                    onFinish,
+                    kind = FanousButtonKind.Secondary,
+                    modifier = Modifier.testTag("deletion-finish")
+                )
+            }
         }
     }
 }

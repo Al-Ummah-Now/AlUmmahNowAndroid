@@ -47,6 +47,32 @@ class DeletionApiTest {
     }
 
     @Test
+    fun `a receipt is asked for with the token, the status with the receipt alone`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"receipt":"adr1.a.b","expiresAt":1}"""))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"invalid_receipt"}"""))
+        assertEquals("""{"receipt":"adr1.a.b","expiresAt":1}""", api().deletionReceipt("tok").body)
+        assertEquals(DeletionAnswer(401, """{"error":"invalid_receipt"}"""), api().accountStatus("adr1.a.b"))
+        val receipt = server.takeRequest()
+        assertEquals("POST /auth/account/deletion-receipt HTTP/1.1", receipt.requestLine)
+        assertEquals("Bearer tok", receipt.getHeader("Authorization"))
+        assertEquals("", receipt.body.readUtf8())
+        val status = server.takeRequest()
+        assertEquals("GET /auth/account/status HTTP/1.1", status.requestLine)
+        assertEquals(listOf("Deletion-Receipt adr1.a.b"), status.headers.values("Authorization"))
+    }
+
+    @Test
+    fun `a record of an earlier version is read, and the receipt survives a new process`() {
+        val storage = Storage()
+        storage.set("account-deletions", """[{"userId":"u1","label":"a@example.org","stage":"CONTENT_ERASED"}]""".toByteArray())
+        val records = SecureDeletionRecords(storage)
+        assertEquals(DeletionRecord("u1", "a@example.org", DeletionStage.CONTENT_ERASED), records.get("u1"))
+        val lost = DeletionRecord("u1", "a@example.org", receipt = "adr1.a.b", unsure = true)
+        records.put(lost)
+        assertEquals(lost, SecureDeletionRecords(storage).get("u1"))
+    }
+
+    @Test
     fun `a proof the server asks for is fetched once`() = runTest {
         proofs.values += listOf("old", "fresh")
         server.enqueue(MockResponse().setResponseCode(403).setBody("""{"code":"native_proof_required"}"""))

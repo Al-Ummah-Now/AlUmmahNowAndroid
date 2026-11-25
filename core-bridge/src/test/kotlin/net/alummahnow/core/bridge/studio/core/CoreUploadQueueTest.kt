@@ -158,6 +158,40 @@ class CoreUploadQueueTest {
     }
 
     @Test
+    fun `a purge keeps the access to a picked file that another account still has to send`() = runTest {
+        val uri = android.net.Uri.parse("content://docs/talk")
+        val own = android.net.Uri.parse("content://docs/own")
+        val queue = queue()
+        queue.enqueue(listOf(draft().copy(source = uri.toString()), draft().copy(source = own.toString())))
+        active = "b"
+        queue.enqueue(listOf(draft().copy(source = uri.toString())))
+        fun kept() = context.contentResolver.persistedUriPermissions.map { it.uri }.toSet()
+        assertEquals(setOf(uri, own), kept())
+        queue.purgeAccount("a")
+        assertEquals(setOf(uri), kept())
+        queue.purgeAccount("b")
+        assertEquals(emptySet<Any>(), kept())
+    }
+
+    @Test
+    fun `a purge reads the queue from disk, and one it can't read is not emptied`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        active = "b"
+        queue().enqueue(listOf(draft())) // another process's word for it
+        queue.purgeAccount("a")
+        assertEquals(1, queue.refresh().size)
+        val file = File(context.filesDir, "uploads/queue.json")
+        val saved = file.readText()
+        file.writeText("{broken")
+        assertTrue(runCatching { queue.purgeAccount("b") }.isFailure)
+        assertEquals("{broken", file.readText())
+        file.writeText(saved)
+        queue.purgeAccount("b")
+        assertEquals(emptyList<Any>(), queue.refresh())
+    }
+
+    @Test
     fun `a purge while a file is being copied leaves no copy and writes nothing back`() = runTest {
         val queue = queue()
         queue.enqueue(listOf(draft()))

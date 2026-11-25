@@ -29,10 +29,15 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import net.alummahnow.design.components.FanousButton
+import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.passkey.PasskeySignInOptions
 import net.alummahnow.feature.studio.R
 import net.alummahnow.feature.studio.studioText
+
+/** Something to tell before a sign-in; with [onDismiss] the person can put it away. */
+data class SignInNotice(val text: String, val onDismiss: (() -> Unit)? = null)
 
 /**
  * Sign-in. "Sign in with a passkey" ([onPasskey]) uses the OS passkey sheet with no browser; [onSignIn] is
@@ -50,7 +55,7 @@ fun SignInScreen(
     passkeyWorking: Boolean = false,
     onPasskey: () -> Unit = {},
     /** What happened to an account on this device (deleted, or a deletion that is not finished). */
-    notices: List<String> = emptyList()
+    notices: List<SignInNotice> = emptyList()
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
@@ -87,12 +92,20 @@ fun SignInScreen(
                 }
                 notices.forEachIndexed { i, notice ->
                     Text(
-                        notice,
+                        notice.text,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.testTag("signin-notice-$i").semantics { liveRegion = LiveRegionMode.Polite }
                     )
+                    notice.onDismiss?.let {
+                        FanousButton(
+                            stringResource(R.string.studio_delete_dismiss),
+                            it,
+                            kind = FanousButtonKind.Ghost,
+                            modifier = Modifier.testTag("signin-notice-dismiss")
+                        )
+                    }
                 }
                 if (state is SignInUiState.Error) {
                     Text(

@@ -88,6 +88,7 @@ import net.alummahnow.feature.studio.deletion.PURGE_DAYS
 import net.alummahnow.feature.studio.edit.VideoEditScreen
 import net.alummahnow.feature.studio.edit.VideoEditViewModel
 import net.alummahnow.feature.studio.features.StudioFeaturesViewModel
+import net.alummahnow.feature.studio.signin.SignInNotice
 import net.alummahnow.feature.studio.signin.SignInScreen
 import net.alummahnow.feature.studio.signin.SignInViewModel
 import net.alummahnow.feature.studio.studioMessage
@@ -138,6 +139,7 @@ fun StudioApp(
         }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { signIn.browserClosed() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { deletion.settle() }
     // An App Link waits here until the person is signed in and the link's channel is loaded.
     var pendingLink by remember { mutableStateOf<AppLink.Studio?>(null) }
     LaunchedEffect(Unit) { links.collect { pendingLink = it } }
@@ -174,8 +176,12 @@ fun StudioApp(
                 passkeys.signIn(authenticator)
             },
             notices = listOfNotNull(
-                deletionState.notice?.let { deletionNoticeText(it) },
-                openDeletions.firstOrNull()?.let { aunString(StudioR.string.studio_delete_open_signed_out, isolate(it.label)) }
+                deletionState.notice?.let { SignInNotice(deletionNoticeText(it)) },
+                openDeletions.firstOrNull { !it.dismissed }?.let {
+                    val text =
+                        if (it.unsure) StudioR.string.studio_delete_unsure_signed_out else StudioR.string.studio_delete_open_signed_out
+                    SignInNotice(aunString(text, isolate(it.label)), if (it.unsure) ({ deletion.dismiss(it.userId) }) else null)
+                }
             )
         )
         return
@@ -217,7 +223,7 @@ fun StudioApp(
     // Unknown when the list is not there, or may be cut off at the server's page size.
     val ownedChannels = (channelsState as? ChannelsUiState.Content)?.channels
         ?.takeIf { it.size < CHANNEL_PAGE }?.count { it.role == ChannelRole.OWNER }
-    val openDeletion = openDeletions.firstOrNull { it.userId == current.userId }
+    val openDeletion = openDeletions.firstOrNull { it.userId == current.userId && !it.dismissed }
     val notice = deletionState.notice
     val noticeText = notice?.let { deletionNoticeText(it) }
     LaunchedEffect(notice?.serial) {
@@ -257,7 +263,13 @@ fun StudioApp(
         snackbarHost = { StudioSnackbar(snackbar, aboveBar = !wide && selected != null) }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (openDeletion != null) DeletionBanner(openDeletion, onFinish = { deletion.open(current, ownedChannels) })
+            if (openDeletion != null) {
+                DeletionBanner(
+                    openDeletion,
+                    onFinish = { deletion.open(current, ownedChannels) },
+                    onDismiss = { deletion.dismiss(current.userId) }
+                )
+            }
             val body = Modifier.fillMaxWidth().weight(1f)
             if (selected == null) {
                 ChannelPickerScreen(channelsState, onSelect = channels::select, onRetry = channels::load, modifier = body)

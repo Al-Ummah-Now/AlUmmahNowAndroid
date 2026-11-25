@@ -437,7 +437,8 @@ class CoreUploadQueue(
         synchronized(purgedUsers) { purgedUsers += userId }
         withContext(Dispatchers.IO) {
             val gone = mutex.withLock {
-                val s = load()
+                // A queue that can't be read is not an empty one: saving it would remove the other accounts' uploads.
+                val s = if (stateFile.exists()) json.decodeFromString<State>(stateFile.readText()) else State()
                 save(
                     s.copy(
                         pending = s.pending.filterNot { it.userId == userId },
@@ -451,7 +452,9 @@ class CoreUploadQueue(
             val sources = gone.pending.filter { it.userId == userId }.map { it.source } + followUps.map { it.draft.source }
             removeEngine(userId)
             followUps.forEach { File(it.stagedPath).delete() }
-            sources.distinct().map(Uri::parse).filter { it.scheme == "content" }.forEach { uri ->
+            val others = gone.pending + gone.followUps.map { it.draft }
+            val shared = others.filter { it.userId != userId }.map { it.source }.toSet()
+            sources.distinct().filterNot { it in shared }.map(Uri::parse).filter { it.scheme == "content" }.forEach { uri ->
                 runCatching {
                     app.contentResolver.releasePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
