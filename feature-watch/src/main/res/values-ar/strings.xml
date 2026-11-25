@@ -7,7 +7,7 @@
     <string name="watch_report_channel">الإبلاغ عن القناة</string>
     <string name="watch_block_channel">حظر القناة</string>
     <string name="watch_block_channel_title">حظر %1$s؟</string>
-    <string name="watch_block_channel_body">ستُخفى مرئيات هذه القناة وبثوثها المباشرة على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من الإعدادات.</string>
+    <string name="watch_block_channel_body">ستُخفى مرئيات هذه القناة وبثوثها المباشرة على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من إعدادات العرض.</string>
     <string name="watch_block_confirm">حظر</string>
     <string name="watch_channel_blocked">مرئيات %1$s مخفية على هذا الجهاز.</string>
     <string name="watch_unblock">إلغاء الحظر</string>

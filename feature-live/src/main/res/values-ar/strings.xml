@@ -38,9 +38,9 @@
     <string name="live_channel_blocked">بثوث %1$s مخفية على هذا الجهاز.</string>
     <string name="live_unblock">إلغاء الحظر</string>
     <string name="live_block_channel_title">حظر %1$s؟</string>
-    <string name="live_block_channel_body">ستُخفى مرئيات هذه القناة وبثوثها المباشرة على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من الإعدادات.</string>
+    <string name="live_block_channel_body">ستُخفى مرئيات هذه القناة وبثوثها المباشرة على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من إعدادات العرض.</string>
     <string name="live_block_user_title">حظر %1$s؟</string>
-    <string name="live_block_user_body">ستُخفى رسائل هذا المستخدم في محادثة البث المباشر على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من الإعدادات.</string>
+    <string name="live_block_user_body">ستُخفى رسائل هذا المستخدم في محادثة البث المباشر على هذا الجهاز. يمكنك إلغاء الحظر في أي وقت من إعدادات العرض.</string>
     <string name="live_event_filter">الفعالية: %1$s</string>
     <string name="live_event_all">الكل</string>
     <string name="live_event_jumuah">الجمعة</string>

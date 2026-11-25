@@ -20,4 +20,5 @@
     <string name="settings_close">Close</string>
     <!-- Launcher (home screen) name; the store listing and app_name keep the full name (owner, 2026-11-20). -->
     <string name="launcher_name">Ummah Now</string>
+    <string name="settings_blocked_unnamed">No name</string>
 </resources>
