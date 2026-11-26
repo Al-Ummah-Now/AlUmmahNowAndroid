@@ -28,17 +28,17 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class DesignScreenshotTest {
-    // The brand channel's videos with the same lifetime views and art as Home, Watch and Studio (BrandChannel in
+    // The brand channel's videos with the same Trending views and art as Home, Watch and Studio (BrandChannel in
     // core-bridge/src/test/fixtures; :design does not see core-bridge), ordered by views as Trending is. The brand
     // channel has an official name in each language, so each frame shows the one in its language.
     private val enItems = listOf(
-        VideoCardData("3", "Fiqh of Prayer", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "Al Ummah Now", 2_460),
-        VideoCardData("1", "Introduction to Tafsir", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "Al Ummah Now", 1_870),
+        VideoCardData("3", "Fiqh of Prayer", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "Al Ummah Now", 2_120),
+        VideoCardData("1", "Introduction to Tafsir", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "Al Ummah Now", 1_504),
         VideoCardData("8", "Patience in hardship", "${FIXTURE_THUMBS}patience.jpg", 980, "Al Ummah Now", 640)
     )
     private val arItems = listOf(
-        VideoCardData("3", "فقه الصلاة", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "الأمة الآن", 2_460),
-        VideoCardData("1", "مقدمة في التفسير", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_870),
+        VideoCardData("3", "فقه الصلاة", "${FIXTURE_THUMBS}fiqh.jpg", 3_725, "الأمة الآن", 2_120),
+        VideoCardData("1", "مقدمة في التفسير", "${FIXTURE_THUMBS}tafsir.jpg", 1_830, "الأمة الآن", 1_504),
         VideoCardData("8", "الصبر عند الشدائد", "${FIXTURE_THUMBS}patience.jpg", 980, "الأمة الآن", 640)
     )
 
@@ -47,7 +47,7 @@ class DesignScreenshotTest {
         AunTheme(mode = mode) {
             WithFixtureImages {
                 Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    VideoRail(title = title, items = items, onItemClick = {})
+                    VideoRail(title = title, items = items.sortedByDescending { it.views }, onItemClick = {})
                 }
             }
         }
