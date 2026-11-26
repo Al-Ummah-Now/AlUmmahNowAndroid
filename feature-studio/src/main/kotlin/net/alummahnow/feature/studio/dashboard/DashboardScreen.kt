@@ -24,16 +24,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import net.alummahnow.core.bridge.studio.CommentsSummary
 import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.StudioVideo
@@ -63,7 +64,14 @@ import net.alummahnow.feature.studio.studioText
  * failed says so in its own card with Try again.
  */
 @Composable
-fun DashboardScreen(state: DashboardUiState, onRetry: () -> Unit, modifier: Modifier = Modifier, onOpenVideo: (String) -> Unit = {}) {
+fun DashboardScreen(
+    state: DashboardUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    onCommentAction: (String, HeldCommentAction) -> Unit = { _, _ -> },
+    onMoreComments: () -> Unit = {},
+    onOpenVideo: (String) -> Unit = {}
+) {
     // The page paints its own background in every state (as Content and Analytics), whatever draws behind it.
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
@@ -97,7 +105,9 @@ fun DashboardScreen(state: DashboardUiState, onRetry: () -> Unit, modifier: Modi
                             "recent"
                         )
                     }
-                    val comments: @Composable (Modifier) -> Unit = { CommentsSection(it, state.comments, onRetry) }
+                    val comments: @Composable (Modifier) -> Unit = {
+                        CommentsSection(it, state, onRetry, onCommentAction, onMoreComments)
+                    }
                     val drafts: @Composable (Modifier) -> Unit = {
                         VideosSection(
                             it,
@@ -295,15 +305,30 @@ private fun statusLabel(s: ContentStatus): Int = when (s) {
 }
 
 @Composable
-private fun CommentsSection(modifier: Modifier, section: DashboardSection<CommentsSummary>, onRetry: () -> Unit) {
+private fun CommentsSection(
+    modifier: Modifier,
+    state: DashboardUiState.Content,
+    onRetry: () -> Unit,
+    onAction: (String, HeldCommentAction) -> Unit,
+    onMore: () -> Unit
+) {
+    val section = state.comments
     if (section == DashboardSection.Hidden) return
     SectionCard(modifier.testTag("dashboard-comments"), R.string.studio_dashboard_comments, section is DashboardSection.Failed, onRetry) {
+        state.commentMessage?.let {
+            val colors = LocalFanous.current.colors
+            Text(
+                stringResource(it),
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                color = if (state.commentError) colors.errorText.color else colors.textPrimary.color
+            )
+        }
         when (section) {
             is DashboardSection.Failed -> {
                 QuietLine(stringResource(R.string.studio_dashboard_section_failed))
                 QuietLine(stringResource(section.message))
             }
-            is DashboardSection.Ready -> if (section.value.held == 0) {
+            is DashboardSection.Ready -> if (section.value.held == 0 && section.value.nextCursor == null) {
                 QuietLine(stringResource(R.string.studio_dashboard_comments_empty), Modifier.testTag("dashboard-comments-empty"))
             } else {
                 Text(
@@ -312,6 +337,14 @@ private fun CommentsSection(modifier: Modifier, section: DashboardSection<Commen
                     color = LocalFanous.current.colors.link.color,
                     fontWeight = FontWeight.SemiBold
                 )
+                HeldCommentRows(section.value.items, state.pendingComments, state.loadingMoreComments, onAction)
+                if (section.value.nextCursor != null) {
+                    FanousButton(
+                        stringResource(if (state.loadingMoreComments) R.string.studio_held_pending else R.string.studio_held_more),
+                        onMore,
+                        enabled = state.pendingComments.isEmpty() && !state.loadingMoreComments
+                    )
+                }
             }
             DashboardSection.Hidden -> Unit
         }

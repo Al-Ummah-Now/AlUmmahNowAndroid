@@ -17,7 +17,10 @@ interface StudioRepository {
      * Comments waiting for review on this channel. Throws [StudioError.Forbidden] without `comment.moderate` and
      * [StudioError.NotSupported] where the comments index is not deployed; both mean "no such section".
      */
-    suspend fun commentsSummary(channelId: String): CommentsSummary
+    suspend fun commentsSummary(channelId: String, cursor: String? = null): CommentsSummary
+    suspend fun moderateComment(channelId: String, comment: HeldComment, action: CommentModeration)
+    suspend fun reportComment(commentId: String, reason: CommentReportReason, description: String?)
+    suspend fun hideCommentAuthor(channelId: String, authorId: String)
     suspend fun suggestions(channelId: String, text: String): List<StudioSuggestion>
     suspend fun video(id: String): StudioVideo
     suspend fun update(id: String, channelId: String, edit: VideoEdit): StudioVideo

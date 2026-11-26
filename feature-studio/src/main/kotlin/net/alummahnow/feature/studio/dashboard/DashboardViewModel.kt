@@ -11,15 +11,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.studio.CommentModeration
+import net.alummahnow.core.bridge.studio.CommentReportReason
 import net.alummahnow.core.bridge.studio.CommentsSummary
 import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentQuery
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
+import net.alummahnow.core.bridge.studio.HeldComment
 import net.alummahnow.core.bridge.studio.StudioError
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.core.bridge.studio.hidesFeature
+import net.alummahnow.feature.studio.R
 import net.alummahnow.feature.studio.attempt
 import net.alummahnow.feature.studio.studioMessage
 
@@ -28,6 +32,13 @@ sealed interface DashboardSection<out T> {
     data object Hidden : DashboardSection<Nothing>
     data class Ready<T>(val value: T) : DashboardSection<T>
     data class Failed(@param:StringRes val message: Int) : DashboardSection<Nothing>
+}
+
+sealed interface HeldCommentAction {
+    data object Approve : HeldCommentAction
+    data object Remove : HeldCommentAction
+    data object HideAuthor : HeldCommentAction
+    data class Report(val reason: CommentReportReason, val details: String?) : HeldCommentAction
 }
 
 sealed interface DashboardUiState {
@@ -43,7 +54,11 @@ sealed interface DashboardUiState {
         val recent: DashboardSection<List<StudioVideo>> = DashboardSection.Hidden,
         val comments: DashboardSection<CommentsSummary> = DashboardSection.Hidden,
         val drafts: DashboardSection<List<StudioVideo>> = DashboardSection.Hidden,
-        val scheduled: DashboardSection<List<StudioVideo>> = DashboardSection.Hidden
+        val scheduled: DashboardSection<List<StudioVideo>> = DashboardSection.Hidden,
+        val pendingComments: Set<String> = emptySet(),
+        val loadingMoreComments: Boolean = false,
+        @param:StringRes val commentMessage: Int? = null,
+        val commentError: Boolean = false
     ) : DashboardUiState {
         /** Nothing is left once every section is hidden: Studio drops the Dashboard and opens Content first. */
         val nothingLeft: Boolean
@@ -66,11 +81,112 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
     val state: StateFlow<DashboardUiState> = mutableState.asStateFlow()
     private var job: Job? = null
 
+    private val hiddenAuthors = mutableSetOf<String>()
+
     init {
         load()
     }
 
+    fun actOnComment(commentId: String, action: HeldCommentAction) {
+        val state = commentActionState() ?: return
+        val summary = (state.comments as? DashboardSection.Ready)?.value ?: return
+        val comment = summary.items.firstOrNull { it.id == commentId } ?: return
+        val ids = affectedCommentIds(summary, comment, action)
+        if (ids.isEmpty() || ids.any { it in state.pendingComments }) return
+        mutableState.value = state.copy(pendingComments = state.pendingComments + ids, commentMessage = null)
+        viewModelScope.launch {
+            try {
+                val outcome = attempt("studio", "held comment action") {
+                    submitCommentAction(comment, action)
+                }
+                val current = mutableState.value as DashboardUiState.Content
+                val currentSummary = (current.comments as DashboardSection.Ready).value
+                val updated = if (outcome.isSuccess && action !is HeldCommentAction.Report) {
+                    val remaining = currentSummary.items.filterNot { it.id in ids }
+                    currentSummary.copy(items = remaining, held = currentSummary.held - (currentSummary.items.size - remaining.size))
+                } else {
+                    currentSummary
+                }
+                mutableState.value = current.copy(
+                    comments = DashboardSection.Ready(updated),
+                    commentMessage = outcome.getOrNull() ?: R.string.studio_held_failed,
+                    commentError = outcome.isFailure
+                )
+            } finally {
+                val current = mutableState.value as DashboardUiState.Content
+                mutableState.value = current.copy(pendingComments = current.pendingComments - ids)
+            }
+        }
+    }
+
+    private fun commentActionState(): DashboardUiState.Content? =
+        (mutableState.value as? DashboardUiState.Content)?.takeUnless { it.loadingMoreComments }
+
+    private fun affectedCommentIds(summary: CommentsSummary, comment: HeldComment, action: HeldCommentAction): Set<String> =
+        when (action) {
+            HeldCommentAction.Approve, HeldCommentAction.Remove -> if (comment.canModerate) setOf(comment.id) else emptySet()
+            HeldCommentAction.HideAuthor -> if (comment.authorId == null) {
+                emptySet()
+            } else {
+                summary.items.filter { it.authorId == comment.authorId }.map(HeldComment::id).toSet()
+            }
+            is HeldCommentAction.Report -> setOf(comment.id)
+        }
+
+    private suspend fun submitCommentAction(comment: HeldComment, action: HeldCommentAction): Int =
+        when (action) {
+            HeldCommentAction.Approve -> {
+                repository.moderateComment(channelId, comment, CommentModeration.APPROVE)
+                R.string.studio_held_approved
+            }
+            HeldCommentAction.Remove -> {
+                repository.moderateComment(channelId, comment, CommentModeration.REMOVE)
+                R.string.studio_held_removed
+            }
+            HeldCommentAction.HideAuthor -> {
+                val authorId = requireNotNull(comment.authorId)
+                repository.hideCommentAuthor(channelId, authorId)
+                hiddenAuthors += authorId
+                R.string.studio_held_hidden
+            }
+            is HeldCommentAction.Report -> {
+                repository.reportComment(comment.id, action.reason, action.details)
+                R.string.studio_held_reported
+            }
+        }
+
+    fun loadMoreComments() {
+        val state = mutableState.value as? DashboardUiState.Content ?: return
+        val summary = (state.comments as? DashboardSection.Ready)?.value ?: return
+        val cursor = summary.nextCursor ?: return
+        if (state.loadingMoreComments || state.pendingComments.isNotEmpty()) return
+        mutableState.value = state.copy(loadingMoreComments = true, commentMessage = null)
+        viewModelScope.launch {
+            try {
+                mutableState.value = attempt("studio", "more held comments") {
+                    repository.commentsSummary(channelId, cursor)
+                }.fold(
+                    onSuccess = { page ->
+                        val items = (summary.items + page.items).distinctBy(HeldComment::id)
+                            .filterNot { it.authorId in hiddenAuthors }
+                        state.copy(comments = DashboardSection.Ready(page.copy(held = maxOf(items.size, page.held), items = items)))
+                    },
+                    onFailure = { state.copy(commentMessage = it.studioMessage(), commentError = true) }
+                )
+            } finally {
+                val current = mutableState.value as DashboardUiState.Content
+                if (current.loadingMoreComments) mutableState.value = current.copy(loadingMoreComments = false)
+            }
+        }
+    }
+
+    private fun commentRequestInFlight(): Boolean {
+        val state = mutableState.value as? DashboardUiState.Content ?: return false
+        return state.loadingMoreComments || state.pendingComments.isNotEmpty()
+    }
+
     fun load() {
+        if (commentRequestInFlight()) return
         job?.cancel()
         mutableState.value = DashboardUiState.Loading
         val current = viewModelScope.launch {
@@ -89,7 +205,13 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
                         .take(SECTION_SIZE)
                 }
             }
-            val comments = async { section("comments summary") { repository.commentsSummary(channelId) } }
+            val comments = async {
+                section("held comments") {
+                    val summary = repository.commentsSummary(channelId)
+                    val visible = summary.items.filterNot { it.authorId in hiddenAuthors }
+                    summary.copy(items = visible, held = summary.held - (summary.items.size - visible.size))
+                }
+            }
             val drafts = async { section("drafts") { list(ContentStatus.DRAFTS) } }
             val scheduled = async { section("scheduled") { list(ContentStatus.SCHEDULED) } }
             val countsSection = counts.await().let { if (it is DashboardSection.Ready && it.value == null) DashboardSection.Hidden else it }

@@ -10,12 +10,15 @@ import net.alummahnow.core.bridge.studio.BulkItemResult
 import net.alummahnow.core.bridge.studio.BulkResult
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
 import net.alummahnow.core.bridge.studio.ChannelRole
+import net.alummahnow.core.bridge.studio.CommentModeration
+import net.alummahnow.core.bridge.studio.CommentReportReason
 import net.alummahnow.core.bridge.studio.CommentsSummary
 import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentPage
 import net.alummahnow.core.bridge.studio.ContentQuery
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
+import net.alummahnow.core.bridge.studio.HeldComment
 import net.alummahnow.core.bridge.studio.ReviewStep
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioAccount
@@ -186,7 +189,11 @@ class FakeRepository : StudioRepository {
         return ContentPage(found, null, reviewQueueMinutes)
     }
 
-    override suspend fun commentsSummary(channelId: String): CommentsSummary {
+    override suspend fun moderateComment(channelId: String, comment: HeldComment, action: CommentModeration) = Unit
+    override suspend fun reportComment(commentId: String, reason: CommentReportReason, description: String?) = Unit
+    override suspend fun hideCommentAuthor(channelId: String, authorId: String) = Unit
+
+    override suspend fun commentsSummary(channelId: String, cursor: String?): CommentsSummary {
         commentsError?.let { throw it }
         return comments
     }

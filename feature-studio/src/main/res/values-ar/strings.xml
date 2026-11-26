@@ -298,4 +298,30 @@
         <item quantity="many">سيراجعه أحد المراجعين، نحو %1$d دقيقة</item>
         <item quantity="other">سيراجعه أحد المراجعين، نحو %1$d دقيقة</item>
     </plurals>
+    <string name="studio_held_approve">قبول</string>
+    <string name="studio_held_remove">إزالة التعليق</string>
+    <string name="studio_held_report">الإبلاغ عن التعليق</string>
+    <string name="studio_held_hide">إخفاء المستخدم من القناة</string>
+    <string name="studio_held_remove_prompt">هل تريد إزالة هذا التعليق من القناة؟</string>
+    <string name="studio_held_hide_prompt">لن يرى تعليقات هذا المستخدم المستقبلية على قناتك سواه. ستُزال تعليقاته الحالية من هذه القائمة خلال هذه الجلسة.</string>
+    <string name="studio_held_approved">تم قبول التعليق.</string>
+    <string name="studio_held_removed">تمت إزالة التعليق.</string>
+    <string name="studio_held_reported">تم إرسال البلاغ.</string>
+    <string name="studio_held_hidden">تم إخفاء المستخدم من القناة.</string>
+    <string name="studio_held_failed">تعذّر إتمام الإجراء. حاول مرة أخرى.</string>
+    <string name="studio_held_unknown_author">كاتب التعليق غير معروف</string>
+    <string name="studio_held_platform_hold">حجز فريق الإشراف هذا التعليق.</string>
+    <string name="studio_held_pending">جارٍ تنفيذ الإجراء…</string>
+    <string name="studio_held_reason">اختر سبب البلاغ</string>
+    <string name="studio_held_details">تفاصيل إضافية (اختيارية)</string>
+    <string name="studio_held_details_limit">الحد الأقصى ٥٬٠٠٠ حرف.</string>
+    <string name="studio_held_send">إرسال البلاغ</string>
+    <string name="studio_held_child_safety">سلامة الأطفال</string>
+    <string name="studio_held_inappropriate">محتوى غير لائق</string>
+    <string name="studio_held_spam">محتوى مزعج</string>
+    <string name="studio_held_harassment">مضايقة</string>
+    <string name="studio_held_copyright">انتهاك حقوق النشر</string>
+    <string name="studio_held_misinformation">معلومات مضللة</string>
+    <string name="studio_held_other">سبب آخر</string>
+    <string name="studio_held_more">عرض المزيد من التعليقات</string>
 </resources>

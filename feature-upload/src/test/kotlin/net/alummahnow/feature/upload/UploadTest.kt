@@ -15,6 +15,9 @@ import net.alummahnow.core.bridge.studio.AnalyticsRange
 import net.alummahnow.core.bridge.studio.BulkChanges
 import net.alummahnow.core.bridge.studio.ContentQuery
 import net.alummahnow.core.bridge.studio.StudioPlaylist
+import net.alummahnow.core.bridge.studio.CommentModeration
+import net.alummahnow.core.bridge.studio.CommentReportReason
+import net.alummahnow.core.bridge.studio.HeldComment
 import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.UploadDraft
 import net.alummahnow.core.bridge.studio.UploadItem
@@ -165,7 +168,10 @@ private class FakeRepo : StudioRepository {
     override suspend fun features(channelId: String?) = error("unused")
     override suspend fun content(query: ContentQuery) = error("unused")
     override suspend fun counts(channelId: String) = error("unused")
-    override suspend fun commentsSummary(channelId: String) = error("unused")
+    override suspend fun commentsSummary(channelId: String, cursor: String?) = error("unused")
+    override suspend fun moderateComment(channelId: String, comment: HeldComment, action: CommentModeration) = error("unused")
+    override suspend fun reportComment(commentId: String, reason: CommentReportReason, description: String?) = error("unused")
+    override suspend fun hideCommentAuthor(channelId: String, authorId: String) = error("unused")
     override suspend fun suggestions(channelId: String, text: String) = error("unused")
     override suspend fun video(id: String) = error("unused")
     override suspend fun update(id: String, channelId: String, edit: VideoEdit) = error("unused")

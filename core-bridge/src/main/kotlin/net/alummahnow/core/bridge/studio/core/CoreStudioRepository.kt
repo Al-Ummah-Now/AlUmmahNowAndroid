@@ -28,12 +28,15 @@ import net.alummahnow.core.bridge.studio.AnalyticsRange
 import net.alummahnow.core.bridge.studio.BulkChanges
 import net.alummahnow.core.bridge.studio.BulkResult
 import net.alummahnow.core.bridge.studio.ChannelAnalytics
+import net.alummahnow.core.bridge.studio.CommentModeration
+import net.alummahnow.core.bridge.studio.CommentReportReason
 import net.alummahnow.core.bridge.studio.CommentsSummary
 import net.alummahnow.core.bridge.studio.ContentCounts
 import net.alummahnow.core.bridge.studio.ContentPage
 import net.alummahnow.core.bridge.studio.ContentQuery
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
+import net.alummahnow.core.bridge.studio.HeldComment
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.StudioError
 import net.alummahnow.core.bridge.studio.StudioPlaylist
@@ -214,10 +217,87 @@ class CoreStudioRepository(
         null
     }
 
-    override suspend fun commentsSummary(channelId: String): CommentsSummary {
-        val body = callNew("comments-summary") { call("GET", "/api/channels/{id}/comments/summary", mapOf("id" to channelId)) }
-        val r = J.parse(body).obj() ?: JsonObject(emptyMap())
-        return CommentsSummary(held = r.l("held").toInt(), inbox = r.l("inbox").toInt())
+    override suspend fun commentsSummary(channelId: String, cursor: String?): CommentsSummary {
+        val body = callNew("held-comments") {
+            call(
+                "GET",
+                "/api/channels/{id}/comments",
+                mapOf("id" to channelId),
+                query = buildMap {
+                    put("tab", "held")
+                    put("limit", "20")
+                    cursor?.let { put("cursor", it) }
+                },
+                channelId = channelId
+            )
+        }
+        val page = J.parse(body).unwrap().obj() ?: throw CoreError.Decode(IllegalStateException("Invalid held comments page"))
+        val items = page.a("items").mapNotNull { item ->
+            val row = item.obj() ?: return@mapNotNull null
+            val id = row.s("id")?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val author = row.o("author")
+            val name = author?.s("resolvedDisplayName")?.takeIf(String::isNotBlank)
+                ?: author?.s("displayName")?.takeIf(String::isNotBlank)
+                ?: listOfNotNull(author?.s("firstName"), author?.s("lastName")).joinToString(" ").trim()
+            HeldComment(
+                id,
+                row.s("text").orEmpty(),
+                name,
+                author?.s("userId")?.takeIf(String::isNotBlank),
+                row.s("kind"),
+                row.s("targetId")?.takeIf(String::isNotBlank),
+                row.s("heldBy") == "moderation"
+            )
+        }
+        val total = if ("total" in page) page.l("total").toInt().coerceAtLeast(items.size) else items.size
+        return CommentsSummary(held = total, inbox = 0, items = items, nextCursor = page.s("nextCursor")?.takeIf(String::isNotBlank))
+    }
+
+    override suspend fun moderateComment(channelId: String, comment: HeldComment, action: CommentModeration) {
+        require(comment.canModerate)
+        val item = buildJsonObject {
+            put("kind", requireNotNull(comment.kind))
+            put("targetId", requireNotNull(comment.targetId))
+            put("commentId", comment.id)
+        }
+        val body = buildJsonObject {
+            put("action", action.apiValue)
+            put("items", JsonArray(listOf(item)))
+        }
+        val response = call(
+            "POST",
+            "/api/channels/{id}/comments/bulk",
+            mapOf("id" to channelId),
+            body = body,
+            channelId = channelId
+        )
+        val result = successfulCommentResponse(response).a("results").singleOrNull()?.obj()
+        if (result?.s("commentId") != comment.id || result.b("ok") != true) {
+            throw StudioError.Invalid("Comment moderation failed")
+        }
+    }
+
+    override suspend fun reportComment(commentId: String, reason: CommentReportReason, description: String?) {
+        val body = buildJsonObject {
+            put("entityType", "comment")
+            put("entityId", commentId)
+            put("reason", reason.apiValue)
+            description?.let { put("description", it) }
+        }
+        successfulCommentResponse(call("POST", "/api/moderation/reports", body = body))
+    }
+
+    override suspend fun hideCommentAuthor(channelId: String, authorId: String) {
+        val body = buildJsonObject { put("userId", authorId) }
+        successfulCommentResponse(
+            call("POST", "/api/channels/{id}/blocks", mapOf("id" to channelId), body = body, channelId = channelId)
+        )
+    }
+
+    private fun successfulCommentResponse(body: String): JsonObject {
+        val response = J.parse(body).obj()
+        if (response?.b("success") != true) throw StudioError.Invalid("Comment action failed")
+        return response
     }
 
     override suspend fun suggestions(channelId: String, text: String): List<StudioSuggestion> = withContext(Dispatchers.IO) {
