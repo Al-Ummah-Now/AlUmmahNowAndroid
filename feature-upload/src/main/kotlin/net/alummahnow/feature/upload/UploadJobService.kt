@@ -1,5 +1,6 @@
 package net.alummahnow.feature.upload
 
+import android.annotation.SuppressLint
 import android.app.job.JobParameters
 import android.app.job.JobService
 import android.os.Build
@@ -16,6 +17,8 @@ import kotlinx.coroutines.withContext
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.UploadItem
 
+// On API 34+ WorkManager uses its own JobScheduler namespace.
+@SuppressLint("SpecifyJobSchedulerIdRange")
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class UploadJobService : JobService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
