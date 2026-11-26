@@ -20,6 +20,7 @@ import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -29,11 +30,11 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import java.util.Locale
 import net.alummahnow.core.bridge.media.QURAN_CREDIT_AR
 import net.alummahnow.core.bridge.media.QURAN_CREDIT_EN
 import net.alummahnow.core.bridge.media.QuranCaptionCredit
 import net.alummahnow.player.R
-import java.util.Locale
 
 /** Renders active cues from the same listener that updates the player chrome. */
 @Composable
@@ -56,8 +57,11 @@ internal fun CueOverlay(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         for (cue in cues) {
-            if (cue.credited) CreditedCue(cue, onOpenCredit)
-            else if (cue.text.isNotBlank()) CaptionText(cue.text)
+            if (cue.credited) {
+                CreditedCue(cue, onOpenCredit)
+            } else if (cue.text.isNotBlank()) {
+                CaptionText(cue.text)
+            }
         }
     }
 }
@@ -80,8 +84,9 @@ private fun CreditedCue(cue: QuranCaptionCredit, onOpenCredit: (Context, String)
     val language = checkNotNull(cue.language)
     val url = checkNotNull(cue.url)
     val context = LocalContext.current
-    val description = remember(context, language) {
-        val config = Configuration(context.resources.configuration).apply { setLocale(Locale.forLanguageTag(language)) }
+    val configuration = LocalConfiguration.current
+    val description = remember(context, configuration, language) {
+        val config = Configuration(configuration).apply { setLocale(Locale.forLanguageTag(language)) }
         context.createConfigurationContext(config).getString(R.string.aun_player_quran_credit_browser)
     }
     val arabic = language == "ar"
