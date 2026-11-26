@@ -230,10 +230,8 @@ class CoreUploadQueue(
             val otherTransfers = synchronized(engines) { engines.toMap() }.any { (userId, engine) ->
                 userId != selected && !isHeld(userId) && runCatching { engine.list().any { it.state in RUNNING } }.getOrDefault(false)
             }
-            if (!otherTransfers &&
-                now.none { it.isActive && it.phase != UploadPhase.PREPARING } &&
-                load().pending.none { !isHeld(it.userId) }
-            ) {
+            val selectedTransfers = now.any { it.isActive && it.phase != UploadPhase.PREPARING }
+            if (!otherTransfers && !selectedTransfers && load().pending.none { !isHeld(it.userId) }) {
                 // A transfer can finish after the first settling pass and before the last activity check.
                 applyFollowUps()
                 break
@@ -285,25 +283,9 @@ class CoreUploadQueue(
     private suspend fun stage(p: Pending): FollowUp? {
         val ext = p.fileName.substringAfterLast('.', "").takeIf { it.length in 1..MAX_EXT }?.let { ".$it" } ?: ".mp4"
         val target = File(staged, p.localId + ext)
-        val uri = Uri.parse(p.source)
         var queued = false
         val id = try {
-            val source = if (uri.scheme == "content") {
-                requireNotNull(app.contentResolver.openInputStream(uri)) { "cannot open the picked file" }
-            } else {
-                File(uri.path ?: p.source).inputStream()
-            }
-            source.use { input ->
-                target.outputStream().use { output ->
-                    val buffer = ByteArray(COPY_BUFFER)
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                    }
-                }
-            }
+            copySource(p.source, target)
             currentCoroutineContext().ensureActive()
             val request = UploadRequest(
                 filePath = target.absolutePath,
@@ -327,6 +309,26 @@ class CoreUploadQueue(
             if (!queued) target.delete()
         }
         return id?.let { FollowUp(it, target.absolutePath, p) }
+    }
+
+    private suspend fun copySource(path: String, target: File) {
+        val uri = Uri.parse(path)
+        val source = if (uri.scheme == "content") {
+            requireNotNull(app.contentResolver.openInputStream(uri)) { "cannot open the picked file" }
+        } else {
+            File(uri.path ?: path).inputStream()
+        }
+        source.use { input ->
+            target.outputStream().use { output ->
+                val buffer = ByteArray(COPY_BUFFER)
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                }
+            }
+        }
     }
 
     private suspend fun applyFollowUps() {
