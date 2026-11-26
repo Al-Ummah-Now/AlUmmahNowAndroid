@@ -42,6 +42,7 @@ credentials = "1.6.0"
 playIntegrity = "1.6.0"
 
 [libraries]
+zxing-core = { module = "com.google.zxing:core", version = "3.5.3" }
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 compose-compiler-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
