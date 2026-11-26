@@ -240,9 +240,34 @@ class CoreUploadQueueTest {
         assertEquals(listOf("pause up-1"), engine.actions)
         // Known to be there.
         blocked = false
-        assertTrue(queue.hasWork())
         queue.releaseUploads("a")
         assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
+        assertTrue(queue.hasWork())
+    }
+
+    @Test
+    fun `an account that may be deleted starts nothing, also without a hold of this process`() = runTest {
+        val engine = uploading(queue(), UploadState.FAILED)
+        blocked = true
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        queue.retry("up-1")
+        queue.process { }
+        assertFalse(queue.hasWork())
+        assertEquals(1, engine.requests.size)
+        assertEquals(emptyList<String>(), engine.actions)
+    }
+
+    @Test
+    fun `a hold with nothing under way outlives the process too`() = runTest {
+        assertTrue(held(queue()).isSuccess)
+        val next = queue()
+        next.enqueue(listOf(draft()))
+        next.process { }
+        assertEquals(null, engines["a"]?.requests?.size?.takeIf { it > 0 })
+        next.releaseLeft()
+        next.process { engines.getValue("a").finishAll() }
+        assertEquals(1, engines.getValue("a").requests.size)
     }
 
     @Test
@@ -270,25 +295,22 @@ class CoreUploadQueueTest {
         engine.next = UploadState.UPLOADING to null
         queue.enqueue(listOf(draft()))
         var round = 0
+        // While they are held the worker ends: a release starts it again.
         queue.process {
-            round++
-            kotlinx.coroutines.runBlocking {
-                when (round) {
-                    1 -> {
-                        queue.holdUploads("a")
-                        assertEquals(UploadPhase.PAUSED, queue.items.value.first { it.id == "up-1" }.phase)
-                        queue.enqueue(listOf(draft()))
-                    }
-                    // Two rounds later the new one is still not handed to the engine.
-                    3 -> {
-                        assertEquals(1, engine.requests.size)
-                        queue.releaseUploads("a")
-                    }
-                    5 -> engine.finishAll()
-                    else -> Unit
+            if (++round == 1) {
+                kotlinx.coroutines.runBlocking {
+                    queue.holdUploads("a")
+                    assertEquals(UploadPhase.PAUSED, queue.items.value.first { it.id == "up-1" }.phase)
+                    queue.enqueue(listOf(draft()))
                 }
             }
         }
+        assertEquals(1, engine.requests.size)
+        val asked = workAsked
+        queue.releaseUploads("a")
+        assertEquals(asked + 1, workAsked)
+        round = 0
+        queue.process { if (++round == 2) engine.finishAll() }
         assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
         assertEquals(2, engine.requests.size)
     }

@@ -369,7 +369,10 @@ class AccountDeletionTest {
 
     /** A deletion whose answer never came. */
     private fun lost(stage: DeletionStage = DeletionStage.CONTENT_ERASED, leftover: Set<Leftover> = emptySet()) =
-        record(stage, leftover = leftover).copy(receipt = "r0", receiptExpiresAtMs = (now + 1_000) * 1000, unsure = true)
+        record(
+            stage,
+            leftover = leftover
+        ).copy(receipt = "r0", receiptExpiresAtMs = (now + 1_000) * 1000, unsure = true, sentIssuedAt = now)
 
     private fun allCalls() = log.filter { it.substringBefore(' ') in setOf("receipt", "erase", "account", "status") }
 
@@ -755,12 +758,21 @@ class AccountDeletionTest {
 
     @Test
     fun `a refused erase is unknown, not failed, while it isn't known what became of the account`() = runTest {
+        // An Auth without receipts any more (a new one would say that the account is there).
+        val noRoute = DeletionAnswer(404, "Not found")
         records.records.value = listOf(lost())
-        api.statuses += listOf(badReceipt, null)
+        api.statuses += badReceipt
+        api.receipts += noRoute
         api.erases += refused
         assertEquals(DeletionOutcome.Unknown, run())
         records.records.value = listOf(lost())
-        api.statuses += listOf(badReceipt, isLive)
+        api.statuses += listOf(noRoute, null)
+        api.receipts += noRoute
+        api.erases += refused
+        assertEquals(DeletionOutcome.Unknown, run())
+        records.records.value = listOf(lost())
+        api.statuses += listOf(noRoute, isLive)
+        api.receipts += noRoute
         api.erases += refused
         assertEquals(DeletionOutcome.Failed(ErasedSoFar.SOME), run())
     }
