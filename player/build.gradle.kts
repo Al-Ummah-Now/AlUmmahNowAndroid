@@ -20,6 +20,7 @@ dependencies {
     implementation(libs.cast.framework)
     implementation(libs.androidx.mediarouter)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.browser)
     implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.okhttp)
     testImplementation(libs.junit)

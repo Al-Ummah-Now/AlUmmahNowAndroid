@@ -18,4 +18,5 @@
     <string name="aun_player_subtitles_off">Off</string>
     <string name="aun_player_error">This video can\'t be played right now.</string>
     <string name="aun_player_seek">Seek</string>
+    <string name="aun_player_quran_credit_browser">Source: Quran Foundation, opens in browser</string>
 </resources>

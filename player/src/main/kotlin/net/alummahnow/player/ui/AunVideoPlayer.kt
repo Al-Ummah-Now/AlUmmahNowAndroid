@@ -1,5 +1,7 @@
 package net.alummahnow.player.ui
 
+import android.content.Context
+import android.content.res.Configuration
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -8,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,12 +43,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.media3.cast.MediaRouteButton
@@ -54,6 +56,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
 import kotlinx.coroutines.delay
+import net.alummahnow.core.bridge.media.QuranCaptionCredit
+import net.alummahnow.core.bridge.media.splitQuranCredit
 import net.alummahnow.design.components.VideoPoster
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.durationLabel
@@ -74,7 +78,8 @@ fun AunVideoPlayer(
     modifier: Modifier = Modifier,
     showCast: Boolean = true,
     controlsInitiallyVisible: Boolean = true,
-    poster: String? = null
+    poster: String? = null,
+    onOpenCaptionCredit: (Context, String) -> Unit = ::openQuranCredit
 ) {
     val ui = rememberPlayerUiState(player)
     var controlsVisible by remember { mutableStateOf(controlsInitiallyVisible) }
@@ -87,7 +92,8 @@ fun AunVideoPlayer(
         }
     }
 
-    Box(
+    val showChrome = controlsVisible || !ui.isPlaying
+    BoxWithConstraints(
         modifier = modifier
             .background(Color.Black)
             .pointerInput(player) {
@@ -102,13 +108,27 @@ fun AunVideoPlayer(
     ) {
         // Until the first video frame is drawn (loading, or paused before playing), the video's poster shows, not black.
         ContentFrame(player = player, modifier = Modifier.fillMaxSize(), shutter = { Shutter(poster) })
-        CueOverlay(ui, Modifier.align(Alignment.BottomCenter).padding(bottom = if (controlsVisible) 104.dp else 16.dp))
-        AnimatedVisibility(visible = controlsVisible || !ui.isPlaying, enter = fadeIn(), exit = fadeOut()) {
+        val isTv = LocalConfiguration.current.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+        val cues = remember(ui.cues, isTv) {
+            ui.cues.mapNotNull { it.text?.toString() }.map { if (isTv) QuranCaptionCredit(it) else splitQuranCredit(it) }
+        }
+        val linkCredits = cues.any { it.credited }
+        CueOverlay(
+            cues = cues,
+            linkCredits = linkCredits,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            bottomPadding = if (controlsVisible) 104.dp else 16.dp,
+            creditBottomPadding = if (showChrome) 104.dp else 16.dp,
+            onOpenCredit = onOpenCaptionCredit
+        )
+        AnimatedVisibility(visible = showChrome, enter = fadeIn(), exit = fadeOut()) {
             Chrome(
                 player = player,
                 ui = ui,
                 isFullscreen = isFullscreen,
                 showCast = showCast,
+                // On short frames the centered transport buttons would overlap the caption band.
+                compactTransport = linkCredits && maxHeight < 368.dp,
                 onToggleFullscreen = onToggleFullscreen,
                 onOpenSettings = { settingsOpen = true }
             )
@@ -133,6 +153,7 @@ private fun Chrome(
     ui: PlayerUiState,
     isFullscreen: Boolean,
     showCast: Boolean,
+    compactTransport: Boolean,
     onToggleFullscreen: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -151,37 +172,8 @@ private fun Chrome(
                 Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.aun_player_settings), tint = Color.White)
             }
         }
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            Row(
-                Modifier.align(Alignment.Center),
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { player.seekBack() }) {
-                    Icon(
-                        Icons.Filled.Replay10,
-                        aunString(R.string.aun_player_back10, SeekGestures.SKIP_MS / 1000),
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-                IconButton(onClick = { if (ui.isPlaying) player.pause() else player.play() }, modifier = Modifier.size(64.dp)) {
-                    Icon(
-                        if (ui.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(if (ui.isPlaying) R.string.aun_player_pause else R.string.aun_player_play),
-                        tint = FanousTokens.Lantern,
-                        modifier = Modifier.size(56.dp)
-                    )
-                }
-                IconButton(onClick = { player.seekForward() }) {
-                    Icon(
-                        Icons.Filled.Forward10,
-                        aunString(R.string.aun_player_forward10, SeekGestures.SKIP_MS / 1000),
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-            }
+        if (!compactTransport) {
+            TransportButtons(player, ui, Modifier.align(Alignment.Center))
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp)) {
             val seekLabel = stringResource(R.string.aun_player_seek)
@@ -198,6 +190,9 @@ private fun Chrome(
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (compactTransport) {
+                    TransportButtons(player, ui, compact = true)
+                }
                 Text(
                     "${durationLabel(ui.positionMs / 1000)} / ${durationLabel(ui.durationMs / 1000)}",
                     color = Color.White,
@@ -218,22 +213,43 @@ private fun Chrome(
     }
 }
 
-internal val InactiveSeekTrack = Color(0xFF858585)
-
-/** Renders current cues; text direction follows the cue's own script, so Arabic lines are right-aligned. */
 @Composable
-fun CueOverlay(ui: PlayerUiState, modifier: Modifier = Modifier) {
-    val text = ui.cues.mapNotNull { it.text?.toString() }.joinToString("\n")
-    if (text.isBlank()) return
-    Text(
-        text = text,
-        color = Color.White,
-        // Cue direction comes from its own script, not the UI: English captions stay LTR in the Arabic UI.
-        style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
-        textAlign = TextAlign.Center,
-        modifier = modifier
-            .padding(horizontal = 24.dp)
-            .background(Color.Black.copy(alpha = 0.6f), MaterialTheme.shapes.small)
-            .padding(horizontal = 10.dp, vertical = 4.dp)
-    )
+private fun TransportButtons(player: Player, ui: PlayerUiState, modifier: Modifier = Modifier, compact: Boolean = false) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(
+            modifier,
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 0.dp else 32.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { player.seekBack() }) {
+                Icon(
+                    Icons.Filled.Replay10,
+                    aunString(R.string.aun_player_back10, SeekGestures.SKIP_MS / 1000),
+                    tint = Color.White,
+                    modifier = Modifier.size(if (compact) 24.dp else 36.dp)
+                )
+            }
+            IconButton(
+                onClick = { if (ui.isPlaying) player.pause() else player.play() },
+                modifier = Modifier.size(if (compact) 48.dp else 64.dp)
+            ) {
+                Icon(
+                    if (ui.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = stringResource(if (ui.isPlaying) R.string.aun_player_pause else R.string.aun_player_play),
+                    tint = FanousTokens.Lantern,
+                    modifier = Modifier.size(if (compact) 32.dp else 56.dp)
+                )
+            }
+            IconButton(onClick = { player.seekForward() }) {
+                Icon(
+                    Icons.Filled.Forward10,
+                    aunString(R.string.aun_player_forward10, SeekGestures.SKIP_MS / 1000),
+                    tint = Color.White,
+                    modifier = Modifier.size(if (compact) 24.dp else 36.dp)
+                )
+            }
+        }
+    }
 }
+
+internal val InactiveSeekTrack = Color(0xFF858585)

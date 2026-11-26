@@ -5,6 +5,8 @@ import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -20,6 +22,17 @@ internal class PausedPlayer(mediaId: String, durationMs: Long, private val posit
     SimpleBasePlayer(Looper.getMainLooper()) {
     var lastSeekMs: Long? = null
         private set
+
+    var playPauseRequests = 0
+        private set
+
+    private var cueGroup = CueGroup.EMPTY_TIME_ZERO
+
+    fun showCaption(text: String?) {
+        val cues = if (text == null) emptyList() else listOf(Cue.Builder().setText(text).build())
+        cueGroup = CueGroup(cues, 0)
+        invalidateState()
+    }
 
     private val item = MediaItemData.Builder(mediaId)
         .setMediaItem(MediaItem.Builder().setMediaId(mediaId).build())
@@ -41,10 +54,12 @@ internal class PausedPlayer(mediaId: String, durationMs: Long, private val posit
                     COMMAND_SEEK_BACK,
                     COMMAND_SEEK_FORWARD,
                     COMMAND_GET_TRACKS,
+                    COMMAND_GET_TEXT,
                     COMMAND_RELEASE
                 )
                 .build()
         )
+        .setCurrentCues(cueGroup)
         .setPlaylist(listOf(item))
         .setCurrentMediaItemIndex(0)
         .setPlaybackState(STATE_READY)
@@ -52,7 +67,10 @@ internal class PausedPlayer(mediaId: String, durationMs: Long, private val posit
         .setContentPositionMs(positionMs)
         .build()
 
-    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> = done()
+    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        playPauseRequests++
+        return done()
+    }
 
     override fun handlePrepare(): ListenableFuture<*> = done()
 

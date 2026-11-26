@@ -8,11 +8,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -72,6 +74,59 @@ class PlayerTransportTest {
         compose.runOnIdle { assertEquals(40_000L, player.lastSeekMs) }
         compose.onNodeWithTag("player").performTouchInput { doubleClick(Offset(width * 0.85f, height / 4f)) }
         compose.runOnIdle { assertEquals(60_000L, player.lastSeekMs) }
+    }
+
+    @Test
+    fun `active caption credit follows the cue language and opens without controlling playback`() {
+        val player = PausedPlayer("video", durationMs = 100_000, positionMs = 50_000)
+        val opened = mutableListOf<String>()
+        compose.setContent {
+            AunTheme(mode = ThemeMode.LIGHT) {
+                AunVideoPlayer(
+                    player,
+                    false,
+                    {},
+                    Modifier.size(360.dp, 202.dp),
+                    showCast = false,
+                    onOpenCaptionCredit = { _, url -> opened += url }
+                )
+            }
+        }
+
+        val english = compose.onNodeWithContentDescription("Source: Quran Foundation, opens in browser")
+        val arabic = compose.onNodeWithContentDescription("المصدر: مؤسسة القرآن، يُفتح في المتصفح")
+        english.assertDoesNotExist()
+        arabic.assertDoesNotExist()
+
+        compose.runOnIdle { player.showCaption("A longer English verse used to check alignment\nSource: Quran Foundation") }
+        val englishCue = compose.onNodeWithText("A longer English verse used to check alignment").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val englishLink = english.fetchSemanticsNode().boundsInRoot
+        val seekLabel = RuntimeEnvironment.getApplication().getString(R.string.aun_player_seek)
+        val seekBar = compose.onNodeWithContentDescription(seekLabel).fetchSemanticsNode().boundsInRoot
+        assertTrue(englishLink.bottom <= seekBar.top)
+        assertTrue(englishLink.top >= englishCue.bottom)
+        assertTrue(englishLink.center.x > englishCue.center.x)
+        english.assertIsDisplayed().performTouchInput { doubleClick() }
+
+        compose.runOnIdle { player.showCaption("هذه آية عربية لاختبار محاذاة النص\n\u200fالمصدر: مؤسسة القرآن") }
+        english.assertDoesNotExist()
+        val arabicCue = compose.onNodeWithText("هذه آية عربية لاختبار محاذاة النص").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val arabicLink = arabic.fetchSemanticsNode().boundsInRoot
+        assertTrue(arabicLink.top >= arabicCue.bottom)
+        assertTrue(arabicLink.center.x < arabicCue.center.x)
+        arabic.assertIsDisplayed().performTouchInput { click() }
+
+        compose.runOnIdle {
+            assertEquals(List(3) { "https://quran.foundation/" }, opened)
+            assertEquals(0, player.playPauseRequests)
+            assertEquals(null, player.lastSeekMs)
+            assertEquals(50_000L, player.currentPosition)
+            player.showCaption("Ordinary caption")
+        }
+        arabic.assertDoesNotExist()
+        compose.onNodeWithText("Ordinary caption").assertIsDisplayed()
+        compose.runOnIdle { player.showCaption(null) }
+        compose.onNodeWithText("Ordinary caption").assertDoesNotExist()
     }
 
     @Test
