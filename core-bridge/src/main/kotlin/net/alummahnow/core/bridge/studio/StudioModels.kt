@@ -207,7 +207,7 @@ data class CreatorAccess(
     val termsVersion: String? = null
 )
 
-/** Comments on the channel's videos and posts (`GET /api/channels/{id}/comments/summary`): what is waiting for review. */
+/** Comments on the channel's videos and posts (`GET /api/channels/{id}/comments?tab=held`): what is waiting for review. */
 data class CommentsSummary(
     val held: Int,
     val inbox: Int,
