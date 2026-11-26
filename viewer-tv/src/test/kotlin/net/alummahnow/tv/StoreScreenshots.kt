@@ -15,7 +15,7 @@ import org.robolectric.annotation.GraphicsMode
 class StoreScreenshots {
     @Before fun enabled() = StoreShots.assumeEnabled()
 
-    @Test fun tvEn() = StoreShots.shoot("01-home-dark", StoreLocale.EN, StoreDevice.TV, ThemeMode.DARK) { TvApp() }
+    @Test fun tvEn() = StoreShots.shoot("01-home-dark", StoreLocale.EN, StoreDevice.TV, ThemeMode.DARK) { TvApp(mode = ThemeMode.DARK) }
 
-    @Test fun tvAr() = StoreShots.shoot("01-home-dark", StoreLocale.AR, StoreDevice.TV, ThemeMode.DARK) { TvApp() }
+    @Test fun tvAr() = StoreShots.shoot("01-home-dark", StoreLocale.AR, StoreDevice.TV, ThemeMode.DARK) { TvApp(mode = ThemeMode.DARK) }
 }

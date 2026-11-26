@@ -2,4 +2,11 @@
 <resources>
     <string name="app_name">الأمة الآن</string>
     <string name="launcher_name">الأمة الآن</string>
+    <string name="settings">الإعدادات</string>
+    <string name="support_links">المساعدة والتواصل والسياسات</string>
+    <string name="support_help">المساعدة</string>
+    <string name="support_contact">تواصل معنا</string>
+    <string name="support_privacy">سياسة الخصوصية</string>
+    <string name="support_terms">شروط الاستخدام</string>
+    <string name="support_scan">امسح الرمز بهاتفك أو أدخل العنوان.</string>
 </resources>
