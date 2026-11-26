@@ -29,6 +29,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,8 +63,7 @@ import net.alummahnow.player.SeekGestures
 
 /**
  * Phone/tablet player: video, subtitles drawn in Compose (so Arabic cues get RTL alignment), and an
- * auto-hiding chrome. [poster] shows until the first frame is drawn. Double tap on the start/end third seeks ∓10 s,
- * mirrored in RTL (spec 13.2).
+ * auto-hiding chrome. [poster] shows until the first frame is drawn. Double tap on the left/right third seeks ∓10 s.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -79,7 +79,6 @@ fun AunVideoPlayer(
     val ui = rememberPlayerUiState(player)
     var controlsVisible by remember { mutableStateOf(controlsInitiallyVisible) }
     var settingsOpen by remember { mutableStateOf(false) }
-    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
 
     LaunchedEffect(controlsVisible, ui.isPlaying, settingsOpen) {
         if (controlsVisible && ui.isPlaying && !settingsOpen) {
@@ -91,11 +90,11 @@ fun AunVideoPlayer(
     Box(
         modifier = modifier
             .background(Color.Black)
-            .pointerInput(isRtl) {
+            .pointerInput(player) {
                 detectTapGestures(
                     onTap = { controlsVisible = !controlsVisible },
                     onDoubleTap = { offset ->
-                        val delta = SeekGestures.doubleTapDelta(offset.x, size.width.toFloat(), isRtl)
+                        val delta = SeekGestures.doubleTapDelta(offset.x, size.width.toFloat())
                         if (delta != 0L) player.seekTo(SeekGestures.clampedTarget(player.currentPosition, delta, player.duration))
                     }
                 )
@@ -152,45 +151,52 @@ private fun Chrome(
                 Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.aun_player_settings), tint = Color.White)
             }
         }
-        Row(
-            Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.spacedBy(32.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Row order flips in RTL, so "back" stays on the start side; the icons keep their digits unmirrored.
-            IconButton(onClick = { player.seekBack() }) {
-                Icon(
-                    Icons.Filled.Replay10,
-                    aunString(R.string.aun_player_back10, SeekGestures.SKIP_MS / 1000),
-                    tint = Color.White,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
-            IconButton(onClick = { if (ui.isPlaying) player.pause() else player.play() }, modifier = Modifier.size(64.dp)) {
-                Icon(
-                    if (ui.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = stringResource(if (ui.isPlaying) R.string.aun_player_pause else R.string.aun_player_play),
-                    tint = FanousTokens.Lantern,
-                    modifier = Modifier.size(56.dp)
-                )
-            }
-            IconButton(onClick = { player.seekForward() }) {
-                Icon(
-                    Icons.Filled.Forward10,
-                    aunString(R.string.aun_player_forward10, SeekGestures.SKIP_MS / 1000),
-                    tint = Color.White,
-                    modifier = Modifier.size(36.dp)
-                )
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Row(
+                Modifier.align(Alignment.Center),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { player.seekBack() }) {
+                    Icon(
+                        Icons.Filled.Replay10,
+                        aunString(R.string.aun_player_back10, SeekGestures.SKIP_MS / 1000),
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+                IconButton(onClick = { if (ui.isPlaying) player.pause() else player.play() }, modifier = Modifier.size(64.dp)) {
+                    Icon(
+                        if (ui.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(if (ui.isPlaying) R.string.aun_player_pause else R.string.aun_player_play),
+                        tint = FanousTokens.Lantern,
+                        modifier = Modifier.size(56.dp)
+                    )
+                }
+                IconButton(onClick = { player.seekForward() }) {
+                    Icon(
+                        Icons.Filled.Forward10,
+                        aunString(R.string.aun_player_forward10, SeekGestures.SKIP_MS / 1000),
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
             }
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp)) {
             val seekLabel = stringResource(R.string.aun_player_seek)
-            Slider(
-                value = if (ui.durationMs > 0) ui.positionMs.toFloat() / ui.durationMs else 0f,
-                onValueChange = { f -> if (ui.durationMs > 0) player.seekTo((f * ui.durationMs).toLong()) },
-                colors = SliderDefaults.colors(thumbColor = FanousTokens.Lantern, activeTrackColor = FanousTokens.Lantern),
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = seekLabel }
-            )
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Slider(
+                    value = if (ui.durationMs > 0) ui.positionMs.toFloat() / ui.durationMs else 0f,
+                    onValueChange = { f -> if (ui.durationMs > 0) player.seekTo((f * ui.durationMs).toLong()) },
+                    colors = SliderDefaults.colors(
+                        thumbColor = FanousTokens.Lantern,
+                        activeTrackColor = FanousTokens.Lantern,
+                        inactiveTrackColor = InactiveSeekTrack
+                    ),
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = seekLabel }
+                )
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "${durationLabel(ui.positionMs / 1000)} / ${durationLabel(ui.durationMs / 1000)}",
@@ -211,6 +217,8 @@ private fun Chrome(
         }
     }
 }
+
+internal val InactiveSeekTrack = Color(0xFF858585)
 
 /** Renders current cues; text direction follows the cue's own script, so Arabic lines are right-aligned. */
 @Composable

@@ -3,7 +3,10 @@ plugins {
     id("aun.compose")
 }
 
-android { namespace = "net.alummahnow.player" }
+android {
+    namespace = "net.alummahnow.player"
+    sourceSets.getByName("test").kotlin.directories.add("src/test/fixtures")
+}
 
 dependencies {
     api(project(":core-bridge"))
@@ -22,6 +25,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.media3.test.utils)
 }

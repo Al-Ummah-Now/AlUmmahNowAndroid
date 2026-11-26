@@ -105,8 +105,9 @@ Protect both environments: deployment tags `v*` only, a required reviewer, and a
    The other App content declarations, which Play asks of every app:
    - **Foreground service permissions** (targetSdk 34+): one entry per type, each with a short screen recording of the
      user action that starts it. Viewer `mediaPlayback` (`AunPlaybackService`: playback the person started, continued in
-     the background and in picture-in-picture). Studio `dataSync` (`UploadWorker`: uploads the person started; the
-     notification shows progress). Admin and TV declare none.
+     the background and in picture-in-picture). Studio declares `dataSync` for its WorkManager upload on Android
+     13 and earlier. Record that flow on an API 33 device for the declaration. On Android 14 and later, Studio
+     uses a user-initiated data transfer job and shows progress in the job notification. Admin and TV declare none.
    - **Financial features**: "My app doesn't provide any financial features" (creator support is a web checkout and is
      not in the apps). **Health apps**: none. **Government apps**, **News apps**: no.
    - **Privacy policy** URL: every app (viewer, TV, Studio) uses `https://www.alummahnow.net/en/privacy/` (Arabic: `https://www.alummahnow.net/ar/privacy/`; AlUmmahNow#1929). **Data deletion** URL: Studio, the app with accounts, uses `https://profile.auth.alummahnow.net/delete-account` (AlUmmahNowAuth#532).

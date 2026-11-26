@@ -134,7 +134,7 @@ fun UploadRoute(viewModel: UploadViewModel, modifier: Modifier = Modifier, terms
             onForm = viewModel::updateForm,
             onTogglePlaylist = viewModel::togglePlaylist,
             onStart = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !UploadWorker.canNotify(context)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !UploadNotifications.canNotify(context)) {
                     notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
                 viewModel.start()

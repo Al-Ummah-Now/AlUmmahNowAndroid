@@ -18,6 +18,9 @@ import com.google.common.util.concurrent.ListenableFuture
 @OptIn(UnstableApi::class)
 internal class PausedPlayer(mediaId: String, durationMs: Long, private val positionMs: Long = 0) :
     SimpleBasePlayer(Looper.getMainLooper()) {
+    var lastSeekMs: Long? = null
+        private set
+
     private val item = MediaItemData.Builder(mediaId)
         .setMediaItem(MediaItem.Builder().setMediaId(mediaId).build())
         .setDurationUs(durationMs * US_PER_MS)
@@ -56,7 +59,10 @@ internal class PausedPlayer(mediaId: String, durationMs: Long, private val posit
     override fun handleSetMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> =
         done()
 
-    override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> = done()
+    override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
+        lastSeekMs = positionMs
+        return done()
+    }
 
     override fun handleRelease(): ListenableFuture<*> = done()
 

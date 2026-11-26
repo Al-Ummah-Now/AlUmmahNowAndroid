@@ -49,7 +49,7 @@ Dependency direction: `apps → feature-* → (player, design, core-bridge)`; fe
   UI connects with a `MediaController`. Chromecast uses `media3-cast` `CastPlayer`, switching player on
   session start/end.
 - **i18n / RTL:** Arabic and English resources for every string (`values/`, `values-ar/`), per-app language
-  (`generateLocaleConfig`), `supportsRtl`, no hardcoded strings, mirrored seek (±10 s) in RTL.
+  (`generateLocaleConfig`), `supportsRtl`, no hardcoded strings, a left-to-right player timeline and seek controls (±10 s) in both directions.
   Localised API fields (`titleLocalized`, `descriptionLocalized`, chapter titles) are picked by locale.
 - **Theming:** dark (night) by default, light (parchment) supported; follows system unless the user picks one.
   Placeholder tokens from spec §3 live in `:design` `FanousTokens` until Epic 10 publishes the generated theme.

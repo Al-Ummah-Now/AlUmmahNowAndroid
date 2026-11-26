@@ -47,6 +47,7 @@ import net.alummahnow.design.components.Thumbnail
 import net.alummahnow.design.components.fanousMaterial
 import net.alummahnow.design.format.aunPlural
 import net.alummahnow.design.format.compactCount
+import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.numberLabel
 import net.alummahnow.design.theme.FanousTokens
@@ -319,7 +320,7 @@ private fun CommentsSection(modifier: Modifier, section: DashboardSection<Commen
 
 /**
  * A count: the number large, the status under it, on the card material; `alert` turns the number red. A count of 1,000 or
- * more is compact ("4.8K", «٤٫٨ ألف»; owner 2026-11-21); `exact` keeps a measure such as watch hours whole.
+ * more is compact ("4.8K", «٤٫٨ ألف»; owner 2026-11-21); `exact` shows the full value of measures such as watch hours.
  */
 @Composable
 fun StatTile(label: String, value: Number, modifier: Modifier = Modifier, alert: Boolean = false, exact: Boolean = false) {
@@ -332,7 +333,11 @@ fun StatTile(label: String, value: Number, modifier: Modifier = Modifier, alert:
     ) {
         // Fixed line heights: the Arabic font's taller metrics otherwise make Arabic tiles taller than English ones.
         Text(
-            if (exact || value.toLong() < COMPACT_FROM) numberLabel(value.toLong()) else compactCount(value.toLong()),
+            when {
+                exact && value is Double -> AunFormat.number(value, currentLocale(), minFraction = 1)
+                exact || value.toLong() < COMPACT_FROM -> numberLabel(value.toLong())
+                else -> compactCount(value.toLong())
+            },
             fontSize = 26.sp,
             lineHeight = 32.sp,
             style = LocalTextStyle.current.copy(lineHeightStyle = TIGHT),
