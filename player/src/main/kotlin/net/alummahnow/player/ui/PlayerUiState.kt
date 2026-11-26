@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import kotlinx.coroutines.delay
 
 /** Snapshot of the player that the Compose chrome renders. Updated from listener callbacks + a 500 ms ticker. */
@@ -30,7 +31,7 @@ class PlayerUiState internal constructor(private val player: Player) {
         internal set
     var params by mutableStateOf(player.trackSelectionParameters)
         internal set
-    var cues by mutableStateOf<List<Cue>>(emptyList())
+    var cues by mutableStateOf<List<Cue>>(if (player.isCommandAvailable(Player.COMMAND_GET_TEXT)) player.currentCues.cues else emptyList())
         internal set
     var hasError by mutableStateOf(player.playerError != null)
         internal set
@@ -51,7 +52,7 @@ class PlayerUiState internal constructor(private val player: Player) {
         override fun onTracksChanged(tracks: Tracks) {
             this@PlayerUiState.tracks = tracks
         }
-        override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+        override fun onCues(cueGroup: CueGroup) {
             cues = cueGroup.cues
         }
     }
