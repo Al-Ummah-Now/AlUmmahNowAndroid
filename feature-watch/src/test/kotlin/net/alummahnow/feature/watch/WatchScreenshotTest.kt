@@ -40,6 +40,10 @@ class WatchScreenshotTest {
 
     @Test fun tabletTwoPaneAr() = shoot("watch", Lang.AR, ThemeMode.DARK, Device.TABLET, watch(Lang.AR))
 
+    @Test fun tabletTwoPaneEnLight() = shoot("watch", Lang.EN, ThemeMode.LIGHT, Device.TABLET, watch(Lang.EN))
+
+    @Test fun tabletTwoPaneArLight() = shoot("watch", Lang.AR, ThemeMode.LIGHT, Device.TABLET, watch(Lang.AR))
+
     private companion object {
         const val MS_PER_S = 1_000L
     }

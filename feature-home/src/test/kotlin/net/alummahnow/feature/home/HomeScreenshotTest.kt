@@ -45,7 +45,28 @@ class HomeScreenshotTest {
 
     @Test fun tabletArLight() = shoot("home", Lang.AR, ThemeMode.LIGHT, Device.TABLET, home(Lang.AR))
 
-    @Test fun errorAr() = shoot("home_error", Lang.AR, ThemeMode.DARK, content = home(HomeUiState.Error(ErrorKind.NETWORK)))
+    @Test fun tabletEnLight() = shoot("home", Lang.EN, ThemeMode.LIGHT, Device.TABLET, home(Lang.EN))
+
+    @Test fun tabletArDark() = shoot("home", Lang.AR, ThemeMode.DARK, Device.TABLET, home(Lang.AR))
+
+    @Test fun errorPhoneEnLight() = error(Lang.EN, ThemeMode.LIGHT, Device.PHONE)
+
+    @Test fun errorPhoneEnDark() = error(Lang.EN, ThemeMode.DARK, Device.PHONE)
+
+    @Test fun errorPhoneArLight() = error(Lang.AR, ThemeMode.LIGHT, Device.PHONE)
+
+    @Test fun errorPhoneArDark() = error(Lang.AR, ThemeMode.DARK, Device.PHONE)
+
+    @Test fun errorTabletEnLight() = error(Lang.EN, ThemeMode.LIGHT, Device.TABLET)
+
+    @Test fun errorTabletEnDark() = error(Lang.EN, ThemeMode.DARK, Device.TABLET)
+
+    @Test fun errorTabletArLight() = error(Lang.AR, ThemeMode.LIGHT, Device.TABLET)
+
+    @Test fun errorTabletArDark() = error(Lang.AR, ThemeMode.DARK, Device.TABLET)
+
+    private fun error(lang: Lang, mode: ThemeMode, device: Device) =
+        shoot("home_error", lang, mode, device, home(HomeUiState.Error(ErrorKind.NETWORK)))
 
     @Test fun `tapping a card reports its id and Arabic titles are used in Arabic`() {
         org.robolectric.RuntimeEnvironment.setQualifiers("ar-ldrtl")
