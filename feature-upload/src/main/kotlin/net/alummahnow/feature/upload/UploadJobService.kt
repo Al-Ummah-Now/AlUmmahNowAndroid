@@ -19,13 +19,14 @@ import net.alummahnow.core.bridge.studio.UploadItem
 
 // On API 34+ WorkManager uses its own JobScheduler namespace.
 @SuppressLint("SpecifyJobSchedulerIdRange")
-@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class UploadJobService : JobService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val host get() = application as UploadHost
     private var transfer: Job? = null
 
+    @Suppress("TooGenericExceptionCaught") // A failed run leaves the saved queue available for JobScheduler to retry.
     override fun onStartJob(params: JobParameters): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
         stopTransfer()
         UploadNotifications.ensureChannel(this)
         showProgress(params, emptyList())
@@ -68,6 +69,7 @@ class UploadJobService : JobService() {
     }
 
     override fun onStopJob(params: JobParameters): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return false
         stopTransfer()
         return params.stopReason != JobParameters.STOP_REASON_CANCELLED_BY_APP &&
             params.stopReason != JobParameters.STOP_REASON_USER
@@ -86,6 +88,7 @@ class UploadJobService : JobService() {
         transfer = null
     }
 
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private fun showProgress(params: JobParameters, items: List<UploadItem>) {
         setNotification(
             params,
