@@ -1,6 +1,7 @@
 package net.alummahnow.studio
 
 import android.content.Context
+import android.os.Build
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,7 @@ import net.alummahnow.core.bridge.studio.deletion.DeletionRecords
 import net.alummahnow.core.bridge.studio.deletion.HttpDeletionApi
 import net.alummahnow.core.bridge.studio.deletion.SecureDeletionRecords
 import net.alummahnow.feature.editor.editorExportDir
-import net.alummahnow.feature.upload.UploadWorker
+import net.alummahnow.feature.upload.UploadScheduler
 import net.alummahnow.integrity.PlayIntegrityTokenSource
 
 /** Manual DI for Studio. Everything network- or token-related goes through aun-core. */
@@ -85,13 +86,17 @@ class AppContainer(context: Context) : StudioContainer {
     override val deletionRecords: DeletionRecords =
         SecureDeletionRecords(KeystoreSecureStorage(context, "aun_deletion", discardUnreadableValues = false))
 
+    @Volatile
+    var transferRunning = false
+
     override val uploads: CoreUploadQueue = CoreUploadQueue(
         context = context,
         activeUserId = { session.active.value?.userId },
         clientFor = ::clientFor,
         repository = { repository },
-        onWorkNeeded = { UploadWorker.start(context) },
-        blocked = { deletionRecords.isUnsure(it) }
+        onWorkNeeded = { UploadScheduler.start(context) },
+        blocked = { deletionRecords.isUnsure(it) },
+        transfersAllowed = { Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || transferRunning }
     )
 
     override val deletion = AccountDeletion(

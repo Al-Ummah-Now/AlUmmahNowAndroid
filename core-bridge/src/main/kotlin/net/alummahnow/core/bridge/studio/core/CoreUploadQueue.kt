@@ -5,8 +5,12 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,7 +48,7 @@ import net.alummahnow.core.uploadConfigDefault
  * (`PUT /api/videos/{id}`), playlists (`/api/playlists/upload-adds`) and the schedule
  * (`POST /api/videos/{id}/schedule`), as the web uploader does.
  *
- * The OS-level part (a WorkManager foreground worker that keeps the process alive and shows the
+ * The OS-level part (a job or foreground worker that keeps the process alive and shows the
  * progress notification) lives in `:feature-upload` and calls [process].
  */
 class CoreUploadQueue(
@@ -52,16 +56,17 @@ class CoreUploadQueue(
     private val activeUserId: () -> String?,
     private val clientFor: (userId: String) -> ApiClient,
     private val repository: () -> StudioRepository,
-    /** Starts the background worker. */
+    /** Schedules processing of the durable queue. */
     private val onWorkNeeded: () -> Unit,
     newEngine: ((userId: String, dir: File) -> UploadEngineInterface)? = null,
     private val holdTimeoutMs: Long = HOLD_TIMEOUT_MS,
     /** The account may be deleted (the answer to its deletion is missing): nothing of it starts until that is known. */
-    private val blocked: (userId: String) -> Boolean = { false }
+    private val blocked: (userId: String) -> Boolean = { false },
+    transfersAllowed: () -> Boolean = { true }
 ) : UploadQueue {
     private val app = context.applicationContext
     private val newEngine = newEngine ?: { userId, dir ->
-        UploadEngine(clientFor(userId), dir.absolutePath, userId, uploadConfigDefault(), AndroidConnectivity(app))
+        UploadEngine(clientFor(userId), dir.absolutePath, userId, uploadConfigDefault(), AndroidConnectivity(app, transfersAllowed))
     }
     private val root = File(app.filesDir, "uploads").apply { mkdirs() }
     private val staged = File(app.filesDir, "upload-staging").apply { mkdirs() }
@@ -220,7 +225,15 @@ class CoreUploadQueue(
             applyFollowUps()
             val now = refresh()
             onUpdate(now)
-            if (now.none { it.isActive && it.phase != UploadPhase.PREPARING } && load().pending.none { !isHeld(it.userId) }) break
+            // The notification follows the selected account, but the job also owns transfers from other accounts.
+            val selected = activeUserId()
+            val otherTransfers = synchronized(engines) { engines.toMap() }.any { (userId, engine) ->
+                userId != selected && !isHeld(userId) && runCatching { engine.list().any { it.state in RUNNING } }.getOrDefault(false)
+            }
+            if (!otherTransfers &&
+                now.none { it.isActive && it.phase != UploadPhase.PREPARING } &&
+                load().pending.none { !isHeld(it.userId) }
+            ) break
             delay(POLL_MS)
         }
     }
@@ -239,41 +252,55 @@ class CoreUploadQueue(
 
     private suspend fun stagePending() = withContext(Dispatchers.IO) {
         while (true) {
+            ensureActive()
             val next = mutex.withLock { load().pending.firstOrNull { !isPurged(it.userId) && !isHeld(it.userId) } } ?: break
             val result = runCatching { stage(next) }
-            val purged = mutex.withLock {
-                val s = load()
-                // Purged while it was copied: nothing of it is written back.
-                val gone = isPurged(next.userId)
-                val followUps = result.getOrNull()?.takeUnless { gone }?.let { s.followUps + it } ?: s.followUps
-                val waits = result.isSuccess && result.getOrNull() == null && !gone
-                val pending = if (waits) s.pending else s.pending.filterNot { it.localId == next.localId }
-                save(s.copy(pending = pending, followUps = followUps))
-                gone
-            }
-            if (purged) {
-                result.getOrNull()?.let { File(it.stagedPath).delete() }
-                removeEngine(next.userId)
+            if (result.exceptionOrNull() is CancellationException) result.getOrThrow()
+            // Once the engine has accepted a file, persist its mapping even if the job is stopping.
+            withContext(NonCancellable) {
+                val purged = mutex.withLock {
+                    val s = load()
+                    // Purged while it was copied: nothing of it is written back.
+                    val gone = isPurged(next.userId)
+                    val followUps = result.getOrNull()?.takeUnless { gone }?.let { s.followUps + it } ?: s.followUps
+                    val waits = result.isSuccess && result.getOrNull() == null && !gone
+                    val pending = if (waits) s.pending else s.pending.filterNot { it.localId == next.localId }
+                    save(s.copy(pending = pending, followUps = followUps))
+                    gone
+                }
+                if (purged) {
+                    result.getOrNull()?.let { File(it.stagedPath).delete() }
+                    removeEngine(next.userId)
+                }
             }
             result.onFailure { AunLog.e("upload", "could not queue file", it) }
         }
     }
 
     /** Null when its account's uploads are held: then nothing of it was handed on. */
-    private fun stage(p: Pending): FollowUp? {
+    private suspend fun stage(p: Pending): FollowUp? {
         val ext = p.fileName.substringAfterLast('.', "").takeIf { it.length in 1..MAX_EXT }?.let { ".$it" } ?: ".mp4"
         val target = File(staged, p.localId + ext)
         val uri = Uri.parse(p.source)
         var queued = false
         val id = try {
-            if (uri.scheme == "content") {
-                app.contentResolver.openInputStream(uri).use { input ->
-                    requireNotNull(input) { "cannot open the picked file" }
-                    target.outputStream().use { input.copyTo(it, COPY_BUFFER) }
-                }
+            val source = if (uri.scheme == "content") {
+                requireNotNull(app.contentResolver.openInputStream(uri)) { "cannot open the picked file" }
             } else {
-                File(uri.path ?: p.source).copyTo(target, overwrite = true)
+                File(uri.path ?: p.source).inputStream()
             }
+            source.use { input ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(COPY_BUFFER)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+            currentCoroutineContext().ensureActive()
             val request = UploadRequest(
                 filePath = target.absolutePath,
                 title = p.title,
@@ -325,7 +352,10 @@ class CoreUploadQueue(
         val videoId = info?.videoId
         if (state != UploadState.DONE || videoId == null) return true
         return runCatching { applyAfterUpload(videoId, f) }
-            .onFailure { AunLog.e("upload", "post-upload settings failed", it) }
+            .onFailure {
+                if (it is CancellationException) throw it
+                AunLog.e("upload", "post-upload settings failed", it)
+            }
             .isSuccess
     }
 

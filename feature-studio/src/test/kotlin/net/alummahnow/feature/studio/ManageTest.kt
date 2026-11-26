@@ -3,6 +3,7 @@ package net.alummahnow.feature.studio
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -133,6 +134,17 @@ class ManageTest {
         assertEquals(listOf("tafsir", "quran"), v.tags)
         assertTrue(vm.state.value.saved)
         assertFalse(vm.state.value.dirty)
+    }
+
+    @Test fun `fractional watch hours in English`() = checkWatchHours("en-ldltr", "0.1")
+
+    @Test fun `fractional watch hours in Arabic`() = checkWatchHours("ar-ldrtl", "٠٫١")
+
+    private fun checkWatchHours(qualifiers: String, expected: String) {
+        RuntimeEnvironment.setQualifiers(qualifiers)
+        val data = sampleAnalytics.copy(daily = listOf(sampleAnalytics.daily.first().copy(watchTimeSeconds = 186)))
+        compose.setContent { AunTheme { AnalyticsScreen(AnalyticsUiState(loading = false, data = data), {}, {}) } }
+        compose.onNodeWithText(expected).assertExists()
     }
 
     @Test

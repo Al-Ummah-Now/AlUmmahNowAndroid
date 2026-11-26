@@ -24,13 +24,12 @@ import org.robolectric.annotation.Config
 class PlayerLogicTest {
     private val ar = Locale.forLanguageTag("ar")
 
-    @Test fun `double tap seeks back on the start side, mirrored in RTL`() {
-        assertEquals(-10_000L, SeekGestures.doubleTapDelta(10f, 300f, isRtl = false))
-        assertEquals(10_000L, SeekGestures.doubleTapDelta(290f, 300f, isRtl = false))
-        assertEquals(10_000L, SeekGestures.doubleTapDelta(10f, 300f, isRtl = true))
-        assertEquals(-10_000L, SeekGestures.doubleTapDelta(290f, 300f, isRtl = true))
-        assertEquals(0L, SeekGestures.doubleTapDelta(150f, 300f, isRtl = true))
-        assertEquals(0L, SeekGestures.doubleTapDelta(1f, 0f, isRtl = false))
+    @Test fun `double tap seeks back on the physical left and forward on the physical right`() {
+        assertEquals(-10_000L, SeekGestures.doubleTapDelta(10f, 300f))
+        assertEquals(10_000L, SeekGestures.doubleTapDelta(290f, 300f))
+        assertEquals(0L, SeekGestures.doubleTapDelta(100f, 300f))
+        assertEquals(0L, SeekGestures.doubleTapDelta(200f, 300f))
+        assertEquals(0L, SeekGestures.doubleTapDelta(1f, 0f))
     }
 
     @Test fun `seek target is clamped to the media`() {

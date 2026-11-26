@@ -3,17 +3,24 @@ package net.alummahnow.studio
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.theme.AunTheme
+import net.alummahnow.feature.upload.UploadScheduler
 
 class MainActivity : ComponentActivity() {
     /** OAuth redirects (`alummahnow-studio://auth/callback?...`), delivered once each. */
@@ -36,6 +43,19 @@ class MainActivity : ComponentActivity() {
                     links = links.receiveAsFlow(),
                     openInBrowser = ::openInCustomTab
                 )
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            lifecycleScope.launch {
+                val app = application as StudioApplication
+                val saved = withContext(Dispatchers.IO) { app.hasSavedUploads() }
+                if (saved && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    UploadScheduler.recover(this@MainActivity)
+                }
             }
         }
     }

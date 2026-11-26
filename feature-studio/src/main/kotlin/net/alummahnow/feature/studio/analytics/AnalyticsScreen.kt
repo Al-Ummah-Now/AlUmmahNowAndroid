@@ -305,7 +305,7 @@ private fun ViewsChart(data: ChannelAnalytics, modifier: Modifier) {
     }
 }
 
-private const val SECONDS_PER_HOUR = 3600L
+private const val SECONDS_PER_HOUR = 3600.0
 private val WIDE = 840.dp
 private const val WIDE_TILES = 6
 private const val DATE_CHARS = 10
