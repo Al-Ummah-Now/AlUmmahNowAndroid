@@ -250,4 +250,30 @@
         <item quantity="one">A reviewer will check it • about %1$d min</item>
         <item quantity="other">A reviewer will check it • about %1$d min</item>
     </plurals>
+    <string name="studio_held_approve">Approve</string>
+    <string name="studio_held_remove">Remove comment</string>
+    <string name="studio_held_report">Report comment</string>
+    <string name="studio_held_hide">Hide user from channel</string>
+    <string name="studio_held_remove_prompt">Remove this comment from the channel?</string>
+    <string name="studio_held_hide_prompt">Only this user will be able to see their future comments on your channel. Their existing comments will be cleared from this list for this session.</string>
+    <string name="studio_held_approved">Comment approved.</string>
+    <string name="studio_held_removed">Comment removed.</string>
+    <string name="studio_held_reported">Report sent.</string>
+    <string name="studio_held_hidden">User hidden from the channel.</string>
+    <string name="studio_held_failed">Couldn’t complete the action. Try again.</string>
+    <string name="studio_held_unknown_author">Unknown author</string>
+    <string name="studio_held_platform_hold">Held by platform moderation.</string>
+    <string name="studio_held_pending">Working…</string>
+    <string name="studio_held_reason">Choose a reason</string>
+    <string name="studio_held_details">Additional details (optional)</string>
+    <string name="studio_held_details_limit">Enter no more than 5,000 characters.</string>
+    <string name="studio_held_send">Send report</string>
+    <string name="studio_held_child_safety">Child safety</string>
+    <string name="studio_held_inappropriate">Inappropriate content</string>
+    <string name="studio_held_spam">Spam</string>
+    <string name="studio_held_harassment">Harassment</string>
+    <string name="studio_held_copyright">Copyright infringement</string>
+    <string name="studio_held_misinformation">Misinformation</string>
+    <string name="studio_held_other">Other</string>
+    <string name="studio_held_more">Load more comments</string>
 </resources>

@@ -294,7 +294,7 @@ fun StudioApp(
                     viewModel(key = "analytics-$key") { AnalyticsViewModel(container.repository, selected.id) }
                 val analyticsState by analytics.state.collectAsStateWithLifecycle()
                 val dashboard: DashboardViewModel =
-                    viewModel(key = "dashboard-$key") { DashboardViewModel(container.repository, selected.id) }
+                    viewModel(key = "dashboard-$key") { DashboardViewModel(container.repositoryFor(current.userId), selected.id) }
                 val dashboardState by dashboard.state.collectAsStateWithLifecycle()
                 val dashboardVisible = (dashboardState as? DashboardUiState.Content)?.nothingLeft != true
                 val tabs = studioTabs(features, analyticsState.visible, dashboardVisible)
@@ -372,9 +372,13 @@ fun StudioApp(
                                 }
                                 EditorRoute(editor, onSendToUpload = send)
                             }
-                            StudioTab.DASHBOARD -> DashboardScreen(dashboardState, onRetry = dashboard::load, onOpenVideo = {
-                                editing = it
-                            })
+                            StudioTab.DASHBOARD -> DashboardScreen(
+                                dashboardState,
+                                onRetry = dashboard::load,
+                                onCommentAction = dashboard::actOnComment,
+                                onMoreComments = dashboard::loadMoreComments,
+                                onOpenVideo = { editing = it }
+                            )
                         }
                     }
                 }

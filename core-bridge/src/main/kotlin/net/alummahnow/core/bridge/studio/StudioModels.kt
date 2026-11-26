@@ -208,7 +208,39 @@ data class CreatorAccess(
 )
 
 /** Comments on the channel's videos and posts (`GET /api/channels/{id}/comments/summary`): what is waiting for review. */
-data class CommentsSummary(val held: Int, val inbox: Int)
+data class CommentsSummary(
+    val held: Int,
+    val inbox: Int,
+    val items: List<HeldComment> = emptyList(),
+    val nextCursor: String? = null
+)
+
+data class HeldComment(
+    val id: String,
+    val text: String,
+    val authorName: String,
+    val authorId: String?,
+    val kind: String?,
+    val targetId: String?,
+    val platformHold: Boolean
+) {
+    val canModerate: Boolean get() = !platformHold && (kind == "video" || kind == "post") && targetId != null
+}
+
+enum class CommentModeration(val apiValue: String) {
+    APPROVE("approve"),
+    REMOVE("remove")
+}
+
+enum class CommentReportReason(val apiValue: String) {
+    CHILD_SAFETY("child_safety"),
+    INAPPROPRIATE("inappropriate"),
+    SPAM("spam"),
+    HARASSMENT("harassment"),
+    COPYRIGHT("copyright"),
+    MISINFORMATION("misinformation"),
+    OTHER("other")
+}
 
 /**
  * Which user-facing features this person sees (api-videos `GET /api/me/features`, owner rule 2026-11-16).
