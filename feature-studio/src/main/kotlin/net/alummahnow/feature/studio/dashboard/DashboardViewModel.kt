@@ -230,8 +230,7 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
                 section("held comments") {
                     val summary = repository.commentsSummary(channelId)
                     hiddenCommentIds.clear()
-                    val visible = visibleHeldComments(summary.items)
-                    summary.copy(items = visible, held = (summary.held - hiddenCommentIds.size).coerceAtLeast(visible.size))
+                    mergeHeldPage(emptyList(), summary)
                 }
             }
             val drafts = async { section("drafts") { list(ContentStatus.DRAFTS) } }
