@@ -82,6 +82,7 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
     private var job: Job? = null
 
     private val hiddenAuthors = mutableSetOf<String>()
+    private val hiddenCommentIds = mutableSetOf<String>()
 
     init {
         load()
@@ -99,24 +100,34 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
                 val outcome = attempt("studio", "held comment action") {
                     submitCommentAction(comment, action)
                 }
-                val current = mutableState.value as DashboardUiState.Content
-                val currentSummary = (current.comments as DashboardSection.Ready).value
-                val updated = if (outcome.isSuccess && action !is HeldCommentAction.Report) {
-                    val remaining = currentSummary.items.filterNot { it.id in ids }
-                    currentSummary.copy(items = remaining, held = currentSummary.held - (currentSummary.items.size - remaining.size))
-                } else {
-                    currentSummary
-                }
-                mutableState.value = current.copy(
-                    comments = DashboardSection.Ready(updated),
-                    commentMessage = outcome.getOrNull() ?: R.string.studio_held_failed,
-                    commentError = outcome.isFailure
-                )
+                applyCommentOutcome(action, ids, outcome)
             } finally {
-                val current = mutableState.value as DashboardUiState.Content
-                mutableState.value = current.copy(pendingComments = current.pendingComments - ids)
+                val current = mutableState.value as? DashboardUiState.Content
+                if (current != null) mutableState.value = current.copy(pendingComments = current.pendingComments - ids)
             }
         }
+    }
+
+    private fun applyCommentOutcome(action: HeldCommentAction, ids: Set<String>, outcome: Result<Int>) {
+        val current = mutableState.value as? DashboardUiState.Content ?: return
+        val summary = (current.comments as? DashboardSection.Ready)?.value ?: return
+        val failure = outcome.exceptionOrNull()
+        if (failure is StudioError.FeatureOff) {
+            mutableState.value = current.copy(comments = DashboardSection.Hidden, commentMessage = null, commentError = false)
+            return
+        }
+        val updated = if (failure == null && action !is HeldCommentAction.Report) {
+            if (action == HeldCommentAction.HideAuthor) hiddenCommentIds += ids
+            val remaining = summary.items.filterNot { it.id in ids }
+            summary.copy(items = remaining, held = summary.held - (summary.items.size - remaining.size))
+        } else {
+            summary
+        }
+        mutableState.value = current.copy(
+            comments = DashboardSection.Ready(updated),
+            commentMessage = failure?.studioMessage() ?: outcome.getOrNull(),
+            commentError = failure != null
+        )
     }
 
     private fun commentActionState(): DashboardUiState.Content? =
@@ -167,17 +178,27 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
                     repository.commentsSummary(channelId, cursor)
                 }.fold(
                     onSuccess = { page ->
-                        val items = (summary.items + page.items).distinctBy(HeldComment::id)
-                            .filterNot { it.authorId in hiddenAuthors }
-                        state.copy(comments = DashboardSection.Ready(page.copy(held = maxOf(items.size, page.held), items = items)))
+                        state.copy(comments = DashboardSection.Ready(mergeHeldPage(summary.items, page)))
                     },
                     onFailure = { state.copy(commentMessage = it.studioMessage(), commentError = true) }
                 )
             } finally {
-                val current = mutableState.value as DashboardUiState.Content
-                if (current.loadingMoreComments) mutableState.value = current.copy(loadingMoreComments = false)
+                val current = mutableState.value as? DashboardUiState.Content
+                if (current?.loadingMoreComments == true) mutableState.value = current.copy(loadingMoreComments = false)
             }
         }
+    }
+
+    private fun mergeHeldPage(previous: List<HeldComment>, page: CommentsSummary): CommentsSummary {
+        val items = visibleHeldComments((previous + page.items).distinctBy(HeldComment::id))
+        val held = if (page.nextCursor == null) items.size else (page.held - hiddenCommentIds.size).coerceAtLeast(items.size)
+        return page.copy(items = items, held = held)
+    }
+
+    private fun visibleHeldComments(items: List<HeldComment>): List<HeldComment> = items.filter { comment ->
+        val hidden = comment.authorId in hiddenAuthors
+        if (hidden) hiddenCommentIds += comment.id
+        !hidden
     }
 
     private fun commentRequestInFlight(): Boolean {
@@ -208,8 +229,9 @@ class DashboardViewModel(private val repository: StudioRepository, private val c
             val comments = async {
                 section("held comments") {
                     val summary = repository.commentsSummary(channelId)
-                    val visible = summary.items.filterNot { it.authorId in hiddenAuthors }
-                    summary.copy(items = visible, held = summary.held - (summary.items.size - visible.size))
+                    hiddenCommentIds.clear()
+                    val visible = visibleHeldComments(summary.items)
+                    summary.copy(items = visible, held = (summary.held - hiddenCommentIds.size).coerceAtLeast(visible.size))
                 }
             }
             val drafts = async { section("drafts") { list(ContentStatus.DRAFTS) } }

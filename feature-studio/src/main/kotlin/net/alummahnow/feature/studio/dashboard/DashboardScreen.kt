@@ -318,7 +318,7 @@ private fun CommentsSection(
         state.commentMessage?.let {
             val colors = LocalFanous.current.colors
             Text(
-                stringResource(it),
+                studioText(it),
                 Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 color = if (state.commentError) colors.errorText.color else colors.textPrimary.color
             )
@@ -328,7 +328,7 @@ private fun CommentsSection(
                 QuietLine(stringResource(R.string.studio_dashboard_section_failed))
                 QuietLine(stringResource(section.message))
             }
-            is DashboardSection.Ready -> if (section.value.held == 0 && section.value.nextCursor == null) {
+            is DashboardSection.Ready -> if (section.value.items.isEmpty() && section.value.nextCursor == null) {
                 QuietLine(stringResource(R.string.studio_dashboard_comments_empty), Modifier.testTag("dashboard-comments-empty"))
             } else {
                 Text(

@@ -24,9 +24,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import net.alummahnow.core.bridge.studio.CommentReportReason
 import net.alummahnow.core.bridge.studio.HeldComment
+import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.components.FanousButton
 import net.alummahnow.design.components.FanousButtonKind
 import net.alummahnow.feature.studio.R
@@ -93,17 +96,15 @@ internal fun HeldCommentRows(
             } else {
                 val hide = choice == CommentDialog.HIDE
                 val label = if (hide) R.string.studio_held_hide else R.string.studio_held_remove
-                AlertDialog(
-                    onDismissRequest = dismiss,
-                    title = { Text(stringResource(label)) },
-                    text = { Text(stringResource(if (hide) R.string.studio_held_hide_prompt else R.string.studio_held_remove_prompt)) },
-                    dismissButton = { CancelCommentDialog(dismiss) },
-                    confirmButton = {
-                        FanousButton(stringResource(label), {
-                            dismiss()
-                            onAction(id, if (hide) HeldCommentAction.HideAuthor else HeldCommentAction.Remove)
-                        }, kind = FanousButtonKind.Destructive, wrap = true)
-                    }
+                ConfirmDialog(
+                    title = stringResource(label),
+                    message = stringResource(if (hide) R.string.studio_held_hide_prompt else R.string.studio_held_remove_prompt),
+                    confirmLabel = stringResource(label),
+                    onConfirm = {
+                        dismiss()
+                        onAction(id, if (hide) HeldCommentAction.HideAuthor else HeldCommentAction.Remove)
+                    },
+                    onDismiss = dismiss
                 )
             }
         }
@@ -114,9 +115,11 @@ internal fun HeldCommentRows(
 private fun ReportCommentDialog(onDismiss: () -> Unit, onReport: (HeldCommentAction.Report) -> Unit) {
     var reason by remember { mutableStateOf<CommentReportReason?>(null) }
     var details by remember { mutableStateOf("") }
+    val title = stringResource(R.string.studio_held_report)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.studio_held_report)) },
+        modifier = Modifier.semantics { paneTitle = title },
+        title = { Text(title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(stringResource(R.string.studio_held_reason))
@@ -162,7 +165,7 @@ private fun ReportCommentDialog(onDismiss: () -> Unit, onReport: (HeldCommentAct
 
 @Composable
 private fun CancelCommentDialog(onDismiss: () -> Unit) {
-    FanousButton(stringResource(android.R.string.cancel), onDismiss, kind = FanousButtonKind.Ghost)
+    FanousButton(stringResource(net.alummahnow.design.R.string.aun_cancel), onDismiss, kind = FanousButtonKind.Ghost)
 }
 
 private const val REPORT_DETAILS_LIMIT = 5_000

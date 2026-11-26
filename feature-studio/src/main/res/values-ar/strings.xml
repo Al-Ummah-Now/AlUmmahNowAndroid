@@ -308,7 +308,6 @@
     <string name="studio_held_removed">تمت إزالة التعليق.</string>
     <string name="studio_held_reported">تم إرسال البلاغ.</string>
     <string name="studio_held_hidden">تم إخفاء المستخدم من القناة.</string>
-    <string name="studio_held_failed">تعذّر إتمام الإجراء. حاول مرة أخرى.</string>
     <string name="studio_held_unknown_author">كاتب التعليق غير معروف</string>
     <string name="studio_held_platform_hold">حجز فريق الإشراف هذا التعليق.</string>
     <string name="studio_held_pending">جارٍ تنفيذ الإجراء…</string>

@@ -260,7 +260,6 @@
     <string name="studio_held_removed">Comment removed.</string>
     <string name="studio_held_reported">Report sent.</string>
     <string name="studio_held_hidden">User hidden from the channel.</string>
-    <string name="studio_held_failed">Couldn’t complete the action. Try again.</string>
     <string name="studio_held_unknown_author">Unknown author</string>
     <string name="studio_held_platform_hold">Held by platform moderation.</string>
     <string name="studio_held_pending">Working…</string>
