@@ -32,6 +32,8 @@ internal fun VideoDto.toDetail() = VideoDetail(
     likes = likesCount,
     tags = tags,
     isLive = isLive,
+    isPrivate = isPublic == false && isUnlisted != true,
+    isShort = isShort == true,
     // Older records have no uploadStatus; treat them as ready when they carry a play URL.
     isReady = (uploadStatus == null || uploadStatus == "ready") && !playUrl.isNullOrBlank()
 )

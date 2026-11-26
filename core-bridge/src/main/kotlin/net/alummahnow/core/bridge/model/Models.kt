@@ -41,7 +41,9 @@ data class VideoDetail(
     val likes: Long,
     val tags: List<String>,
     val isLive: Boolean,
-    val isReady: Boolean
+    val isReady: Boolean,
+    val isPrivate: Boolean = false,
+    val isShort: Boolean = false
 ) {
     val id: String get() = summary.id
 }

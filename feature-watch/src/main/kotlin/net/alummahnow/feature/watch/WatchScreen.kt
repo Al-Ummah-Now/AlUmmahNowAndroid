@@ -78,7 +78,8 @@ import net.alummahnow.player.ui.AunVideoPlayer
 data class WatchSafetyActions(
     val onReportVideo: (VideoDetail) -> Unit,
     val onReportChannel: (VideoDetail) -> Unit,
-    val onBlockChannel: (VideoDetail) -> Unit
+    val onBlockChannel: (VideoDetail) -> Unit,
+    val onCopyLink: ((VideoDetail) -> Unit)? = null
 )
 
 /**
@@ -348,6 +349,17 @@ private fun WatchSafetyMenu(video: VideoDetail, safety: WatchSafetyActions) {
             // The card under it can have the same colour: the edge tells them apart.
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
+            val onCopyLink = safety.onCopyLink
+            if (onCopyLink != null && !video.isPrivate) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.watch_copy_link)) },
+                    modifier = Modifier.testTag("watch-copy-link-item"),
+                    onClick = {
+                        menuOpen = false
+                        onCopyLink(video)
+                    }
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.watch_report_video)) },
                 onClick = {
