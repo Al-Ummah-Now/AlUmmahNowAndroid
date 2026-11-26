@@ -244,11 +244,12 @@ class CoreUploadQueue(
     fun hasWork(): Boolean {
         val s = load()
 
-        // A failed upload waits for the person (retry or remove), not for the worker.
-        fun failed(f: FollowUp) =
-            runCatching { engine(f.draft.userId).get(f.uploadId)?.state == UploadState.FAILED }.getOrDefault(false)
+        fun waitsForUser(f: FollowUp): Boolean {
+            val state = runCatching { engine(f.draft.userId).get(f.uploadId)?.state }.getOrNull()
+            return state == UploadState.PAUSED || state == UploadState.FAILED
+        }
         return s.pending.any { !isHeld(it.userId) } ||
-            s.followUps.any { !it.applied && !isHeld(it.draft.userId) && !failed(it) } ||
+            s.followUps.any { !it.applied && !isHeld(it.draft.userId) && !waitsForUser(it) } ||
             refresh().any { it.isActive && it.phase != UploadPhase.PREPARING }
     }
 
