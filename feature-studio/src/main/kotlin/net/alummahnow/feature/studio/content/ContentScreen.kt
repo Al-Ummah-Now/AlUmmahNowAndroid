@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -58,7 +59,12 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -438,14 +444,20 @@ private fun VideoRow(
         // At a large font on a phone the words go under the thumbnail, with the card's whole width: beside it they break.
         val config = LocalConfiguration.current
         val stacked = config.fontScale >= LARGE_FONT && config.screenWidthDp < WIDE_DP
-        // A smaller thumbnail on narrow phones (360dp) so the words beside it keep a readable width.
-        val thumbnail = if (!stacked && config.screenWidthDp < NARROW_DP) 80.dp else 120.dp
+        // Reserve more width for titles alongside thumbnails on phones.
+        val compact = !stacked && config.screenWidthDp < COMPACT_DP
+        val thumbnail = when {
+            compact -> 64.dp
+            !stacked && config.screenWidthDp < WIDE_DP -> 80.dp
+            else -> 120.dp
+        }
+        val gap = if (compact) FanousTokens.Spacing.sm else FanousTokens.Spacing.md
         val words: @Composable (Modifier) -> Unit = { VideoWords(v, title, deleted, queueMinutes, if (stacked) 4 else 2, it) }
         Column {
             Row(
                 Modifier.padding(FanousTokens.Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+                horizontalArrangement = Arrangement.spacedBy(gap)
             ) {
                 Checkbox(
                     checked = selected,
@@ -484,20 +496,51 @@ private fun VideoRow(
     }
 }
 
+@Composable
+private fun VideoTitle(title: String, id: String, lines: Int) {
+    val style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp, lineBreak = LineBreak.Heading)
+    BoxWithConstraints {
+        val displayTitle = if (lines == 2) keepLastTwoWordsTogether(title, style, constraints.maxWidth) else title
+        Text(
+            displayTitle,
+            style = style,
+            color = LocalFanous.current.colors.textPrimary.color,
+            maxLines = lines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("title-$id")
+        )
+    }
+}
+
+@Composable
+private fun keepLastTwoWordsTogether(title: String, style: TextStyle, width: Int): String {
+    val measurer = rememberTextMeasurer()
+    return remember(title, style, width, measurer) {
+        val constraints = Constraints(maxWidth = width)
+        val original = measurer.measure(title, style, maxLines = 2, constraints = constraints)
+        if (original.lineCount != 2 || original.hasVisualOverflow || original.getParagraphDirection(0) != ResolvedTextDirection.Ltr) {
+            return@remember title
+        }
+
+        val breakBeforeLastWord = original.getLineStart(1) - 1
+        if (title.getOrNull(breakBeforeLastWord) != ' ' || title.substring(breakBeforeLastWord + 1).trimEnd().any(Char::isWhitespace)) {
+            return@remember title
+        }
+
+        val joined = title.replaceRange(breakBeforeLastWord, breakBeforeLastWord + 1, "\u00A0")
+        val wrapped = measurer.measure(joined, style, maxLines = 2, constraints = constraints)
+        if (wrapped.hasVisualOverflow || wrapped.lineCount != 2) return@remember title
+        val newBreak = wrapped.getLineStart(1)
+        if (newBreak < breakBeforeLastWord && title.getOrNull(newBreak - 1) == ' ') joined else title
+    }
+}
+
 /** A row's title, where its review is, its details and its date. */
 @Composable
 private fun VideoWords(v: StudioVideo, title: String, deleted: Boolean, queueMinutes: Int?, lines: Int, modifier: Modifier = Modifier) {
     val f = LocalFanous.current
     Column(modifier) {
-        // A tighter line height than titleSmall: a title that wraps reads as one title, not two lines apart.
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall.copy(lineHeight = 18.sp),
-            color = f.colors.textPrimary.color,
-            maxLines = lines,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.testTag("title-${v.id}")
-        )
+        VideoTitle(title, v.id, lines)
         reviewLine(v.review, queueMinutes).takeIf { !deleted }?.let {
             Text(
                 it,
@@ -555,7 +598,6 @@ internal fun formatDate(iso: String): String {
 
 private const val DATE_CHARS = 10
 
-private const val NARROW_DP = 400
-
 private const val LARGE_FONT = 1.3f
+private const val COMPACT_DP = 400
 private const val WIDE_DP = 600

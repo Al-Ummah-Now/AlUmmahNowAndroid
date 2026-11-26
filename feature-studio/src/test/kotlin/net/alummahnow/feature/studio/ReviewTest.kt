@@ -569,7 +569,7 @@ class ReviewTest {
 
     @Test
     fun `beside the thumbnail on a narrow phone the date takes the lines it needs`() {
-        show(inReview, "en-ldltr-w320dp-h1600dp-port", fontScale = 1.2f)
+        show(inReview, "en-ldltr-w292dp-h1600dp-port", fontScale = 1.2f)
         assertWhole("date")
         assertTrue(layout("date").lineCount > 1)
     }

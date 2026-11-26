@@ -87,9 +87,7 @@ fun AnalyticsScreen(state: AnalyticsUiState, onRange: (AnalyticsRange) -> Unit, 
                     .testTag("analytics"),
                 verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.lg)
             ) {
-                // The range as chips, the selected one gold (as Apple's).
-                // The range chips wrap rather than scroll, so none is cut on a narrow phone.
-                FanousChipRow(sidePadding = 0.dp) {
+                FanousChipRow(sidePadding = 0.dp, maxItemsInEachRow = if (wide) ranges.size else 2) {
                     ranges.forEach { (r, label) ->
                         FanousChip(
                             aunString(label, r.days),

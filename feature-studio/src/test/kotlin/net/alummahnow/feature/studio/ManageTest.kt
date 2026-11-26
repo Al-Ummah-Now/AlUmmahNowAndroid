@@ -224,6 +224,10 @@ class ManageTest {
 
     @Test fun contentEnLight() = shoot("content", Lang.EN, ThemeMode.LIGHT) { ContentScreen(list, noop) }
 
+    @Test fun contentEnDark() = shoot("content", Lang.EN, ThemeMode.DARK) { ContentScreen(list, noop) }
+
+    @Test fun contentArLight() = shoot("content", Lang.AR, ThemeMode.LIGHT) { ContentScreen(list, noop) }
+
     @Test fun contentArDark() = shoot("content", Lang.AR, ThemeMode.DARK) { ContentScreen(list, noop) }
 
     @Test fun contentSelectingEnDark() = shoot("content_selecting", Lang.EN, ThemeMode.DARK) { ContentScreen(selecting, noop) }
@@ -243,6 +247,14 @@ class ManageTest {
     }
 
     @Test fun analyticsArLight() = shoot("analytics", Lang.AR, ThemeMode.LIGHT) {
+        AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {})
+    }
+
+    @Test fun analyticsEnLight() = shoot("analytics", Lang.EN, ThemeMode.LIGHT) {
+        AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {})
+    }
+
+    @Test fun analyticsArDark() = shoot("analytics", Lang.AR, ThemeMode.DARK) {
         AnalyticsScreen(AnalyticsUiState(loading = false, data = sampleAnalytics), {}, {})
     }
 

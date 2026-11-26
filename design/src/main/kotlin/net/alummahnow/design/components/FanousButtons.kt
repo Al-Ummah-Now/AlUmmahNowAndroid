@@ -144,7 +144,12 @@ fun FanousChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: M
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FanousChipRow(modifier: Modifier = Modifier, sidePadding: Dp = FanousTokens.Spacing.lg, content: @Composable FlowRowScope.() -> Unit) {
+fun FanousChipRow(
+    modifier: Modifier = Modifier,
+    sidePadding: Dp = FanousTokens.Spacing.lg,
+    maxItemsInEachRow: Int = Int.MAX_VALUE,
+    content: @Composable FlowRowScope.() -> Unit
+) {
     FlowRow(
         modifier
             .fillMaxWidth()
@@ -152,6 +157,7 @@ fun FanousChipRow(modifier: Modifier = Modifier, sidePadding: Dp = FanousTokens.
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm),
+        maxItemsInEachRow = maxItemsInEachRow,
         content = content
     )
 }
