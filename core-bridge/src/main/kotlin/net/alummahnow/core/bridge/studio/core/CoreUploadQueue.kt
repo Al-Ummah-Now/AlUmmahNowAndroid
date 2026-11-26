@@ -233,7 +233,11 @@ class CoreUploadQueue(
             if (!otherTransfers &&
                 now.none { it.isActive && it.phase != UploadPhase.PREPARING } &&
                 load().pending.none { !isHeld(it.userId) }
-            ) break
+            ) {
+                // A transfer can finish after the first settling pass and before the last activity check.
+                applyFollowUps()
+                break
+            }
             delay(POLL_MS)
         }
     }

@@ -152,6 +152,24 @@ class CoreUploadQueueTest {
         assertEquals(emptyList<File>(), staged)
     }
 
+    @Test
+    fun `processing stays alive for an upload from the previous account`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        val engine = engines.getValue("a")
+        engine.next = UploadState.UPLOADING to null
+        active = "b"
+
+        var rounds = 0
+        queue.process { items ->
+            assertTrue(items.isEmpty())
+            if (++rounds == 2) engine.finishAll()
+        }
+
+        assertEquals(2, rounds)
+        assertTrue(staged.isEmpty())
+    }
+
     /** [enqueue] from a callback that is not suspending. */
     private fun CoreUploadQueue.enqueueNow(draft: UploadDraft) = kotlinx.coroutines.runBlocking { enqueue(listOf(draft)) }
 

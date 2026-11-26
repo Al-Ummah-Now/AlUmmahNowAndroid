@@ -43,7 +43,11 @@ class PlayerTransportTest {
             AunTheme(mode = ThemeMode.LIGHT) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     AunVideoPlayer(
-                        player, false, {}, Modifier.size(360.dp, 240.dp).testTag("player"), showCast = false
+                        player,
+                        false,
+                        {},
+                        Modifier.size(360.dp, 240.dp).testTag("player"),
+                        showCast = false
                     )
                 }
             }
