@@ -33,6 +33,41 @@ class StudioMappersTest {
     }
 
     @Test
+    fun `playlist text uses trimmed translations and falls back to original text`() {
+        val playlist = requireNotNull(
+            StudioMappers.playlist(
+                obj(
+                    """{"id":"p1","title":"Original title","description":"Original description","isPublic":false,
+                        "titleLocalized":{"en":" English ","ar":" العربية "},
+                        "descriptionLocalized":{"en":" English description ","ar":"  ","fr":123,"de":null}}"""
+                )
+            )
+        )
+
+        assertFalse(playlist.isPublic)
+        assertEquals(mapOf("en" to " English ", "ar" to " العربية "), playlist.titleLocalized)
+        assertEquals(mapOf("en" to " English description ", "ar" to "  "), playlist.descriptionLocalized)
+        assertEquals("English", playlist.localizedTitle("en-US"))
+        assertEquals("العربية", playlist.localizedTitle("ar_SA"))
+        assertEquals("Original title", playlist.localizedTitle("fr"))
+        assertEquals("English description", playlist.localizedDescription("en"))
+        assertEquals("Original description", playlist.localizedDescription("ar-SA"))
+        assertEquals("Original description", playlist.localizedDescription("fr"))
+        assertEquals("Original title", playlist.copy(titleLocalized = mapOf("ar" to " ")).localizedTitle("ar"))
+    }
+
+    @Test
+    fun `legacy playlists retain their original text in both languages`() {
+        val playlist = requireNotNull(StudioMappers.playlist(obj("""{"id":"p1","title":" Original "}""")))
+        assertEquals(emptyMap<String, String>(), playlist.titleLocalized)
+        assertEquals(emptyMap<String, String>(), playlist.descriptionLocalized)
+        assertEquals(" Original ", playlist.localizedTitle("en"))
+        assertEquals(" Original ", playlist.localizedTitle("ar"))
+        assertEquals("", playlist.localizedDescription("ar"))
+        assertNull(StudioMappers.playlist(obj("""{"title":"Missing ID"}""")))
+    }
+
+    @Test
     fun `studio status follows the server order`() {
         assertEquals(ContentStatus.FAILED, StudioMappers.deriveStatus(obj("""{"uploadStatus":"failed","isDraft":true}""")))
         assertEquals(ContentStatus.PROCESSING, StudioMappers.deriveStatus(obj("""{"uploadStatus":"uploading"}""")))

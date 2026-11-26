@@ -196,7 +196,23 @@ data class BulkResult(val items: List<BulkItemResult>) {
     val failedIds: List<String> get() = items.filterNot { it.success }.map { it.videoId }
 }
 
-data class StudioPlaylist(val id: String, val title: String, val isPublic: Boolean)
+data class StudioPlaylist(
+    val id: String,
+    val title: String,
+    val isPublic: Boolean,
+    val titleLocalized: Map<String, String> = emptyMap(),
+    val descriptionLocalized: Map<String, String> = emptyMap(),
+    val description: String = ""
+) {
+    fun localizedTitle(language: String): String = localizedText(title, titleLocalized, language)
+
+    fun localizedDescription(language: String): String = localizedText(description, descriptionLocalized, language)
+
+    private fun localizedText(base: String, localized: Map<String, String>, language: String): String {
+        val key = language.substringBefore('-').substringBefore('_').lowercase()
+        return localized[key]?.trim()?.ifEmpty { null } ?: base
+    }
+}
 
 data class CreatorAccess(
     val canUpload: Boolean,

@@ -69,7 +69,10 @@ class UploadTest {
     fun `batch drafts carry the set-for-all values and per-file titles`() = runTest {
         val queue = FakeQueue()
         val vm = UploadViewModel(queue, FakeRepo(), "c1", "Seerah", { today }, { now }, { zone })
-        assertEquals(listOf("p1"), vm.state.value.playlists.map { it.id })
+        val playlist = vm.state.value.playlists.single()
+        assertEquals("p1", playlist.id)
+        assertEquals("السلسلة", playlist.localizedTitle("ar"))
+        assertEquals("Series", playlist.localizedTitle("en"))
         vm.addFiles(listOf(file("a.mp4"), file("b.mp4"), file("a.mp4")))
         assertEquals(2, vm.state.value.files.size)
         vm.updateForm {
@@ -161,7 +164,8 @@ private class FakeQueue : UploadQueue {
 }
 
 private class FakeRepo : StudioRepository {
-    override suspend fun playlists(channelId: String) = listOf(StudioPlaylist("p1", "Series", true))
+    override suspend fun playlists(channelId: String) =
+        listOf(StudioPlaylist("p1", "Series", true, titleLocalized = mapOf("ar" to "السلسلة")))
     override suspend fun channels() = error("unused")
     override suspend fun creatorAccess() = error("unused")
     override suspend fun acceptCreatorTerms(version: String) = error("unused")
