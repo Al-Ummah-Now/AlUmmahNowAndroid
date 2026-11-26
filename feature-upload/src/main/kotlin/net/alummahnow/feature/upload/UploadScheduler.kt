@@ -18,7 +18,7 @@ import net.alummahnow.core.bridge.AunLog
 /** The durable queue owns the uploads. Each work request tells the platform to drain that queue. */
 object UploadScheduler {
     private const val WORK_NAME = "studio-uploads"
-    private const val JOB_ID = 4100
+    private const val JOB_ID = 0x41554E55
 
     fun start(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
