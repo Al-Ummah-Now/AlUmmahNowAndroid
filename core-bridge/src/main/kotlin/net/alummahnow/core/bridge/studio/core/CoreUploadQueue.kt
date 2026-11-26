@@ -136,7 +136,7 @@ class CoreUploadQueue(
 
     /** Lets uploads go on that an earlier process held and didn't release, unless their account may be deleted. */
     suspend fun releaseLeft() {
-        synchronized(held) { leftHeld.toList() }.forEach { releaseUploads(it) }
+        synchronized(held) { leftHeld.toList() }.forEach { releaseUploads(it, leftOnly = true) }
     }
 
     private fun isPurged(userId: String): Boolean = synchronized(purgedUsers) { userId in purgedUsers }
@@ -158,7 +158,11 @@ class CoreUploadQueue(
 
     private fun engine(userId: String): UploadEngineInterface = synchronized(engines) {
         if (isPurged(userId)) throw CoreError.NotSignedIn()
-        engines.getOrPut(userId) { newEngine(userId, engineDir(userId).apply { mkdirs() }) }
+        engines.getOrPut(userId) {
+            // Opening the engine can start queued uploads, even if the caller only lists them.
+            check(!blocked(userId)) { "account deletion outcome is unknown" }
+            newEngine(userId, engineDir(userId).apply { mkdirs() })
+        }
     }
 
     override suspend fun enqueue(drafts: List<UploadDraft>) {
@@ -440,19 +444,27 @@ class CoreUploadQueue(
         }
     }
 
-    override suspend fun releaseUploads(userId: String) {
-        val paused = synchronized(held) {
-            if (blocked(userId)) return
-            leftHeld -= userId
-            held.remove(userId)?.also { saveHeld() }
-        } ?: return
-        withContext(Dispatchers.IO) {
-            runCatching { engine(userId) }.getOrNull()?.let { engine ->
-                paused.forEach { id -> runCatching { engine.goOn(id) } }
+    override suspend fun releaseUploads(userId: String) = releaseUploads(userId, leftOnly = false)
+
+    private suspend fun releaseUploads(userId: String, leftOnly: Boolean) {
+        val released = withContext(Dispatchers.IO) {
+            synchronized(held) {
+                // A new deletion may have taken over since startup listed the holds. Keep the check and
+                // engine resumes under the same lock that acquires a hold.
+                if ((leftOnly && userId !in leftHeld) || blocked(userId)) return@synchronized false
+                val paused = held.remove(userId) ?: return@synchronized false
+                leftHeld -= userId
+                saveHeld()
+                runCatching { engine(userId) }.getOrNull()?.let { engine ->
+                    paused.forEach { id -> runCatching { engine.goOn(id) } }
+                }
+                true
             }
         }
-        refresh()
-        onWorkNeeded()
+        if (released) {
+            refresh()
+            onWorkNeeded()
+        }
     }
 
     private fun UploadEngineInterface.goOn(id: String) = if (get(id)?.state == UploadState.FAILED) retry(id) else resume(id)

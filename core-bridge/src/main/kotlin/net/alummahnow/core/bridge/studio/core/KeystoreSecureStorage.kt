@@ -17,7 +17,11 @@ import net.alummahnow.core.SecureStorage
  * Android Keystore key and kept in private SharedPreferences. Tokens never leave the device's
  * keystore-protected storage, and app backup is off (`allowBackup=false`).
  */
-class KeystoreSecureStorage(context: Context, private val name: String = "aun_secure") : SecureStorage {
+class KeystoreSecureStorage(
+    context: Context,
+    private val name: String = "aun_secure",
+    private val discardUnreadableValues: Boolean = true
+) : SecureStorage {
     private val prefs = context.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE)
     private val lock = Any()
 
@@ -43,11 +47,11 @@ class KeystoreSecureStorage(context: Context, private val name: String = "aun_se
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, raw, 0, IV_BYTES))
             cipher.doFinal(raw, IV_BYTES, raw.size - IV_BYTES)
         } catch (e: java.security.GeneralSecurityException) {
-            // The keystore key was lost (e.g. device restore): the secret is unreadable; drop it.
-            prefs.edit().remove(key).apply()
+            // A lost key can make the value unreadable. Some callers need to remember that it existed.
+            if (discardUnreadableValues) prefs.edit().remove(key).apply()
             throw AunException.Storage("secure value unreadable: ${e.javaClass.simpleName}").apply { initCause(e) }
         } catch (e: IllegalArgumentException) {
-            prefs.edit().remove(key).apply()
+            if (discardUnreadableValues) prefs.edit().remove(key).apply()
             throw AunException.Storage("secure value corrupt").apply { initCause(e) }
         }
     }

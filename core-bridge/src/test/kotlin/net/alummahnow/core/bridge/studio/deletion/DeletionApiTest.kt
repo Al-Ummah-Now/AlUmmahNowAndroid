@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -116,8 +117,12 @@ class DeletionApiTest {
         assertEquals(listOf("u1"), SecureDeletionRecords(storage).records.value.map { it.userId })
         storage.broken = true
         assertTrue(runCatching { next.get("u1") }.isFailure)
+        assertTrue(next.isUnsure("u1"))
         assertTrue(runCatching { next.put(DeletionRecord("u3", "c")) }.isFailure)
-        assertTrue(SecureDeletionRecords(storage).records.value.isEmpty())
+        assertTrue(SecureDeletionRecords(storage).isUnsure("u1"))
+        storage.broken = false
+        assertEquals("t2", next.get("u1")?.resumeToken)
+        assertFalse(next.isUnsure("u1"))
     }
 
     private class Proofs : NativeProofProvider {

@@ -82,7 +82,8 @@ class AppContainer(context: Context) : StudioContainer {
         scope.launch { exports.follow(session.accounts) }
     }
 
-    override val deletionRecords: DeletionRecords = SecureDeletionRecords(KeystoreSecureStorage(context, "aun_deletion"))
+    override val deletionRecords: DeletionRecords =
+        SecureDeletionRecords(KeystoreSecureStorage(context, "aun_deletion", discardUnreadableValues = false))
 
     override val uploads: CoreUploadQueue = CoreUploadQueue(
         context = context,
