@@ -58,7 +58,7 @@ data class DeletionRecord(
 interface DeletionRecords {
     val records: StateFlow<List<DeletionRecord>>
 
-    /** Whether [userId]'s account may be deleted already: nothing may be uploaded for it until that is known. */
+    /** Whether [userId]'s account may be deleted already, including when its records are unreadable. */
     fun isUnsure(userId: String): Boolean = records.value.any { it.userId == userId && it.unsure }
 
     /** Throws when it cannot be read: "unknown" must never look like "nothing started". */
@@ -75,13 +75,22 @@ interface DeletionRecords {
 class SecureDeletionRecords(private val storage: SecureStorage) : DeletionRecords {
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Any()
+
+    // Null means there is no verified snapshot for the upload gate.
+    @Volatile private var knownRecords: List<DeletionRecord>? = null
     private val mutable = MutableStateFlow(
-        runCatching { read() }.onFailure { AunLog.e("auth", "deletion records unreadable", it) }.getOrDefault(emptyList())
+        runCatching { read() }
+            .onSuccess { knownRecords = it }
+            .onFailure { AunLog.e("auth", "deletion records unreadable", null, "type" to it.javaClass.simpleName) }
+            .getOrDefault(emptyList())
     )
     override val records: StateFlow<List<DeletionRecord>> = mutable.asStateFlow()
 
+    override fun isUnsure(userId: String): Boolean =
+        knownRecords?.any { it.userId == userId && it.unsure } ?: true
+
     override fun get(userId: String): DeletionRecord? = synchronized(lock) {
-        read().also { mutable.value = it }.firstOrNull { it.userId == userId }
+        read().also(::publish).firstOrNull { it.userId == userId }
     }
 
     override fun put(record: DeletionRecord) = synchronized(lock) {
@@ -90,11 +99,17 @@ class SecureDeletionRecords(private val storage: SecureStorage) : DeletionRecord
 
     override fun remove(userId: String) = synchronized(lock) { write(read().filterNot { it.userId == userId }) }
 
-    private fun read(): List<DeletionRecord> =
+    private fun read(): List<DeletionRecord> = runCatching {
         storage.get(KEY)?.let { json.decodeFromString<List<DeletionRecord>>(String(it, Charsets.UTF_8)) }.orEmpty()
+    }.onFailure { knownRecords = null }.getOrThrow()
 
     private fun write(next: List<DeletionRecord>) {
         storage.set(KEY, json.encodeToString(next).toByteArray(Charsets.UTF_8))
+        publish(next)
+    }
+
+    private fun publish(next: List<DeletionRecord>) {
+        knownRecords = next
         mutable.value = next
     }
 

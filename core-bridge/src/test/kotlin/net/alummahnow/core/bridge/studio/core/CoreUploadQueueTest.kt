@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import net.alummahnow.core.UploadEngineInterface
 import net.alummahnow.core.UploadInfo
@@ -12,6 +13,7 @@ import net.alummahnow.core.UploadRequest
 import net.alummahnow.core.UploadState
 import net.alummahnow.core.bridge.studio.UploadDraft
 import net.alummahnow.core.bridge.studio.UploadPhase
+import net.alummahnow.core.bridge.studio.deletion.SecureDeletionRecords
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -28,6 +30,7 @@ class CoreUploadQueueTest {
     private var active = "a"
     private val engines = mutableMapOf<String, FakeEngine>()
     private var workAsked = 0
+    private var enginesOpened = 0
 
     @Before fun setUp() {
         source.writeText("video")
@@ -35,15 +38,24 @@ class CoreUploadQueueTest {
 
     private var blocked = false
 
-    private fun queue() = CoreUploadQueue(
+    private fun queue(
+        isBlocked: (String) -> Boolean = { blocked && it == "a" },
+        onWorkNeeded: () -> Unit = {}
+    ) = CoreUploadQueue(
         context = context,
         activeUserId = { active },
         clientFor = { error("no client") },
         repository = { error("no repository") },
-        onWorkNeeded = { workAsked++ },
-        newEngine = { userId, _ -> engines.getOrPut(userId) { FakeEngine() }.also { it.open() } },
+        onWorkNeeded = {
+            workAsked++
+            onWorkNeeded()
+        },
+        newEngine = { userId, _ ->
+            enginesOpened++
+            engines.getOrPut(userId) { FakeEngine() }.also { it.open() }
+        },
         holdTimeoutMs = 1_500,
-        blocked = { blocked && it == "a" }
+        blocked = isBlocked
     )
 
     private fun draft() = UploadDraft(source.path, "talk.mp4", 5, "video/mp4", "Talk", channelId = "c1")
@@ -286,6 +298,54 @@ class CoreUploadQueueTest {
         // Released once: a later process holds nothing.
         queue().releaseLeft()
         assertEquals(2, engine.actions.size)
+    }
+
+    @Test
+    fun `startup cannot release a hold taken over by a new deletion`() = runTest {
+        val previous = queue()
+        val engine = uploading(previous)
+        previous.holdUploads("b")
+        previous.holdUploads("a")
+        val asked = workAsked
+
+        lateinit var next: CoreUploadQueue
+        next = queue(onWorkNeeded = {
+            // Releasing b gives a new deletion time to acquire a's hold after startup has listed it.
+            if (workAsked == asked + 1) runBlocking { next.holdUploads("a") }
+        })
+        next.releaseLeft()
+
+        assertEquals(listOf("pause up-1"), engine.actions)
+        assertEquals(asked + 1, workAsked)
+        assertEquals(UploadState.PAUSED, engine.get("up-1")?.state)
+        next.releaseUploads("a")
+        assertEquals(listOf("pause up-1", "resume up-1"), engine.actions)
+    }
+
+    @Test
+    fun `unreadable deletion records keep uploads held across restarts`() = runTest {
+        val previous = queue()
+        val engine = uploading(previous)
+        previous.holdUploads("a")
+        val asked = workAsked
+        val opened = enginesOpened
+        val name = "aun_deletion_test"
+        val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+        // A truncated Base64 value fails before the Keystore is needed.
+        assertTrue(prefs.edit().putString("account-deletions", "A").commit())
+
+        repeat(2) {
+            val records = SecureDeletionRecords(KeystoreSecureStorage(context, name, discardUnreadableValues = false))
+            val next = queue(isBlocked = records::isUnsure)
+            next.releaseLeft()
+
+            assertEquals(listOf("pause up-1"), engine.actions)
+            assertEquals(asked, workAsked)
+            assertFalse(next.hasWork())
+            assertEquals(opened, enginesOpened)
+            assertTrue(records.isUnsure("a"))
+            assertTrue(runCatching { records.get("a") }.isFailure)
+        }
     }
 
     @Test
