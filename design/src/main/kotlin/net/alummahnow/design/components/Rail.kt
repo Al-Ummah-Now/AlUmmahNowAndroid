@@ -39,13 +39,13 @@ fun VideoRail(
 }
 
 @Composable
-fun SectionHeader(title: String, modifier: Modifier = Modifier) {
+fun SectionHeader(title: String, modifier: Modifier = Modifier, topPadding: Dp = FanousTokens.Spacing.sm) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleLarge,
         color = MaterialTheme.colorScheme.onBackground,
         modifier = modifier
-            .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.sm)
+            .padding(start = FanousTokens.Spacing.lg, end = FanousTokens.Spacing.lg, top = topPadding, bottom = FanousTokens.Spacing.sm)
             .semantics { heading() }
     )
 }

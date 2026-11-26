@@ -239,7 +239,7 @@ private fun WatchLayout(
                 details(state.video, locale, onChapter, safety)
             }
             LazyColumn(Modifier.weight(0.36f).padding(horizontal = FanousTokens.Spacing.sm)) {
-                related(state.related, locale, onVideoClick)
+                related(state.related, locale, onVideoClick, twoPane = true)
             }
         }
     } else {
@@ -395,9 +395,19 @@ private fun WatchSafetyMenu(video: VideoDetail, safety: WatchSafetyActions) {
     }
 }
 
-private fun LazyListScope.related(videos: List<VideoSummary>, locale: Locale, onVideoClick: (String) -> Unit) {
+private fun LazyListScope.related(
+    videos: List<VideoSummary>,
+    locale: Locale,
+    onVideoClick: (String) -> Unit,
+    twoPane: Boolean = false
+) {
     if (videos.isEmpty()) return
-    item(key = "related-title") { SectionHeader(stringResource(R.string.watch_related)) }
+    item(key = "related-title") {
+        SectionHeader(
+            stringResource(R.string.watch_related),
+            topPadding = if (twoPane) 0.dp else FanousTokens.Spacing.sm
+        )
+    }
     items(videos, key = { "rel-" + it.id }) { v ->
         VideoCard(
             data = VideoCardData(v.id, v.title.resolve(locale), v.thumbnailUrl, v.durationSeconds, v.channelName, v.views),

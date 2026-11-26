@@ -3,19 +3,26 @@ package net.alummahnow.feature.home
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,17 +44,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.window.core.layout.WindowSizeClass
 import java.util.Locale
+import net.alummahnow.core.bridge.model.Rail
 import net.alummahnow.core.bridge.model.RailKind
 import net.alummahnow.core.bridge.model.VideoSummary
 import net.alummahnow.design.R as DesignR
-import net.alummahnow.design.components.ErrorState
+import net.alummahnow.design.components.FanousCard
 import net.alummahnow.design.components.FullScreenLoading
+import net.alummahnow.design.components.SectionHeader
+import net.alummahnow.design.components.VideoCard
 import net.alummahnow.design.components.VideoCardData
 import net.alummahnow.design.components.VideoRail
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.FanousTokens
 
-/** Card width grows with the window so tablets and unfolded foldables show more per row. */
+/** Card widths for horizontal rails, including live content. */
 @Composable
 internal fun railCardWidth(): Dp {
     val size = currentWindowAdaptiveInfo().windowSizeClass
@@ -75,37 +85,81 @@ fun HomeScreen(
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (state) {
             HomeUiState.Loading -> FullScreenLoading()
-            is HomeUiState.Error -> ErrorState(stringResource(state.kind.message), onRetry)
+            is HomeUiState.Error -> HomeError(stringResource(state.kind.message), onRetry, onOpenSettings)
             is HomeUiState.Content -> PullToRefreshBox(isRefreshing = state.isRefreshing, onRefresh = onRetry) {
                 val locale = currentLocale()
                 val cardWidth = railCardWidth()
-                LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
-                    item(key = "header") { HomeHeader(onOpenSettings) }
-                    item(key = "live") { liveRail(cardWidth) }
-                    if (state.rails.isEmpty() && !hasLive) {
-                        item(key = "empty") {
-                            Box(
-                                Modifier.fillMaxWidth().padding(FanousTokens.Spacing.xl),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    stringResource(if (allBlocked) R.string.home_all_blocked else R.string.home_empty),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
+                BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
+                    val columns = if (maxWidth >= 600.dp) (maxWidth / 360.dp).toInt().coerceAtLeast(2) else 1
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        item(key = "header") { HomeHeader(onOpenSettings) }
+                        item(key = "live") { liveRail(cardWidth) }
+                        if (state.rails.isEmpty() && !hasLive) {
+                            item(key = "empty") {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(FanousTokens.Spacing.xl),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        stringResource(if (allBlocked) R.string.home_all_blocked else R.string.home_empty),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        } else if (columns > 1) {
+                            state.rails.forEach { rail -> tabletRail(rail, locale, columns, onVideoClick) }
+                        } else {
+                            items(state.rails, key = { it.kind.name }) { rail ->
+                                VideoRail(
+                                    title = stringResource(rail.kind.titleRes()),
+                                    items = rail.videos.map { it.toCard(locale) },
+                                    onItemClick = { onVideoClick(it.id) },
+                                    cardWidth = cardWidth
                                 )
                             }
                         }
-                    } else {
-                        items(state.rails, key = { it.kind.name }) { rail ->
-                            VideoRail(
-                                title = stringResource(rail.kind.titleRes()),
-                                items = rail.videos.map { it.toCard(locale) },
-                                onItemClick = { onVideoClick(it.id) },
-                                cardWidth = cardWidth
-                            )
-                        }
                     }
+                }
+            }
+        }
+    }
+}
+
+private fun LazyListScope.tabletRail(rail: Rail, locale: Locale, columns: Int, onVideoClick: (String) -> Unit) {
+    item(key = "${rail.kind.name}-title") { SectionHeader(stringResource(rail.kind.titleRes())) }
+    items(rail.videos.chunked(columns), key = { "${rail.kind.name}-${it.first().id}" }) { row ->
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md)
+        ) {
+            row.forEach { video ->
+                VideoCard(video.toCard(locale), { onVideoClick(video.id) }, Modifier.weight(1f), width = null)
+            }
+            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+        }
+    }
+}
+
+@Composable
+private fun HomeError(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit) {
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
+        HomeHeader(onOpenSettings)
+        Box(
+            Modifier.weight(1f).fillMaxWidth().padding(FanousTokens.Spacing.lg),
+            contentAlignment = Alignment.Center
+        ) {
+            FanousCard(
+                modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth(),
+                actions = { Button(onClick = onRetry) { Text(stringResource(DesignR.string.aun_retry)) } }
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.md),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Text(message, style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
