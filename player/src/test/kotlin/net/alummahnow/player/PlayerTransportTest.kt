@@ -98,8 +98,9 @@ class PlayerTransportTest {
         english.assertDoesNotExist()
         arabic.assertDoesNotExist()
 
-        compose.runOnIdle { player.showCaption("A longer English verse used to check alignment\nSource: Quran Foundation") }
-        val englishCue = compose.onNodeWithText("A longer English verse used to check alignment").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val englishVerse = "A longer English verse used to check alignment"
+        compose.runOnIdle { player.showCaption("$englishVerse\nSource: Quran Foundation") }
+        val englishCue = compose.onNodeWithText(englishVerse).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val englishLink = english.fetchSemanticsNode().boundsInRoot
         val seekLabel = RuntimeEnvironment.getApplication().getString(R.string.aun_player_seek)
         val seekBar = compose.onNodeWithContentDescription(seekLabel).fetchSemanticsNode().boundsInRoot
@@ -108,9 +109,10 @@ class PlayerTransportTest {
         assertTrue(englishLink.center.x > englishCue.center.x)
         english.assertIsDisplayed().performTouchInput { doubleClick() }
 
-        compose.runOnIdle { player.showCaption("هذه آية عربية لاختبار محاذاة النص\n\u200fالمصدر: مؤسسة القرآن") }
+        val arabicVerse = "هذه آية عربية لاختبار محاذاة النص"
+        compose.runOnIdle { player.showCaption("$arabicVerse\n\u200fالمصدر: مؤسسة القرآن") }
         english.assertDoesNotExist()
-        val arabicCue = compose.onNodeWithText("هذه آية عربية لاختبار محاذاة النص").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val arabicCue = compose.onNodeWithText(arabicVerse).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val arabicLink = arabic.fetchSemanticsNode().boundsInRoot
         assertTrue(arabicLink.top >= arabicCue.bottom)
         assertTrue(arabicLink.center.x < arabicCue.center.x)
