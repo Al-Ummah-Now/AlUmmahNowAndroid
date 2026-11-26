@@ -45,9 +45,9 @@ import net.alummahnow.design.components.FanousMaterialKind
 import net.alummahnow.design.components.FullScreenLoading
 import net.alummahnow.design.components.Thumbnail
 import net.alummahnow.design.components.fanousMaterial
+import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.aunPlural
 import net.alummahnow.design.format.compactCount
-import net.alummahnow.design.format.AunFormat
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.format.numberLabel
 import net.alummahnow.design.theme.FanousTokens
