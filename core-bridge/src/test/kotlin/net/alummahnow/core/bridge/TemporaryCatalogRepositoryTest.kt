@@ -8,6 +8,7 @@ import net.alummahnow.core.bridge.catalog.TemporaryCatalogRepository
 import net.alummahnow.core.bridge.model.RailKind
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -39,6 +40,19 @@ class TemporaryCatalogRepositoryTest {
         assertTrue(video.subtitles.first().isDefault)
         assertTrue(video.isReady)
         assertEquals(75L, video.summary.durationSeconds)
+    }
+
+    @Test fun `video detail distinguishes shorts and private videos from unlisted and legacy videos`() = runTest {
+        server.enqueue(MockResponse(body = """{"id":"x","isShort":true,"isPublic":false}"""))
+        server.enqueue(MockResponse(body = """{"id":"x","isPublic":false,"isUnlisted":true}"""))
+        server.enqueue(MockResponse(body = """{"id":"x"}"""))
+        val privateShort = repo.video("x")
+        assertTrue(privateShort.isShort)
+        assertTrue(privateShort.isPrivate)
+        assertFalse(repo.video("x").isPrivate)
+        val legacy = repo.video("x")
+        assertFalse(legacy.isShort)
+        assertFalse(legacy.isPrivate)
     }
 
     @Test fun `missing video becomes NotFound`() = runTest {

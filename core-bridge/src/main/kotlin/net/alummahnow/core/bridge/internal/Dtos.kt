@@ -27,7 +27,9 @@ internal data class VideoDto(
     val likesCount: Long = 0,
     val tags: List<String> = emptyList(),
     val isLive: Boolean = false,
-    val isPublic: Boolean = true,
+    val isPublic: Boolean? = null,
+    val isUnlisted: Boolean? = null,
+    val isShort: Boolean? = null,
     val uploadStatus: String? = null
 )
 

@@ -13,4 +13,5 @@
     <string name="watch_unblock">إلغاء الحظر</string>
     <string name="watch_channel_blocked_unnamed">مرئيات هذه القناة مخفية على هذا الجهاز.</string>
     <string name="watch_block_channel_title_unnamed">حظر هذه القناة؟</string>
+    <string name="watch_copy_link">نسخ الرابط</string>
 </resources>

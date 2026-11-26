@@ -1,5 +1,6 @@
 package net.alummahnow.viewer
 
+import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
@@ -210,6 +211,30 @@ class ViewerShellTest {
     }
 
     @Test
+    fun watchMenuCopiesShortLink() {
+        show()
+        go(Routes.watch("v-1"))
+        waitForTag("watch-more-actions")
+        compose.onNodeWithTag("watch-more-actions").performClick()
+        compose.onNodeWithTag("watch-copy-link-item").performClick()
+        compose.runOnIdle {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            assertEquals("https://qa.alummahnow.link/v/v-1", clipboard.primaryClip?.getItemAt(0)?.text.toString())
+        }
+    }
+
+    @Test
+    fun privateWatchMenuHasNoCopyLink() {
+        catalog.privateVideo = true
+        show()
+        go(Routes.watch("v-1"))
+        waitForTag("watch-more-actions")
+        compose.onNodeWithTag("watch-more-actions").performClick()
+        compose.onNodeWithTag("watch-copy-link-item").assertDoesNotExist()
+    }
+
+    @Test
     fun reportsOpenThisBuildsHostWithTheTarget() {
         show()
         go(Routes.watch("v-1"))
@@ -252,10 +277,12 @@ class ViewerShellTest {
     }
 
     private class FakeCatalog(private val videos: List<VideoSummary>) : CatalogRepository {
+        var privateVideo = false
+
         override suspend fun homeRails() = listOf(Rail(RailKind.RECENT, videos))
         override suspend fun video(id: String): VideoDetail {
             val v = videos.firstOrNull { it.id == id } ?: throw CoreError.NotFound(id)
-            return sampleSafetyDetail(playUrl = "https://x.test/$id.m3u8").copy(summary = v)
+            return sampleSafetyDetail(playUrl = "https://x.test/$id.m3u8").copy(summary = v, isPrivate = privateVideo)
         }
         override suspend fun related(video: VideoDetail, limit: Int) = videos.filterNot { it.id == video.id }
         override suspend fun search(query: String, limit: Int) = emptyList<VideoSummary>()

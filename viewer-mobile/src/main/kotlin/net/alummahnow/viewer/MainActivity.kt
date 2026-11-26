@@ -2,6 +2,9 @@ package net.alummahnow.viewer
 
 import android.app.PictureInPictureParams
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -38,6 +41,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import java.util.Locale
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -45,6 +49,8 @@ import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
+import net.alummahnow.core.bridge.links.ShortLinks
+import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.safety.ViewerReportUrls
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.AunTheme
@@ -265,7 +271,7 @@ internal fun ViewerNavHost(
             LaunchedEffect(fullscreen) { onFullscreen(fullscreen) }
             BackHandler(enabled = fullscreen) { fullscreen = false }
             DisposableEffect(Unit) { onDispose { onFullscreen(false) } }
-            val safety = remember(locale.language, player) {
+            val safety = remember(locale.language, player, context) {
                 WatchSafetyActions(
                     onReportVideo = {
                         openPage(ViewerReportUrls.videoUrl(it.id, locale.language, BuildConfig.WEB_HOST))
@@ -281,7 +287,8 @@ internal fun ViewerNavHost(
                         player?.clearMediaItems()
                         container.blockStore.blockChannel(it.summary.channelId, it.summary.channelName)
                         nav.popBackStack()
-                    }
+                    },
+                    onCopyLink = { video -> copyVideoLink(context, video, player, locale) }
                 )
             }
             WatchScreen(
@@ -349,6 +356,25 @@ internal fun ViewerNavHost(
             onDismiss = { blockedListOpen = false }
         )
     }
+}
+
+private fun copyVideoLink(context: Context, video: VideoDetail, player: Player?, locale: Locale) {
+    val seconds = player?.takeIf { it.currentMediaItem?.mediaId == video.id }?.currentPosition
+        ?.div(1_000)?.takeIf { it > 0 && !video.isShort }
+    val route = if (video.isShort) "shorts" else "video"
+    val kind = if (video.isShort) ShortLinks.Kind.SHORT else ShortLinks.Kind.VIDEO
+    val language = if (locale.language == "ar") "ar" else "en"
+    val page = "${BuildConfig.WEB_BASE_URL}/$language/$route/${Uri.encode(video.id)}"
+    val url = ShortLinks.shareUrl(
+        ShortLinks.Target(kind, video.id),
+        BuildConfig.WEB_BASE_URL,
+        if (seconds == null) page else "$page?t=$seconds",
+        language,
+        video.isPrivate,
+        startSeconds = seconds
+    ) ?: return
+    context.getSystemService(ClipboardManager::class.java)
+        .setPrimaryClip(ClipData.newPlainText(video.summary.title.resolve(locale), url))
 }
 
 @Composable
