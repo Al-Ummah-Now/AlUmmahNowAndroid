@@ -26,6 +26,7 @@ import net.alummahnow.core.bridge.CoreError
 import net.alummahnow.core.bridge.studio.CommentsSummary
 import net.alummahnow.core.bridge.studio.ContentStatus
 import net.alummahnow.core.bridge.studio.CreatorAccess
+import net.alummahnow.core.bridge.studio.HeldComment
 import net.alummahnow.core.bridge.studio.StudioError
 import net.alummahnow.core.bridge.studio.StudioVideo
 import net.alummahnow.design.theme.AunTheme
@@ -113,13 +114,15 @@ class DashboardTest {
 
     @Test
     fun `the dashboard has recent videos, comments, drafts and scheduled`() = runTest(dispatcher) {
-        val vm = DashboardViewModel(repoWithEverything(), "c1")
+        val comment = HeldComment("first", "First", "Author", "user", "video", "target", false)
+        val comments = CommentsSummary(2, 14, listOf(comment, comment.copy(id = "second")))
+        val vm = DashboardViewModel(repoWithEverything().apply { this.comments = comments }, "c1")
         advanceUntilIdle()
         val s = content(vm)
         val recent = (s.recent as DashboardSection.Ready).value
         assertEquals("p1", recent.first().id) // newest first, processing included with its status
         assertTrue(recent.size <= 5)
-        assertEquals(CommentsSummary(2, 14), (s.comments as DashboardSection.Ready).value)
+        assertEquals(comments, (s.comments as DashboardSection.Ready).value)
         assertEquals(listOf("d1"), (s.drafts as DashboardSection.Ready).value.map { it.id })
         assertEquals(listOf("s1"), (s.scheduled as DashboardSection.Ready).value.map { it.id })
         assertFalse(s.nothingLeft)

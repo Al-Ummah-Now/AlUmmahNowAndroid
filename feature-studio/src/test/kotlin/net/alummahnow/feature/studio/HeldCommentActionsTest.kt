@@ -73,6 +73,21 @@ class HeldCommentActionsTest {
     }
 
     @Test
+    fun `reloading a complete page does not count an author hidden earlier`() = runTest(dispatcher) {
+        val repo = TestRepository(mapOf(null to CommentsSummary(2, 0, listOf(first))))
+            .apply { result.complete(Unit) }
+        val vm = DashboardViewModel(repo, "channel")
+        advanceUntilIdle()
+
+        vm.actOnComment(first.id, HeldCommentAction.HideAuthor)
+        advanceUntilIdle()
+        vm.load()
+        advanceUntilIdle()
+
+        assertEquals(CommentsSummary(0, 0), summary(vm))
+    }
+
+    @Test
     fun `hide with no author and moderation of platform-held comments are ignored`() = runTest(dispatcher) {
         val held = first.copy(authorId = null, platformHold = true)
         val repo = TestRepository(mapOf(null to CommentsSummary(1, 0, listOf(held))))
