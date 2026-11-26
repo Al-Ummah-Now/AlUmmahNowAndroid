@@ -17,7 +17,6 @@
             tools:node="merge" />
         <service
             android:name=".UploadJobService"
-            android:enabled="@bool/upload_uidt_job_enabled"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
