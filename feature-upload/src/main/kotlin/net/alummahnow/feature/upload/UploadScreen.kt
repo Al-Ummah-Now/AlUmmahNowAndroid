@@ -276,11 +276,12 @@ private fun SetForAllSection(state: UploadUiState, actions: UploadActions) {
             }
         }
         if (state.playlists.isNotEmpty()) {
+            val language = currentLocale().language
             Text(stringResource(R.string.upload_playlists), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(FanousTokens.Spacing.sm)) {
                 state.playlists.forEach { p ->
                     FanousChip(
-                        p.title,
+                        p.localizedTitle(language),
                         selected = p.id in state.form.playlistIds,
                         onClick = { actions.onTogglePlaylist(p.id) },
                         modifier = Modifier.testTag("upload-playlist-${p.id}")

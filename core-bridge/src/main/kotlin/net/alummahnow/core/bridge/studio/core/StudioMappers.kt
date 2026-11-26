@@ -141,8 +141,20 @@ object StudioMappers {
 
     fun playlist(o: JsonObject): StudioPlaylist? {
         val id = o.s("id") ?: return null
-        return StudioPlaylist(id, o.s("title").orEmpty(), o.b("isPublic") ?: true)
+        return StudioPlaylist(
+            id = id,
+            title = o.s("title").orEmpty(),
+            isPublic = o.b("isPublic") ?: true,
+            titleLocalized = o.playlistTextMap("titleLocalized"),
+            descriptionLocalized = o.playlistTextMap("descriptionLocalized"),
+            description = o.s("description").orEmpty()
+        )
     }
+
+    private fun JsonObject.playlistTextMap(key: String): Map<String, String> =
+        o(key)?.mapNotNull { (language, value) ->
+            (value as? JsonPrimitive)?.takeIf { it.isString }?.let { language to it.content }
+        }?.toMap().orEmpty()
 
     fun analytics(o: JsonObject): ChannelAnalytics = ChannelAnalytics(
         totalViews = o.l("totalViews"),

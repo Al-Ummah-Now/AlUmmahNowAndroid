@@ -22,6 +22,11 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35])
 class UploadScreenshotTest {
+    private val playlists = listOf(
+        StudioPlaylist("p1", "Original series", true, mapOf("en" to "Tafsir series", "ar" to "سلسلة التفسير")),
+        StudioPlaylist("p2", "Original talks", false, mapOf("en" to "Khutbahs", "ar" to "الخطب"))
+    )
+
     /**
      * Creator content (files, titles, playlists, tags, queue) in the frame's language. Generated titles come from
      * TitlePattern, with the frame language's digits («التفسير ٠١», "Tafsir 01").
@@ -40,7 +45,7 @@ class UploadScreenshotTest {
                 playlistIds = setOf("p1"),
                 tagsText = "تفسير، قرآن"
             ),
-            playlists = listOf(StudioPlaylist("p1", "سلسلة التفسير", true), StudioPlaylist("p2", "الخطب", false)),
+            playlists = playlists,
             queue = listOf(
                 UploadItem("q1", "تذكير رمضان", UploadPhase.UPLOADING, 300_000_000, 700_000_000, null, null),
                 UploadItem("q2", "السيرة: الهجرة", UploadPhase.PAUSED, 50_000_000, 400_000_000, null, null),
@@ -62,7 +67,7 @@ class UploadScreenshotTest {
                 playlistIds = setOf("p1"),
                 tagsText = "tafsir, quran"
             ),
-            playlists = listOf(StudioPlaylist("p1", "Tafsir series", true), StudioPlaylist("p2", "Khutbahs", false)),
+            playlists = playlists,
             queue = listOf(
                 UploadItem("q1", "Ramadan reminder", UploadPhase.UPLOADING, 300_000_000, 700_000_000, null, null),
                 UploadItem("q2", "Seerah: the Hijrah", UploadPhase.PAUSED, 50_000_000, 400_000_000, null, null),
