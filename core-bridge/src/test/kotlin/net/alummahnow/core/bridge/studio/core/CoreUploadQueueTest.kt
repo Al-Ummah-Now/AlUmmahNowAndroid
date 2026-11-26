@@ -99,6 +99,23 @@ class CoreUploadQueueTest {
     }
 
     @Test
+    fun `a saved paused upload only needs work after the person resumes it`() = runTest {
+        val queue = queue()
+        queue.enqueue(listOf(draft()))
+        queue.run(UploadState.PAUSED)
+        val item = queue.items.value.single()
+        assertEquals(UploadPhase.PAUSED, item.phase)
+
+        val reopened = queue()
+        assertFalse(reopened.hasWork())
+
+        val asked = workAsked
+        reopened.resume(item.id)
+        assertEquals(asked + 1, workAsked)
+        assertTrue(reopened.hasWork())
+    }
+
+    @Test
     fun `a finished or cancelled upload leaves no file behind`() = runTest {
         for (state in listOf(UploadState.DONE, UploadState.CANCELLED)) {
             val queue = queue()
