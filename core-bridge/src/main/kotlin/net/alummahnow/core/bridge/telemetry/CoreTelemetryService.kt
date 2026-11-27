@@ -365,11 +365,11 @@ class CoreTelemetryService(
         private var activeCrashService: TelemetryService? = null
 
         private val urlVaultRegex = Regex(
-            """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://(?:\[([^\]\s"'<>\\{}\r\n]+)\]|""" +
+            """(?<![A-Za-z0-9+.-/\\])([A-Za-z][A-Za-z0-9+.-]+://(?:\[([^\]\s"'<>\\{}\r\n]+)\]|""" +
                 """(?:[A-Za-z0-9._~!$&'*+;=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
                 """(?:/(?:(?!(?:file://|[A-Za-z]:[\\/]))(?:[^\s"<>\\{},()\[\]?#\r\n]|""" +
-                """\([^\s"<>\\{},()\[\]/:\\?#]+\)|\[[^\s"<>\\{},()\[\]/:\\?#]+\]))*""" +
-                """|(?=$|[\s"'<>\\{},;()\[\]?#]))""",
+                """\([^\s"<>\\{},()\[\]/:\\?#]+\)|\[[^\s"<>\\{},()\[\]/:\\?#]+\]))*)?)""" +
+                """([?#][^\s"<>\\{},()\[\]\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
             RegexOption.IGNORE_CASE
         )
         private const val ioKeywordVerbs =
@@ -385,9 +385,9 @@ class CoreTelemetryService(
         private const val sourceLineExts = "kt|java|swift|cs|cpp|cc|c|h|hpp|rs|py|js|ts|go|rb|m|mm"
         private val pathRedactionRules: List<Pair<Regex, String>> = listOf(
             Regex("""(?<![A-Za-z0-9+.-])file://(?:(?!\s+\u001E)[^\r\n\u001E])+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
-            Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
+            Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
             Regex(
-                """(\()(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^()\r\n]+(\))""",
+                """(\()(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^()\r\n\u001E]+(\))""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]$2",
             Regex("""(?:[A-Za-z]:[\\/]|\\\\)(?:(?!\s+\u001E)[^\r\n\u001E])+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
@@ -418,7 +418,9 @@ class CoreTelemetryService(
             Regex(
                 """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?!ts:\d+)(?:$bareFilenameExtensions)\b(?!\()""",
                 RegexOption.IGNORE_CASE
-            ) to "$1$2[redacted-path]"
+            ) to "$1$2[redacted-path]",
+            Regex("""\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b""") to "[redacted-email]",
+            Regex("""\bBearer\s+[A-Za-z0-9._~+/=-]{8,}""", RegexOption.IGNORE_CASE) to "Bearer [redacted]"
         )
 
         /**
@@ -511,20 +513,36 @@ class CoreTelemetryService(
             val vaultedUrls = mutableListOf<String>()
             var scrubbed = urlVaultRegex.replace(text) { match ->
                 val raw = match.value
-                val ipv6 = match.groups[1]?.value
+                val ipv6 = match.groups[2]?.value
                 val validAuthority = ipv6 == null || runCatching { URI("http://[$ipv6]") }.isSuccess
                 if (raw.startsWith("file://", ignoreCase = true) || !validAuthority) {
                     raw
                 } else {
-                    var url = raw
+                    val baseUrl = match.groups[1]?.value ?: raw
+                    val qf = match.groups[3]?.value
                     var tail = ""
-                    if (url.endsWith(';')) {
-                        url = url.dropLast(1)
-                        tail = ";"
-                    }
-                    if (match.range.first > 0 && text[match.range.first - 1] == '\'' && url.endsWith('\'')) {
-                        url = url.dropLast(1)
-                        tail = "'$tail"
+                    val url = if (!qf.isNullOrEmpty()) {
+                        var cleanQf = qf
+                        if (cleanQf.endsWith(';')) {
+                            cleanQf = cleanQf.dropLast(1)
+                            tail = ";"
+                        }
+                        if (match.range.first > 0 && text[match.range.first - 1] == '\'' && cleanQf.endsWith('\'')) {
+                            cleanQf = cleanQf.dropLast(1)
+                            tail = "'$tail"
+                        }
+                        "$baseUrl${cleanQf.first()}[redacted]"
+                    } else {
+                        var cleanBase = baseUrl
+                        if (cleanBase.endsWith(';')) {
+                            cleanBase = cleanBase.dropLast(1)
+                            tail = ";"
+                        }
+                        if (match.range.first > 0 && text[match.range.first - 1] == '\'' && cleanBase.endsWith('\'')) {
+                            cleanBase = cleanBase.dropLast(1)
+                            tail = "'$tail"
+                        }
+                        cleanBase
                     }
                     val idx = vaultedUrls.size
                     vaultedUrls += url

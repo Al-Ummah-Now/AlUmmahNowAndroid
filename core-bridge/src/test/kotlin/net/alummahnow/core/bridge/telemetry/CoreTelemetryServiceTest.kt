@@ -148,7 +148,6 @@ class CoreTelemetryServiceTest {
     fun `sanitizeLocalPaths preserves valid RFC 3986 urls and rejects malformed or file uris`() {
         val preserved = listOf(
             "https://videos.api.alummahnow.net/v1/items",
-            "https://example.com/api?page=2&sort=asc",
             "https://[2001:db8::1]/v1/items",
             "https://example.com/a(b)/items",
             "https://example.com/a(b;c)/items",
@@ -179,12 +178,28 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api;C://Secret/Acquisition.mov")
         )
         assertEquals(
-            "https://example.com/api?path=[redacted-path]",
+            "https://example.com/api?[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api?path=/storage/emulated/0/Secret.mov")
+        )
+        assertEquals(
+            "https://example.com/api?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api?source=%2FUsers%2Falice%2FPrivateProject")
+        )
+        assertEquals(
+            "[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("file:///storage/emulated/0/https://Secret/Acquisition.mov")
+        )
+        assertEquals(
+            "([redacted-path] https://example.com/api)",
+            CoreTelemetryService.sanitizeLocalPaths("(/storage/emulated/0/Secret.mov and https://example.com/api)")
         )
         assertEquals(
             "[redacted-path] https://example.com/api",
             CoreTelemetryService.sanitizeLocalPaths("file:///storage/emulated/0/Secret.mov and https://example.com/api")
+        )
+        assertEquals(
+            "Failed for [redacted-email] with Bearer [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig")
         )
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://[:::]/api") == "https://[:::]/api")
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://bad%zz/api") == "https://bad%zz/api")
