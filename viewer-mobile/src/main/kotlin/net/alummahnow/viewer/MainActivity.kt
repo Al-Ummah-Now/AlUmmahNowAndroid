@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.PictureInPictureModeChangedInfo
@@ -211,8 +212,8 @@ internal fun ViewerNavHost(
     var blockedListOpen by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
     val telemetryEnabled by container.displayPrefs.telemetryEnabled.collectAsState()
-    var telemetrySaveUncertain by remember { mutableStateOf(false) }
-    var telemetryWarning by remember { mutableStateOf<String?>(null) }
+    val telemetrySaveUncertain by container.displayPrefs.telemetrySaveUncertain.collectAsState()
+    var telemetryWarning by rememberSaveable { mutableStateOf<String?>(null) }
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabled) {
         if (telemetryEnabled) container.telemetry.flush()
@@ -360,12 +361,12 @@ internal fun ViewerNavHost(
                 if (enabled) {
                     if (container.telemetry.setConsent(TelemetryConsent.FULL)) {
                         if (container.displayPrefs.setTelemetryEnabled(true)) {
-                            telemetrySaveUncertain = false
+                            container.displayPrefs.setTelemetrySaveUncertain(false)
                             telemetryWarning = null
                         } else {
                             container.telemetry.setConsent(TelemetryConsent.OFF)
                             val rolledBack = container.displayPrefs.setTelemetryEnabled(false)
-                            telemetrySaveUncertain = !rolledBack
+                            container.displayPrefs.setTelemetrySaveUncertain(!rolledBack)
                             telemetryWarning = context.getString(
                                 if (rolledBack) DesignR.string.aun_diagnostics_enable_error
                                 else DesignR.string.aun_diagnostics_disable_error
@@ -378,7 +379,7 @@ internal fun ViewerNavHost(
                 } else {
                     val purged = container.telemetry.setConsent(TelemetryConsent.OFF)
                     val saved = container.displayPrefs.setTelemetryEnabled(false)
-                    telemetrySaveUncertain = !saved
+                    container.displayPrefs.setTelemetrySaveUncertain(!saved)
                     telemetryWarning = when {
                         !saved -> context.getString(DesignR.string.aun_diagnostics_disable_error)
                         !purged -> context.getString(DesignR.string.aun_diagnostics_purge_warning)

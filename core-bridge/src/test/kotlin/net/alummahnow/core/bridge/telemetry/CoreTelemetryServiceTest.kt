@@ -60,8 +60,10 @@ class CoreTelemetryServiceTest {
             appendLine("""EmbeddedQuote open /storage/emulated/0/Private"Acquisition.mov""")
             appendLine("""LeadingSpace Failed to open "/ Secret/Acquisition.mov"""")
             appendLine("""LeadingSpaceSingle Failed to open "/ SecretFile"""")
+            appendLine("UnquotedLeadingSpace / SecretFile.mov")
             appendLine("ColonLeadingSpace 42:/ Secret/Acquisition.mov:77")
             appendLine("ColonDoubleSlash error 42://SecretHost/Acquisition.mov")
+            appendLine("""EmbeddedUnc open(path\\unc\Secret\Acquisition.mov)""")
             appendLine("Bang /!Acquisition.mov")
             appendLine("""Quoted "/!Acquisition.mov"""")
             appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4""")
@@ -72,6 +74,7 @@ class CoreTelemetryServiceTest {
             appendLine("    at open /storage/emulated/0/Private:99\rCaused by: /Users/alice/Cause:99")
             appendLine("    at net.alummahnow.viewer.MainActivity.onCreate(MainActivity.kt:42)")
             appendLine("https://videos.api.alummahnow.net/v1/items")
+            appendLine("git+http2://example.com/repo")
         }
         val scrubbed = CoreTelemetryService.sanitizeLocalPaths(raw)
         assertFalse(scrubbed.contains("alice", ignoreCase = true))
@@ -93,6 +96,7 @@ class CoreTelemetryServiceTest {
         assertFalse(scrubbed.contains("in open()"))
         assertTrue(scrubbed.contains("MainActivity.kt:42"))
         assertTrue(scrubbed.contains("https://videos.api.alummahnow.net/v1/items"))
+        assertTrue(scrubbed.contains("git+http2://example.com/repo"))
         assertTrue(scrubbed.contains("[redacted-path]"))
     }
 
