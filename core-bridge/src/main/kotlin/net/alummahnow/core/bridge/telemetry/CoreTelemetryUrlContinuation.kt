@@ -154,7 +154,7 @@ internal object CoreTelemetryUrlContinuation {
         val span = ctx.input.span
         val hasNext = ctx.pathEnd > span.totalEnd && ctx.pathEnd < text.length
         if (!hasNext || (text[ctx.pathEnd] != '?' && text[ctx.pathEnd] != '#')) return null
-        val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, ctx.pathEnd, ctx.input.quoteState)
+        val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, ctx.pathEnd)
         val (cleanQf, qfTail) = trimQueryOrFragmentDelimiters(
             text.substring(ctx.pathEnd, qfEnd),
             text,
@@ -249,10 +249,7 @@ internal object CoreTelemetryUrlContinuation {
         while (i < to) {
             val ch = text[i]
             val hasEsc = ch == '\\' && i + 1 < to && text[i + 1] !in "\r\n"
-            if (hasEsc && (state and 1) == 0 && text[i + 1] == '"') {
-                state = state xor 4
-                i += 2
-            } else if (hasEsc && state != 0) {
+            if (hasEsc && state != 0) {
                 i += 2
             } else {
                 state = stepQuoteState(text, i, state)
@@ -266,11 +263,8 @@ internal object CoreTelemetryUrlContinuation {
         val ch = text[i]
         return when {
             ch == '\r' || ch == '\n' -> 0
-            ch == '"' && (state and 1) == 0 -> {
-                val toggled = state xor 2
-                if ((toggled and 2) == 0) toggled and 4.inv() else toggled
-            }
-            ch == '\'' && (state and 6) == 0 && !isContractionApostrophe(text, i) -> state xor 1
+            ch == '"' && (state and 1) == 0 -> state xor 2
+            ch == '\'' && (state and 2) == 0 && !isContractionApostrophe(text, i) -> state xor 1
             else -> state
         }
     }

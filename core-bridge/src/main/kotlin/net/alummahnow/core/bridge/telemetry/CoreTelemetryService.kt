@@ -770,16 +770,21 @@ class CoreTelemetryService(
                             tokenStart = cursor
                         }
                         tokenEnd = cursor + 1
-                        trackTokenChar(ch)
+                        trackTokenChar(text, ch)
                         inWrapperRun = false
                         wsBeforeRun = false
                     }
                 }
             }
 
-            private fun trackTokenChar(ch: Char) {
+            private fun isLeadingEscapedQuote(text: String): Boolean {
+                val inDoubleAtStart = openQuote == '"' && !escapedBackslash && tokenStart == cursor
+                return inDoubleAtStart && cursor + 1 < text.length && text[cursor + 1] == '"'
+            }
+
+            private fun trackTokenChar(text: String, ch: Char) {
                 when {
-                    ch == '\\' -> tokenHasBackslash = true
+                    ch == '\\' -> if (!isLeadingEscapedQuote(text)) tokenHasBackslash = true
                     ch == '/' -> {
                         if (tokenSlashCount == 0) tokenFirstSlash = cursor
                         tokenSlashCount++
@@ -896,20 +901,15 @@ class CoreTelemetryService(
                 val sep = text.indexOf("://", searchFrom)
                 if (sep < 0) break
                 val start = CoreTelemetryScanners.findNonFileSchemeStart(text, sep, copied)
-                val urlQuoteState = if (start != null && !tracker.isEmbeddedInPath(text, start)) {
-                    cont.advanceQuoteState(text, copied, start, quoteState)
-                } else {
-                    quoteState
-                }
                 val span = if (start != null && !tracker.isEmbeddedInPath(text, start)) {
-                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep, urlQuoteState)
+                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep)
                 } else {
                     null
                 }
                 if (span == null) {
                     searchFrom = sep + 3
                 } else {
-                    quoteState = urlQuoteState
+                    quoteState = cont.advanceQuoteState(text, copied, span.start, quoteState)
                     val (url, baseTail) = cont.formatVaultedUrl(span, text, (quoteState and 1) != 0)
                     val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
                     val rawUrl = text.substring(span.start, span.baseEnd)

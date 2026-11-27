@@ -37,7 +37,7 @@ internal object CoreTelemetryScanners {
         return if (validPrefix && !prevBlocked && !isFile) start else null
     }
 
-    fun scanUrlAfterScheme(text: String, start: Int, sep: Int, quoteState: Int = 0): UrlSpan? {
+    fun scanUrlAfterScheme(text: String, start: Int, sep: Int): UrlSpan? {
         val afterHost = scanUrlHost(text, sep + SCHEME_SEP_LEN) ?: return null
         val afterPort = scanOptionalPort(text, afterHost) ?: return null
         val (baseEnd, truncated) = if (afterPort < text.length && text[afterPort] == '/') {
@@ -46,7 +46,7 @@ internal object CoreTelemetryScanners {
             afterPort to false
         }
         val startsQf = !truncated && baseEnd < text.length && (text[baseEnd] == '?' || text[baseEnd] == '#')
-        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd, quoteState) else baseEnd
+        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd) else baseEnd
         val boundaryOk = totalEnd == text.length || isUrlEndBoundary(text, totalEnd)
         return if (boundaryOk) UrlSpan(start, baseEnd, totalEnd, startsQf) else null
     }
@@ -455,21 +455,15 @@ internal object CoreTelemetryScanners {
         return text[nextPos] == ':' || startsEmbeddedFilesystemPath(text, nextPos)
     }
 
-    fun scanQueryOrFragment(text: String, start: Int, quoteState: Int = 0): Int {
+    fun scanQueryOrFragment(text: String, start: Int): Int {
         var p = start + 1
         var stopped = false
         while (p < text.length && !stopped) {
             val ch = text[p]
             if (ch.isWhitespace() || ch == '<' || ch == '>') {
                 stopped = true
-            } else if (ch == '"') {
-                val adj = adjustEscapedQuoteQueryStop(text, start, p, quoteState)
-                if (adj != null) {
-                    p = adj
-                    stopped = true
-                } else {
-                    p++
-                }
+            } else if (ch == '"' && isUnescapedQueryQuote(text, start, p)) {
+                stopped = true
             } else {
                 p++
             }
@@ -477,15 +471,10 @@ internal object CoreTelemetryScanners {
         return p
     }
 
-    private fun adjustEscapedQuoteQueryStop(text: String, start: Int, quotePos: Int, quoteState: Int): Int? {
+    private fun isUnescapedQueryQuote(text: String, start: Int, quotePos: Int): Boolean {
         var bs = 0
         while (quotePos - 1 - bs > start && text[quotePos - 1 - bs] == '\\') bs++
-        return when {
-            (bs and 1) == 0 -> quotePos
-            (quoteState and 4) != 0 -> quotePos - 1
-            (quoteState and 2) == 0 -> quotePos
-            else -> null
-        }
+        return (bs and 1) == 0
     }
 
     private fun isUrlEndBoundary(text: String, pos: Int): Boolean {
