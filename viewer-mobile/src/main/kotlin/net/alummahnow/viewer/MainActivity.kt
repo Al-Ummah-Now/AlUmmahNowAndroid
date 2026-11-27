@@ -211,6 +211,7 @@ internal fun ViewerNavHost(
     var blockedListOpen by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
     val telemetryEnabled by container.displayPrefs.telemetryEnabled.collectAsState()
+    var telemetrySaveUncertain by remember { mutableStateOf(false) }
     var telemetryWarning by remember { mutableStateOf<String?>(null) }
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabled) {
@@ -353,16 +354,18 @@ internal fun ViewerNavHost(
             onDismiss = { settingsOpen = false },
             onOpenUrl = openPage,
             webHost = BuildConfig.WEB_HOST,
-            telemetryEnabled = telemetryEnabled,
+            telemetryEnabled = telemetryEnabled || telemetrySaveUncertain,
             telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
                 if (enabled) {
                     if (container.telemetry.setConsent(TelemetryConsent.FULL)) {
                         if (container.displayPrefs.setTelemetryEnabled(true)) {
+                            telemetrySaveUncertain = false
                             telemetryWarning = null
                         } else {
                             container.telemetry.setConsent(TelemetryConsent.OFF)
                             val rolledBack = container.displayPrefs.setTelemetryEnabled(false)
+                            telemetrySaveUncertain = !rolledBack
                             telemetryWarning = context.getString(
                                 if (rolledBack) DesignR.string.aun_diagnostics_enable_error
                                 else DesignR.string.aun_diagnostics_disable_error
@@ -375,6 +378,7 @@ internal fun ViewerNavHost(
                 } else {
                     val purged = container.telemetry.setConsent(TelemetryConsent.OFF)
                     val saved = container.displayPrefs.setTelemetryEnabled(false)
+                    telemetrySaveUncertain = !saved
                     telemetryWarning = when {
                         !saved -> context.getString(DesignR.string.aun_diagnostics_disable_error)
                         !purged -> context.getString(DesignR.string.aun_diagnostics_purge_warning)

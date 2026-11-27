@@ -60,6 +60,8 @@ class CoreTelemetryServiceTest {
             appendLine("""EmbeddedQuote open /storage/emulated/0/Private"Acquisition.mov""")
             appendLine("""LeadingSpace Failed to open "/ Secret/Acquisition.mov"""")
             appendLine("""LeadingSpaceSingle Failed to open "/ SecretFile"""")
+            appendLine("ColonLeadingSpace 42:/ Secret/Acquisition.mov:77")
+            appendLine("ColonDoubleSlash error 42://SecretHost/Acquisition.mov")
             appendLine("Bang /!Acquisition.mov")
             appendLine("""Quoted "/!Acquisition.mov"""")
             appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4""")
