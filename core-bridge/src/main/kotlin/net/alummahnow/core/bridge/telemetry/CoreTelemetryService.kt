@@ -433,14 +433,6 @@ class CoreTelemetryService(
                 """(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
             RegexOption.IGNORE_CASE
         )
-        private val authHeaderRegex = Regex(
-            """(\b(?:Proxy-)?Authorization\s*:\s*(?:[A-Za-z0-9._-]+\s+)?)[^\r\n]+""",
-            RegexOption.IGNORE_CASE
-        )
-        private val bearerTokenRegex = Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE)
-        private val basicTokenRegex = Regex(
-            """\b[Bb]asic\s+(?=[A-Za-z0-9+/]{8,}={0,2}(?=$|[\s"',;)\]}]))(?=[A-Za-z0-9+/]*[0-9+/A-Z])[A-Za-z0-9+/]+={0,2}"""
-        )
 
         /**
          * Creates a live [CoreTelemetryService], falling back to [NullTelemetryService] when the
@@ -547,9 +539,7 @@ class CoreTelemetryService(
             if (vaultedUrls.isNotEmpty()) {
                 scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)
             }
-            scrubbed = authHeaderRegex.replace(scrubbed, "$1[redacted]")
-            scrubbed = bearerTokenRegex.replace(scrubbed, "Bearer [redacted]")
-            scrubbed = basicTokenRegex.replace(scrubbed, "Basic [redacted]")
+            scrubbed = CoreTelemetryEmailScanner.redactAuthCredentials(scrubbed)
             return if (hadSentinels) unescapeSentinels(scrubbed) else scrubbed
         }
 

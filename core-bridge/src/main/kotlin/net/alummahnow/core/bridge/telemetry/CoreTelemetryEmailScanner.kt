@@ -1,14 +1,42 @@
 package net.alummahnow.core.bridge.telemetry
 
 import java.net.URI
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 
 /**
- * Linear O(n) RFC 5322 / RFC 6531 email scanner and email-aware bare-filename filter.
+ * Linear O(n) RFC 5322 / RFC 6531 email scanner and auth-credential redactor.
  */
 internal object CoreTelemetryEmailScanner {
     private const val ENCODED_AT_LEN = 3
+    private const val MIN_BASIC_TOKEN_FALLBACK_LEN = 8
+    private const val BASE64_CHUNK_LEN = 4
+    private const val BASE64_PAD_TWO = 2
+    private const val BASE64_PAD_THREE = 3
+    private const val ASCII_SPACE = 0x20
+    private const val ASCII_DEL = 0x7F
     private const val EMAIL_LOCAL_PUNCT = "._+-/!#$&'*=?^`{|}~"
     private const val IPV6_FORBIDDEN = "[\"'<>\\{}\r\n"
+    private const val KNOWN_AUTH_SCHEMES =
+        "Bearer|Basic|Digest|Token|Api-?Key|OAuth|Negotiate|Mutual|HOBA|Vapid|SCRAM-SHA-256|AWS4-HMAC-SHA256"
+    private val authHeaderDoubleQuotedRegex = Regex(
+        """(["']?\b(?:Proxy-)?Authorization["']?\s*[:=]\s*"\s*(?:(?:$KNOWN_AUTH_SCHEMES)\s+)?)(?:\\.|[^\\"\r\n])+""",
+        RegexOption.IGNORE_CASE
+    )
+    private val authHeaderSingleQuotedRegex = Regex(
+        """(["']?\b(?:Proxy-)?Authorization["']?\s*[:=]\s*'\s*(?:(?:$KNOWN_AUTH_SCHEMES)\s+)?)(?:\\.|[^\\'\r\n])+""",
+        RegexOption.IGNORE_CASE
+    )
+    private val authHeaderPlainRegex = Regex(
+        """(\b(?:Proxy-)?Authorization\s*[:=]\s*(?!['"])(?:(?:$KNOWN_AUTH_SCHEMES)\s+)?)[^\r\n]+""",
+        RegexOption.IGNORE_CASE
+    )
+    private val bearerTokenRegex = Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE)
+    private val basicTokenRegex = Regex(
+        """\b(Basic)\s+([A-Za-z0-9+/_-]{4,}={0,2})(?=$|[\s"',;)\]}])""",
+        RegexOption.IGNORE_CASE
+    )
     private val LEADING_UNICODE_WRAPPER_CATEGORIES = setOf(
         Character.START_PUNCTUATION,
         Character.INITIAL_QUOTE_PUNCTUATION
@@ -30,6 +58,87 @@ internal object CoreTelemetryEmailScanner {
         DIGIT,
         DOT,
         HYPHEN
+    }
+
+    fun redactAuthCredentials(text: String): String {
+        var result = authHeaderDoubleQuotedRegex.replace(text, "$1[redacted]")
+        result = authHeaderSingleQuotedRegex.replace(result, "$1[redacted]")
+        result = authHeaderPlainRegex.replace(result, "$1[redacted]")
+        result = bearerTokenRegex.replace(result, "Bearer [redacted]")
+        return basicTokenRegex.replace(result) { match ->
+            if (isBasicCredentialToken(match.groupValues[2])) {
+                "${match.groupValues[1]} [redacted]"
+            } else {
+                match.value
+            }
+        }
+    }
+
+    private fun hasBase64Symbol(token: String): Boolean = token.any { it == '+' || it == '/' || it == '=' }
+
+    private fun isBasicCredentialToken(token: String): Boolean {
+        if (token.length >= MIN_BASIC_TOKEN_FALLBACK_LEN && hasBase64Symbol(token)) return true
+        val bytes = decodeBase64Strict(token)
+        val decoded = if (bytes != null && bytes.any { it == ':'.code.toByte() }) decodeUtf8Strict(bytes) else null
+        return decoded != null && decoded.none { (it.code < ASCII_SPACE && it != '\t') || it.code == ASCII_DEL }
+    }
+
+    private fun decodeUtf8Strict(bytes: ByteArray): String? = runCatching {
+        StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    }.getOrNull()
+
+    private fun decodeBase64Strict(token: String): ByteArray? {
+        val unpadded = token.trimEnd('=')
+        val rem = unpadded.length % BASE64_CHUNK_LEN
+        if (rem == 1) return null
+        val outLen = (unpadded.length / BASE64_CHUNK_LEN) * 3 + when (rem) {
+            BASE64_PAD_TWO -> 1
+            BASE64_PAD_THREE -> 2
+            else -> 0
+        }
+        val out = ByteArray(outLen)
+        var inIdx = 0
+        var outIdx = 0
+        var valid = true
+        while (inIdx < unpadded.length && valid) {
+            val written = decodeBase64Chunk(unpadded, inIdx, out, outIdx)
+            if (written < 0) {
+                valid = false
+            } else {
+                outIdx += written
+                inIdx += BASE64_CHUNK_LEN
+            }
+        }
+        return if (valid) out else null
+    }
+
+    private fun decodeBase64Chunk(src: String, inIdx: Int, out: ByteArray, outIdx: Int): Int {
+        val c0 = base64Value(src[inIdx])
+        val c1 = if (inIdx + 1 < src.length) base64Value(src[inIdx + 1]) else -1
+        val c2 = if (inIdx + 2 < src.length) base64Value(src[inIdx + 2]) else -2
+        val c3 = if (inIdx + 3 < src.length) base64Value(src[inIdx + 3]) else -2
+        val invalidPair = c0 < 0 || c1 < 0
+        val invalidTail = c2 == -1 || c3 == -1
+        if (invalidPair || invalidTail) return -1
+        out[outIdx] = ((c0 shl 2) or (c1 shr 4)).toByte()
+        if (c2 < 0) return 1
+        out[outIdx + 1] = (((c1 and 0x0F) shl 4) or (c2 shr 2)).toByte()
+        if (c3 < 0) return 2
+        out[outIdx + 2] = (((c2 and 0x03) shl 6) or c3).toByte()
+        return BASE64_PAD_THREE
+    }
+
+    private fun base64Value(ch: Char): Int = when {
+        ch in 'A'..'Z' -> ch - 'A'
+        ch in 'a'..'z' -> ch - 'a' + 26
+        ch in '0'..'9' -> ch - '0' + 52
+        ch == '+' || ch == '-' -> 62
+        ch == '/' || ch == '_' -> 63
+        else -> -1
     }
 
     fun hasEmailAt(text: String): Boolean = text.indexOf('@') >= 0 || text.indexOf("%40") >= 0

@@ -414,6 +414,34 @@ class CoreTelemetryServiceTest {
             "{\"Authorization\": \"Basic [redacted]\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\": \"Basic YWxpY2U6c2VjcmV0\"}")
         )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":\"opaqueSecret123\"}")
+        )
+        assertEquals(
+            "{\"Proxy-Authorization\":\"Digest [redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Proxy-Authorization\":\"Digest username=alice, response=deadbeef\"}")
+        )
+        val escapedDigestJson = CoreTelemetryService.sanitizeLocalPaths(
+            "{\"Authorization\":\"Digest username=\\\"alice\\\", response=\\\"deadbeef\\\"\"}"
+        )
+        assertTrue(escapedDigestJson.startsWith("{\"Authorization\":\"Digest [redacted]"))
+        assertFalse(escapedDigestJson.contains("alice") || escapedDigestJson.contains("deadbeef"))
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts standalone Basic tokens and opaque Authorization headers`() {
+        assertEquals(
+            "Authorization: [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Authorization: opaqueSecret123 nextPart")
+        )
+        assertEquals(
+            "Authorization: [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Authorization: X-Secret secondword")
+        )
+        assertEquals("Basic [redacted]", CoreTelemetryService.sanitizeLocalPaths("Basic YTpi"))
+        assertEquals("Basic [redacted]", CoreTelemetryService.sanitizeLocalPaths("Basic ajpqampq"))
+        assertEquals("BASIC [redacted]", CoreTelemetryService.sanitizeLocalPaths("BASIC YWxpY2U6c2VjcmV0"))
         assertEquals("Basic auth failed", CoreTelemetryService.sanitizeLocalPaths("Basic auth failed"))
         val repeatedFilenameEmails = "alice.txt@example.org ".repeat(5_000)
         assertEquals(
