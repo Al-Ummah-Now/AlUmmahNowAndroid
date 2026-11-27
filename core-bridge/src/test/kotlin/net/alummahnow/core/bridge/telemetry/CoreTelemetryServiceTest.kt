@@ -208,9 +208,10 @@ class CoreTelemetryServiceTest {
             "https://example.com/api?q=(PrivateProject)" to "https://example.com/api?[redacted]",
             "(https://example.com/api?q=(PrivateProject))" to "(https://example.com/api?[redacted])",
             "https://example.com/api#first,PrivateProject" to "https://example.com/api#[redacted]",
-            "https://example.com/users/alice@example.com" to "https://example.com/users/[redacted-email]",
-            "https://example.com/users/alice%40example.com" to "https://example.com/users/[redacted-email]",
-            "https://example.com/users/alice%team@example.com" to "https://example.com/users/[redacted-email]",
+            "https://example.com/users/alice@example.com" to "https://[redacted-email]",
+            "https://example.com/users/alice%40example.com" to "https://[redacted-email]",
+            "https://example.com/users/alice%team@example.com" to "https://[redacted-email]",
+            "https://example.com/users/alice/bob@example.org" to "https://[redacted-email]",
             "alice%notes@example.com" to "[redacted-email]",
             "https://example.com/?token=abc{Secret}xyz" to "https://example.com/?[redacted]",
             "(https://example.com/?q=secret)." to "(https://example.com/?[redacted]).",
@@ -367,6 +368,30 @@ class CoreTelemetryServiceTest {
 
     @Test
     fun `sanitizeLocalPaths redacts quoted filenames line separators and non-breaking spaces`() {
+        assertEquals(
+            "[redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths("\"Private Name https://example.com/api?q=secret\\\" tail\"@example.com")
+        )
+        assertEquals("alice@example.123😀", CoreTelemetryService.sanitizeLocalPaths("alice@example.123😀"))
+        assertEquals("alice@😀", CoreTelemetryService.sanitizeLocalPaths("alice@😀"))
+        assertEquals("[redacted-email]😀", CoreTelemetryService.sanitizeLocalPaths("alice@x😀"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice@example.𐐷"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice@123。example.com"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice@example。com"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice@example．com"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice@example｡com"))
+        assertEquals("[redacted-email]。", CoreTelemetryService.sanitizeLocalPaths("alice@example.com。"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice.txt@example.com"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice.txt+tag@example.com"))
+        assertEquals("Failed for [redacted-email]", CoreTelemetryService.sanitizeLocalPaths("Failed for alice.txt@example.com"))
+        assertEquals(
+            "[redacted-path] and [redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths("Private Project.pdf and alice.txt@example.com")
+        )
+        assertEquals("file [redacted-path]", CoreTelemetryService.sanitizeLocalPaths("file alice.txt@example.com"))
+        assertEquals("file [redacted-email]", CoreTelemetryService.sanitizeLocalPaths("file alice.txt@localhost"))
+        assertEquals("file [redacted-path]", CoreTelemetryService.sanitizeLocalPaths("file Private Project alice.txt@example.com"))
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'alice.txt'@example.com"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("/tmp/Private\u2028Acquisition Plan"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Private.qzx'2 Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2's Acquisition.qzx'"))

@@ -423,16 +423,14 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]"
         )
-        private val postKeywordPathRules: List<Pair<Regex, String>> = listOf(
-            Regex(
-                """(\b(?:file|path|filename|filepath)\s*[:=]\s*)(?!\u001E)[^\r\n\u001E\u001F]+""",
-                RegexOption.IGNORE_CASE
-            ) to "$1[redacted-path]",
-            Regex(
-                """(^|[\r\n:=;\u001F])([ \t]*)(?=[^\r\n:=;\u001E\u001F \t])[^\r\n:=;\u001E\u001F]*\.""" +
-                    """(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
-                RegexOption.IGNORE_CASE
-            ) to "$1$2[redacted-path]"
+        private val keywordAssignedPathRegex = Regex(
+            """(\b(?:file|path|filename|filepath)\s*[:=]\s*)(?!\u001E)[^\r\n\u001E\u001F]+""",
+            RegexOption.IGNORE_CASE
+        )
+        private val bareFilenameRegex = Regex(
+            """(^|[\r\n:=;\u001F])([ \t]*)(?=[^\r\n:=;\u001E\u001F \t])[^\r\n:=;\u001E\u001F]*\.""" +
+                """(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
+            RegexOption.IGNORE_CASE
         )
         private val bearerTokenRegex = Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE)
 
@@ -520,9 +518,9 @@ class CoreTelemetryService(
         fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
             val (escaped, hadSentinels) = escapeSentinels(text)
-            val (vaulted, vaultedUrls) = vaultNonFileUrls(escaped, VAULT_PREFIX)
-            var scrubbed = CoreTelemetryScanners.redactQuotedEmails(vaulted)
-            scrubbed = redactFileUris(scrubbed, VAULT_PREFIX)
+            val preQuoted = CoreTelemetryEmailScanner.redactQuotedEmails(escaped)
+            val (vaulted, vaultedUrls) = vaultNonFileUrls(preQuoted, VAULT_PREFIX)
+            var scrubbed = redactFileUris(vaulted, VAULT_PREFIX)
             for (regex in parenPathRegexes) {
                 scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
             }
@@ -532,17 +530,17 @@ class CoreTelemetryService(
             scrubbed = CoreTelemetryScanners.redactQuotedFilenames(scrubbed)
             scrubbed = keywordQuotedPathRegex.replace(scrubbed, "$1[redacted-path]")
             scrubbed = redactKeywordUnquotedFilenames(scrubbed)
-            for ((regex, template) in postKeywordPathRules) {
-                scrubbed = regex.replace(scrubbed, template)
-            }
+            scrubbed = keywordAssignedPathRegex.replace(scrubbed, "$1[redacted-path]")
+            scrubbed = CoreTelemetryEmailScanner.redactBareFilenames(scrubbed, bareFilenameRegex)
             scrubbed = restoreVaultedUrls(scrubbed, VAULT_PREFIX, vaultedUrls)
-            scrubbed = CoreTelemetryScanners.redactEmails(scrubbed)
+            scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)
             scrubbed = bearerTokenRegex.replace(scrubbed, "Bearer [redacted]")
             return if (hadSentinels) unescapeSentinels(scrubbed) else scrubbed
         }
 
         private fun redactKeywordUnquotedFilenames(text: String): String {
             if (text.indexOf('.') < 0) return text
+            val hasAt = CoreTelemetryEmailScanner.hasEmailAt(text)
             var sb: StringBuilder? = null
             var copied = 0
             var segStart = 0
@@ -554,12 +552,17 @@ class CoreTelemetryService(
                     val kwMatch = keywordFilenamePrefixRegex.find(text.substring(segStart, extBounds.first))
                     if (kwMatch != null) {
                         val kwEnd = segStart + kwMatch.range.last + 1
-                        val out = sb ?: StringBuilder(text.length).also { sb = it }
-                        out.append(text, copied, kwEnd).append("[redacted-path]")
-                        copied = extBounds.second
+                        val emailEnd = if (hasAt) CoreTelemetryEmailScanner.findEmailTailEnd(text, extBounds.second) else -1
+                        val isSingleEmailToken =
+                            emailEnd > 0 && !CoreTelemetryEmailScanner.containsWhitespace(text, kwEnd, extBounds.first)
+                        if (!isSingleEmailToken) {
+                            val out = sb ?: StringBuilder(text.length).also { sb = it }
+                            out.append(text, copied, kwEnd).append("[redacted-path]")
+                            copied = maxOf(extBounds.second, emailEnd)
+                        }
                     }
                 }
-                segStart = segEnd + 1
+                segStart = maxOf(segEnd + 1, copied)
             }
             val out = sb ?: return text
             return out.append(text, copied, text.length).toString()

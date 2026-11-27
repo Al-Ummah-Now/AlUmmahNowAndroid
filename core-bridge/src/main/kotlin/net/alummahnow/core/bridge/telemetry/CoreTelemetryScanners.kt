@@ -10,12 +10,7 @@ internal object CoreTelemetryScanners {
     private const val MAX_EXT_LEN = 16
     private const val MAX_EXT_CHECK = 17
     private const val SCHEME_SEP_LEN = 3
-    private const val ENCODED_AT_LEN = 3
-    private const val EMAIL_LOCAL_PUNCT = "._+-!#$&'*=?^`{|}~"
-    private val LEADING_UNICODE_WRAPPER_CATEGORIES = setOf(
-        Character.START_PUNCTUATION,
-        Character.INITIAL_QUOTE_PUNCTUATION
-    )
+    private const val PERCENT_ENC_LEN = 3
     private const val URL_HOST_PUNCT = "._~!$&'*+;=-"
     private const val URL_PATH_STOP = "\"<>\\{},?#\r\n"
     private const val URL_END_BOUNDARY = "\"'<>\\{},;()[]"
@@ -84,7 +79,7 @@ internal object CoreTelemetryScanners {
     private fun hostCharStep(text: String, pos: Int): Int {
         val ch = text[pos]
         if (isAsciiAlphaNum(ch) || ch in URL_HOST_PUNCT) return 1
-        return if (isPercentEncoded(text, pos)) ENCODED_AT_LEN else 0
+        return if (isPercentEncoded(text, pos)) PERCENT_ENC_LEN else 0
     }
 
     private fun isPercentEncoded(text: String, pos: Int): Boolean {
@@ -196,7 +191,7 @@ internal object CoreTelemetryScanners {
                 i++
             } else {
                 val close = scanDoubleQuoteEnd(text, i + 1)
-                val followedByEmailAt = close + 1 < text.length && emailAtLength(text, close + 1) > 0
+                val followedByEmailAt = close + 1 < text.length && CoreTelemetryEmailScanner.emailAtLength(text, close + 1) > 0
                 val matched = close < text.length && text[close] == '"' && !followedByEmailAt && endsWithFilenameExt(text, i + 1, close)
                 if (matched) {
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
@@ -219,18 +214,19 @@ internal object CoreTelemetryScanners {
     }
 
     private fun redactSingleQuotedFilenames(text: String): String {
+        val hasAt = CoreTelemetryEmailScanner.hasEmailAt(text)
         var sb: StringBuilder? = null
         var copied = 0
         var segStart = 0
         while (segStart < text.length) {
             var segEnd = segStart
             while (segEnd < text.length && !isQuotedSegStop(text[segEnd])) segEnd++
-            copied = redactSingleQuotesInSegment(text, segStart, segEnd, copied) { open, close ->
+            copied = redactSingleQuotesInSegment(text, segStart, segEnd, copied, hasAt) { open, endPos ->
                 val out = sb ?: StringBuilder(text.length).also { sb = it }
                 out.append(text, copied, open).append("[redacted-path]")
-                copied = close + 1
+                copied = endPos
             }
-            segStart = segEnd + 1
+            segStart = maxOf(segEnd + 1, copied)
         }
         val out = sb ?: return text
         return out.append(text, copied, text.length).toString()
@@ -241,13 +237,14 @@ internal object CoreTelemetryScanners {
         segStart: Int,
         segEnd: Int,
         initialCopied: Int,
+        hasAt: Boolean,
         onMatch: (Int, Int) -> Unit
     ): Int {
         var copied = initialCopied
         var open = -1
         var candidateClose = -1
         for (pos in segStart until segEnd) {
-            if (text[pos] != '\'') continue
+            if (pos < copied || text[pos] != '\'') continue
             val isOpener = pos == segStart || !text[pos - 1].isLetterOrDigit()
             if (isOpener) {
                 if (open < 0 || candidateClose >= 0) {
@@ -256,8 +253,10 @@ internal object CoreTelemetryScanners {
                 }
             } else if (open >= 0 && (pos + 1 == segEnd || !text[pos + 1].isLetterOrDigit())) {
                 if (endsWithFilenameExt(text, open + 1, pos)) {
-                    onMatch(open, pos)
-                    copied = pos + 1
+                    val emailEnd = if (hasAt) CoreTelemetryEmailScanner.findEmailTailEnd(text, pos + 1) else -1
+                    val endPos = maxOf(pos + 1, emailEnd)
+                    onMatch(open, endPos)
+                    copied = endPos
                     open = -1
                     candidateClose = -1
                 } else {
@@ -315,188 +314,6 @@ internal object CoreTelemetryScanners {
         return trimmedEnd
     }
 
-    private class EmailQuoteCache {
-        var validUntil = -1
-        var nextQuote = -1
-
-        fun reset() {
-            validUntil = -1
-            nextQuote = -1
-        }
-    }
-
-    fun redactQuotedEmails(text: String): String {
-        if (text.indexOf('"') < 0 || (text.indexOf('@') < 0 && text.indexOf("%40") < 0)) return text
-        var sb: StringBuilder? = null
-        var copied = 0
-        var i = 0
-        val quoteCache = EmailQuoteCache()
-        while (i < text.length) {
-            val quotedEnd = matchQuotedEmail(text, i, copied, quoteCache)
-            if (quotedEnd > 0) {
-                val out = sb ?: StringBuilder(text.length).also { sb = it }
-                out.append(text, copied, i).append("[redacted-email]")
-                copied = quotedEnd
-                i = quotedEnd
-                quoteCache.reset()
-            } else {
-                i++
-            }
-        }
-        val out = sb ?: return text
-        return out.append(text, copied, text.length).toString()
-    }
-
-    fun redactEmails(text: String): String {
-        if (text.indexOf('@') < 0 && text.indexOf("%40") < 0) return text
-        var sb: StringBuilder? = null
-        var copied = 0
-        var i = 0
-        val quoteCache = EmailQuoteCache()
-        while (i < text.length) {
-            val match = matchEmailAt(text, i, copied, quoteCache)
-            if (match != null) {
-                val out = sb ?: StringBuilder(text.length).also { sb = it }
-                out.append(text, copied, match.first).append("[redacted-email]")
-                copied = match.second
-                i = match.second
-                quoteCache.reset()
-            } else {
-                val atLen = emailAtLength(text, i)
-                i += if (atLen > 0) atLen else 1
-            }
-        }
-        val out = sb ?: return text
-        return out.append(text, copied, text.length).toString()
-    }
-
-    private fun matchEmailAt(text: String, i: Int, copied: Int, quoteCache: EmailQuoteCache): Pair<Int, Int>? {
-        val quotedEnd = matchQuotedEmail(text, i, copied, quoteCache)
-        if (quotedEnd > 0) return i to quotedEnd
-        val atLen = emailAtLength(text, i)
-        if (atLen == 0) return null
-        val domEnd = findEmailDomainEnd(text, i + atLen)
-        val localStart = if (domEnd > 0) scanEmailLocalStart(text, i, copied) else i
-        return if (domEnd > 0 && localStart < i) localStart to domEnd else null
-    }
-
-    private fun matchQuotedEmail(text: String, pos: Int, copied: Int, cache: EmailQuoteCache): Int {
-        if (text[pos] != '"' || isPrecededByOddBackslashes(text, pos, copied)) return -1
-        val closeQuote = resolveNextEmailClosingQuote(text, pos, cache)
-        if (closeQuote <= pos || closeQuote + 1 >= text.length) return -1
-        val atPos = closeQuote + 1
-        val atLen = emailAtLength(text, atPos)
-        return if (atLen > 0) findEmailDomainEnd(text, atPos + atLen) else -1
-    }
-
-    private fun resolveNextEmailClosingQuote(text: String, pos: Int, cache: EmailQuoteCache): Int {
-        if (pos < cache.validUntil) return cache.nextQuote
-        val (found, stopPos) = findNextEmailClosingQuote(text, pos + 1)
-        cache.nextQuote = found
-        cache.validUntil = if (found >= 0) found else stopPos
-        return found
-    }
-
-    private fun findNextEmailClosingQuote(text: String, start: Int): Pair<Int, Int> {
-        var j = start
-        var escaped = false
-        while (j < text.length) {
-            val ch = text[j]
-            if (ch == '\r' || ch == '\n') {
-                val fwsNext = advanceFoldingWhitespace(text, j)
-                if (fwsNext < 0) return -1 to j
-                escaped = false
-                j = fwsNext
-            } else if (ch == '"' && !escaped) {
-                return j to j
-            } else {
-                escaped = ch == '\\' && !escaped
-                j++
-            }
-        }
-        return -1 to text.length
-    }
-
-    private fun advanceFoldingWhitespace(text: String, newlinePos: Int): Int {
-        val after = if (text[newlinePos] == '\r' && newlinePos + 1 < text.length && text[newlinePos + 1] == '\n') {
-            newlinePos + 2
-        } else {
-            newlinePos + 1
-        }
-        return if (after < text.length && (text[after] == ' ' || text[after] == '\t')) after + 1 else -1
-    }
-
-    private fun emailAtLength(text: String, pos: Int): Int = when {
-        text[pos] == '@' -> 1
-        isEncodedAt(text, pos) -> ENCODED_AT_LEN
-        else -> 0
-    }
-
-    private fun isEncodedAt(text: String, pos: Int): Boolean =
-        text.regionMatches(pos, "%40", 0, ENCODED_AT_LEN)
-
-    private fun scanEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
-        if (atPos > minPos && text[atPos - 1] == '"' && !isPrecededByOddBackslashes(text, atPos - 1, minPos)) {
-            return findQuotedEmailLocalStart(text, atPos, minPos)
-        }
-        var localStart = atPos
-        while (localStart > minPos && isEmailLocalChar(text, localStart - 1)) localStart--
-        var trimmedStart = localStart
-        while (trimmedStart < atPos && isEmailLeadingWrapper(text[trimmedStart])) trimmedStart++
-        return if (trimmedStart < atPos) trimmedStart else localStart
-    }
-
-    private fun findQuotedEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
-        var q = atPos - 2
-        while (q >= minPos) {
-            val ch = text[q]
-            if (ch == '\r' || ch == '\n') return atPos
-            if (ch == '"' && !isPrecededByOddBackslashes(text, q, minPos)) return q
-            q--
-        }
-        return atPos
-    }
-
-    private fun isPrecededByOddBackslashes(text: String, pos: Int, minPos: Int): Boolean {
-        var count = 0
-        var p = pos - 1
-        while (p >= minPos && text[p] == '\\') {
-            count++
-            p--
-        }
-        return (count and 1) == 1
-    }
-
-    private fun isEmailLeadingWrapper(ch: Char): Boolean {
-        if (ch in "'{}") return true
-        if (ch.code < 0x80 || ch.isSurrogate()) return false
-        return Character.getType(ch).toByte() in LEADING_UNICODE_WRAPPER_CATEGORIES
-    }
-
-    private fun isUnicodeCombiningMark(ch: Char): Boolean {
-        val type = Character.getType(ch)
-        return type == Character.NON_SPACING_MARK.toInt() ||
-            type == Character.COMBINING_SPACING_MARK.toInt() ||
-            type == Character.ENCLOSING_MARK.toInt()
-    }
-
-    private fun isNonAsciiEmailLocalChar(ch: Char): Boolean {
-        if (ch.code < 0x80) return false
-        if (ch.isSurrogate()) return true
-        return !isSpace(ch) && !Character.isISOControl(ch)
-    }
-
-    private fun isEmailLocalChar(text: String, pos: Int): Boolean {
-        val ch = text[pos]
-        val isWordOrPunct = isAsciiAlphaNum(ch) || ch in EMAIL_LOCAL_PUNCT || isNonAsciiEmailLocalChar(ch)
-        return isWordOrPunct || (ch == '%' && !isEncodedAt(text, pos))
-    }
-
-    private fun isEmailDomainLetter(ch: Char): Boolean = ch.isLetter() || isUnicodeCombiningMark(ch) || ch.isSurrogate()
-
-    private fun isEmailBoundaryBlocked(ch: Char): Boolean =
-        ch.isLetterOrDigit() || ch == '_' || ch == '-' || isUnicodeCombiningMark(ch) || ch.isSurrogate()
-
     fun replaceUnquotedParenPaths(text: String, regex: Regex): String {
         if (text.indexOf('(') < 0) return text
         val state = QuoteCursorState()
@@ -542,72 +359,6 @@ internal object CoreTelemetryScanners {
             if (escapedBackslash || openQuote != '\u0000') return false
             return ch == '"' || (ch == '\'' && (cursor == 0 || !text[cursor - 1].isLetterOrDigit()))
         }
-    }
-
-    private fun isEmailDomainStartChar(ch: Char): Boolean =
-        isEmailDomainLetter(ch) || ch.isDigit()
-
-    private fun isValidDomainLabelEnd(text: String, labelStart: Int, end: Int, labelHasLetter: Boolean): Boolean {
-        if (end <= labelStart || !labelHasLetter || text[end - 1] == '-') return false
-        if (end < text.length && isEmailBoundaryBlocked(text[end])) return false
-        val continuesDomain = end + 1 < text.length && text[end] == '.' && isEmailDomainStartChar(text[end + 1])
-        return !continuesDomain
-    }
-
-    private fun findIpLiteralDomainEnd(text: String, domStart: Int): Int {
-        var close = domStart + 1
-        while (close < text.length && text[close] != ']' && !isForbiddenIpv6Char(text[close])) close++
-        if (close >= text.length || text[close] != ']' || close <= domStart + 1) return -1
-        val inner = text.substring(domStart + 1, close)
-        val valid = if (inner.startsWith("IPv6:", ignoreCase = true)) {
-            runCatching { URI("http://[${inner.substring(5)}]") }.isSuccess
-        } else {
-            isStrictIpv4(inner)
-        }
-        return if (valid) close + 1 else -1
-    }
-
-    private fun isStrictIpv4(text: String): Boolean {
-        val parts = text.split('.')
-        if (parts.size != 4) return false
-        return parts.all { part ->
-            part.length in 1..3 && part.all { it in '0'..'9' } && part.toInt() <= 255
-        }
-    }
-
-    private fun findEmailDomainEnd(text: String, domStart: Int): Int =
-        if (domStart < text.length && text[domStart] == '[') {
-            findIpLiteralDomainEnd(text, domStart)
-        } else {
-            findNamedEmailDomainEnd(text, domStart)
-        }
-
-    private fun findNamedEmailDomainEnd(text: String, domStart: Int): Int {
-        var k = domStart
-        var labelStart = domStart
-        var labelHasLetter = false
-        var bestEnd = -1
-        var done = false
-        while (k < text.length && !done) {
-            val ch = text[k]
-            when {
-                isEmailDomainLetter(ch) -> labelHasLetter = true
-                ch == '.' -> if (k == labelStart || text[k - 1] == '-') {
-                    done = true
-                } else {
-                    labelStart = k + 1
-                    labelHasLetter = false
-                }
-                ch.isDigit() -> Unit
-                ch == '-' -> done = k == labelStart
-                else -> done = true
-            }
-            if (!done) {
-                k++
-                if (isValidDomainLabelEnd(text, labelStart, k, labelHasLetter)) bestEnd = k
-            }
-        }
-        return bestEnd
     }
 
     fun isFileSchemeAt(text: String, pos: Int): Boolean {
