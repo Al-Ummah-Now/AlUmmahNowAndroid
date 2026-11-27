@@ -529,12 +529,12 @@ class CoreTelemetryService(
                 scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
             }
             for ((regex, template) in preKeywordPathRules) {
-                scrubbed = regex.replace(scrubbed, template)
+                scrubbed = CoreTelemetryQuotedPathRedactor.replaceOutsideBalancedDoubleQuotes(scrubbed, regex, template)
             }
             scrubbed = CoreTelemetryScanners.redactQuotedFilenames(scrubbed)
             scrubbed = keywordQuotedPathRegex.replace(scrubbed, "$1[redacted-path]")
             scrubbed = redactKeywordUnquotedFilenames(scrubbed)
-            scrubbed = keywordAssignedPathRegex.replace(scrubbed, "$1[redacted-path]")
+            scrubbed = CoreTelemetryQuotedPathRedactor.replaceKeywordAssignedPaths(scrubbed, keywordAssignedPathRegex)
             scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)
             if (scrubbed.indexOf('.') >= 0) {
                 scrubbed = bareFilenameRegex.replace(scrubbed, "$1$2[redacted-path]")

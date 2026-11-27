@@ -302,4 +302,23 @@ class CoreTelemetryUrlContinuationTest {
         val manySlashes = "[\"${"/".repeat(10_000)}\",\"public\"]"
         assertEquals(manySlashes, CoreTelemetryService.sanitizeLocalPaths(manySlashes))
     }
+
+    @Test
+    fun `sanitizeLocalPaths handles JSON escapes in quoted paths and unquoted fallback boundaries`() {
+        val cases = listOf(
+            "[\"relative\\/\",\"public\"]" to "[\"relative\\/\",\"public\"]",
+            "[\"relative\\u002F\",\"public\"]" to "[\"relative\\u002F\",\"public\"]",
+            "[\"\\u002Fprivate\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"\\u002fAcquisition\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"C\\u003A\\u002FSecret\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"\\u007E\\u002FSecret\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"\\u005C\\u005CServer\\u005CShare\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"hello\\nworld\",\"public\"]" to "[\"hello\\nworld\",\"public\"]",
+            "[\"path=secret\",\"public\"]" to "[\"path=[redacted-path]\",\"public\"]",
+            "Failed reading /Users/alice/My \"Secret\" Folder/file.mov" to "Failed reading [redacted-path]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+    }
 }
