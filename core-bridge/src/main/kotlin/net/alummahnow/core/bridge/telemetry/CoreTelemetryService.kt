@@ -365,7 +365,10 @@ class CoreTelemetryService(
         private var activeCrashService: TelemetryService? = null
 
         private val urlVaultRegex = Regex(
-            """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://(?!\S*\\)[^\s"'<>\\{}\r\n]+""",
+            """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://(?:\[([^\]\s"'<>\\{}\r\n]+)\]|""" +
+                """(?:[A-Za-z0-9._~!$&'*+=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
+                """(?:[/?#](?:[^\s"<>\\{},;()\[\]\r\n]|\([^\s"<>\\{},;()\[\]/:\\]+\)|""" +
+                """\[[^\s"<>\\{},;()\[\]/:\\]+\])*|(?=$|[\s"'<>\\{},;()\[\]]))""",
             RegexOption.IGNORE_CASE
         )
         private val ioKeywordVerbs =
@@ -380,6 +383,11 @@ class CoreTelemetryService(
                 "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
         private val pathRedactionRules: List<Pair<Regex, String>> = listOf(
             Regex("""(?<![A-Za-z0-9+.-])file://[^\r\n]+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
+            Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
+            Regex(
+                """(\()(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:\u001E\u001F]+/[^()\r\n]+(\))""",
+                RegexOption.IGNORE_CASE
+            ) to "$1[redacted-path]$2",
             Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
             Regex("""(^|[\s(\[{"'=,:;])[^\s\\/"'<>]+\\[^\r\n]+""") to "$1[redacted-path]",
             Regex("""["']/[ \t]+[^\r\n]+""") to "[redacted-path]",
@@ -395,17 +403,17 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(\b(?:$ioKeywordVerbs)\b(?:\s*[:=]\s*|\s+))(?!\u001E)(?=[^\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15}\b(?!\s*\())[^\r\n]+""",
+                """(\b(?:$ioKeywordVerbs)\b(?:\s*[:=]\s*|\s+))(?!\u001E)[^\r\n\u001E\u001F]*\.[A-Za-z0-9]{1,16}\b(?!\(|:\d+)""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(\b(?:file|path|filename|filepath)\s*[:=]\s*)(?!\u001E)[^\r\n]+""",
+                """(\b(?:file|path|filename|filepath)\s*[:=]\s*)(?!\u001E)[^\r\n\u001E\u001F]+""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(?<![\p{L}\p{N}._-])[\p{L}\p{N}_-]+\.(?:$bareFilenameExtensions)\b(?!\s*\()""",
+                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?:$bareFilenameExtensions)\b(?!\(|:\d+)""",
                 RegexOption.IGNORE_CASE
-            ) to "[redacted-path]"
+            ) to "$1$2[redacted-path]"
         )
 
         /**
@@ -497,10 +505,18 @@ class CoreTelemetryService(
             }
             val vaultedUrls = mutableListOf<String>()
             var scrubbed = urlVaultRegex.replace(text) { match ->
-                if (match.value.startsWith("file://", ignoreCase = true)) {
-                    match.value
+                val raw = match.value
+                val ipv6 = match.groups[1]?.value
+                val validAuthority = ipv6 == null || runCatching { URI("http://[$ipv6]") }.isSuccess
+                if (raw.startsWith("file://", ignoreCase = true) || !validAuthority) {
+                    raw
                 } else {
-                    val (url, tail) = splitUnmatchedUrlClosers(match.value)
+                    var url = raw
+                    var tail = ""
+                    if (match.range.first > 0 && text[match.range.first - 1] == '\'' && url.endsWith('\'')) {
+                        url = url.dropLast(1)
+                        tail = "'"
+                    }
                     val idx = vaultedUrls.size
                     vaultedUrls += url
                     "$prefix$idx\u001F$tail"
@@ -513,36 +529,6 @@ class CoreTelemetryService(
                 scrubbed = scrubbed.replace("$prefix$idx\u001F", vaultedUrls[idx])
             }
             return scrubbed
-        }
-
-        private fun splitUnmatchedUrlClosers(raw: String): Pair<String, String> {
-            var openParens = 0
-            var closeParens = 0
-            var openBrackets = 0
-            var closeBrackets = 0
-            for (ch in raw) {
-                when (ch) {
-                    '(' -> openParens++
-                    ')' -> closeParens++
-                    '[' -> openBrackets++
-                    ']' -> closeBrackets++
-                }
-            }
-            var end = raw.length
-            while (end > 0) {
-                when {
-                    raw[end - 1] == ')' && closeParens > openParens -> {
-                        closeParens--
-                        end--
-                    }
-                    raw[end - 1] == ']' && closeBrackets > openBrackets -> {
-                        closeBrackets--
-                        end--
-                    }
-                    else -> break
-                }
-            }
-            return raw.substring(0, end) to raw.substring(end)
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {

@@ -76,8 +76,15 @@ class CoreTelemetryServiceTest {
             appendLine("ApostropheBare Could not find file 'O'Brien.mov'")
             appendLine("BareNoExt Could not find file 'SecretBareName'")
             appendLine("UnquotedUnknownExt Could not find file Secret.xyz")
+            appendLine("UnquotedNumericExt Could not find file Secret.2026")
             appendLine("VerbUnknownExt open Acquisition.custom")
+            appendLine("VerbNumericExt open Secret.123")
             appendLine("VerbSpacedExt open Secret Project.mov")
+            appendLine("StandaloneSpacedParen Secret Project.mov (missing)")
+            appendLine("MultiDotBare Secret.Final.mov")
+            appendLine("AdjacentParenUrl (https://example.com)(private/Secret.mov)")
+            appendLine("AdjacentCommaUrl https://example.com/api,open(C://Secret/Acquisition.mov)")
+            appendLine("UrlParenPath https://example.com(/Users/alice/Secret.mov)")
             appendLine("Bang /!Acquisition.mov")
             appendLine("""Quoted "/!Acquisition.mov"""")
             appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4""")
@@ -129,6 +136,32 @@ class CoreTelemetryServiceTest {
         assertTrue(scrubbed.contains("a123456789012345678901234567890123://example.com/repo"))
         assertTrue(scrubbed.contains("HTTP/1.1 503 Service Unavailable"))
         assertTrue(scrubbed.contains("[redacted-path]"))
+        assertEquals(
+            "https://example.com/a'b/items",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/a'b/items")
+        )
+        assertEquals(
+            "https://foo!bar.example/api",
+            CoreTelemetryService.sanitizeLocalPaths("https://foo!bar.example/api")
+        )
+        assertEquals(
+            "open [redacted-path] from https://example.com/api",
+            CoreTelemetryService.sanitizeLocalPaths("open Secret.mov from https://example.com/api")
+        )
+        assertEquals(
+            "open failed at MainActivity.kt:42",
+            CoreTelemetryService.sanitizeLocalPaths("open failed at MainActivity.kt:42")
+        )
+        assertEquals(
+            "open([redacted-path]) MainActivity.onCreate()",
+            CoreTelemetryService.sanitizeLocalPaths("open(/Volumes/Secret/Acquisition.mov) MainActivity.onCreate()")
+        )
+        assertEquals(
+            "[redacted-path] (missing)",
+            CoreTelemetryService.sanitizeLocalPaths("Secret Project.mov (missing)")
+        )
+        assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://[:::]/api") == "https://[:::]/api")
+        assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://bad%zz/api") == "https://bad%zz/api")
     }
 
     @Test
