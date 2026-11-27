@@ -330,9 +330,9 @@ class CoreTelemetryServiceTest {
         )
         assertEquals("'([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'(/tmp/Client) Acquisition Plan'"))
         assertEquals("' ([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("' (/tmp/Client) Acquisition Plan'"))
-        assertEquals("\" ([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("\" (/tmp/Client) Acquisition Plan\""))
-        assertEquals("\"My ([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("\"My (/tmp/Client) Acquisition Plan\""))
-        assertEquals("\"([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("\"(relative/Client) Acquisition Plan\""))
+        assertEquals("\" ([redacted-path]\"", CoreTelemetryService.sanitizeLocalPaths("\" (/tmp/Client) Acquisition Plan\""))
+        assertEquals("\"My ([redacted-path]\"", CoreTelemetryService.sanitizeLocalPaths("\"My (/tmp/Client) Acquisition Plan\""))
+        assertEquals("\"([redacted-path]\"", CoreTelemetryService.sanitizeLocalPaths("\"(relative/Client) Acquisition Plan\""))
         assertEquals(
             "Failed for [redacted-email], [redacted-email], [redacted-email], 「[redacted-email]」, " +
                 "[redacted-email], [redacted-email], [redacted-email], [redacted-email], " +

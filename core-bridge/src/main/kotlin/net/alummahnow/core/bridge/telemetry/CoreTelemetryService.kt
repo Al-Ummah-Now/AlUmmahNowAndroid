@@ -402,18 +402,19 @@ class CoreTelemetryService(
         )
         private val preKeywordPathRules: List<Pair<Regex, String>> = listOf(
             Regex(
-                """(?:[A-Za-z]:[\\/]|\\\\)[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]""" +
+                """(?:[A-Za-z]:[\\/]|\\\\)[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}"]""" +
                     """(?:[^\r\n\u001E]*[^\r\n\u001E\s\p{Zs}])?""",
                 RegexOption.IGNORE_CASE
             ) to "[redacted-path]",
             Regex(
                 """(^|[\s(\[{"'=,:;<>)\u001F])[^\s\\/"'<>()\[{:,;=\u001E\u001F]+\\""" +
-                    """[^\r\n\u001E\u001F\s\p{Zs}]""" +
+                    """[^\r\n\u001E\u001F\s\p{Zs}"]""" +
                     """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?"""
             ) to "$1[redacted-path]",
-            Regex("""["']/[ \t]+[^\r\n\u001E]+""") to "[redacted-path]",
+            Regex("""["']/[ \t]+[^\r\n\u001E\s\p{Zs}"][^\r\n\u001E]*""") to "[redacted-path]",
             Regex(
-                """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|//+(?=[ \t\p{Zs}]*[^\s\p{Zs}/])|/(?=[ \t\p{Zs}]*[^\s\p{Zs}/]))""" +
+                """(?<![\p{L}\p{M}\p{N}._/-])""" +
+                    """(?:~/(?=[ \t\p{Zs}]*[^\s\p{Zs}"])|//+(?=[ \t\p{Zs}]*[^\s\p{Zs}/"])|/(?=[ \t\p{Zs}]*[^\s\p{Zs}/"]))""" +
                     """[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]""" +
                     """(?:[^\r\n\u001E]*[^\r\n\u001E\s\p{Zs}])?"""
             ) to "[redacted-path]",
@@ -521,7 +522,9 @@ class CoreTelemetryService(
             val (escaped, hadSentinels) = escapeSentinels(text)
             val preAuth = CoreTelemetryAuthScanner.redactAuthCredentials(CoreTelemetryEmailScanner.redactQuotedEmails(escaped))
             val (vaulted, vaultedUrls) = vaultNonFileUrls(preAuth, VAULT_PREFIX)
-            var scrubbed = redactFileUris(vaulted, VAULT_PREFIX)
+            var scrubbed = CoreTelemetryQuotedPathRedactor.redactDoubleQuotedLocalPaths(
+                redactFileUris(vaulted, VAULT_PREFIX)
+            )
             for (regex in parenPathRegexes) {
                 scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
             }
@@ -907,8 +910,8 @@ class CoreTelemetryService(
                         quoteState = cont.advanceQuoteState(text, quoteCursor, start, quoteState)
                         quoteCursor = start
                     }
-                    val allowAngles = allowQuotedAngleBrackets(text, start, quoteState)
-                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep, allowAngles)
+                    val angleMask = CoreTelemetryScanners.computeQueryAngleStopMask(text, start, (quoteState and 2) != 0)
+                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep, angleMask)
                 } else {
                     null
                 }
@@ -946,9 +949,6 @@ class CoreTelemetryService(
             val out = sb ?: return text
             return out.append(text, copied, text.length).toString()
         }
-
-        private fun allowQuotedAngleBrackets(text: String, start: Int, quoteState: Int): Boolean =
-            (quoteState and 2) != 0 && (start == 0 || text[start - 1] != '<')
 
         private fun restoreVaultedUrls(text: String, prefix: String, vaultedUrls: List<String>): String {
             if (vaultedUrls.isEmpty()) return text

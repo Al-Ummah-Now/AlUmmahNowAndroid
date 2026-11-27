@@ -272,4 +272,29 @@ class CoreTelemetryUrlContinuationTest {
         val repeatedRejected = "https:// ".repeat(2000)
         assertEquals("http[redacted-path] ", CoreTelemetryService.sanitizeLocalPaths(repeatedRejected))
     }
+
+    @Test
+    fun `sanitizeLocalPaths handles angle-wrapped queries, escaped Bearer quotes, and quoted JSON paths`() {
+        val cases = listOf(
+            "[\"see <https://example.com/api?token=first<opaqueSecret123> public\"]" to
+                "[\"see <https://example.com/api?[redacted]> public\"]",
+            "<https://example.com/api?token=first<opaqueSecret123> public" to
+                "<https://example.com/api?[redacted]> public",
+            "[\"Bearer abc\\\"opaqueSecret123\"]" to "[\"Bearer [redacted]\"]",
+            "[\"Bearer abc\\\"opaqueSecret123\",\"public\"]" to "[\"Bearer [redacted]\",\"public\"]",
+            "[\"Bearer abc\\\\\",\"public\"]" to "[\"Bearer [redacted]\",\"public\"]",
+            "[\"C://Secret/Acquisition.mov\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"Failed reading C://Secret/Acquisition.mov\",\"public\"]" to
+                "[\"Failed reading [redacted-path]\",\"public\"]",
+            "[\"/Users/alice/Secret.mov\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"relative/Secret.mov\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"https://example.com/api?token=opaqueSecret123\",\"C://Secret/Acquisition.mov\",\"public\"]" to
+                "[\"https://example.com/api?[redacted]\",\"[redacted-path]\",\"public\"]",
+            "[\"hello \\\"world\\\"\",\"public\"]" to "[\"hello \\\"world\\\"\",\"public\"]",
+            "[\"/\",\"public\"]" to "[\"/\",\"public\"]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+    }
 }

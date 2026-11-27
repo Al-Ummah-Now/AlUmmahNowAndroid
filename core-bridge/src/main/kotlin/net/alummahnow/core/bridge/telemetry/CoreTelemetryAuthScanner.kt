@@ -27,7 +27,7 @@ internal object CoreTelemetryAuthScanner {
         "OAuth", "Negotiate", "Mutual", "HOBA", "Vapid", "SCRAM-SHA-256", "AWS4-HMAC-SHA256"
     )
     private val bearerTokenRegex = Regex(
-        """\b(Bearer)\s+(?!\[redacted\](?=$|[\s"',;)\]}]))[^\s"',;)\]}]+""",
+        """\b(Bearer)\s+(?!\[redacted\](?=$|[\s"',;)\]}]))(?:\\[^\r\n\s]|[^\s\\"',;)\]}]|\\(?=$|[\s\r\n]))+""",
         RegexOption.IGNORE_CASE
     )
     private val basicTokenRegex = Regex(

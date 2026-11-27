@@ -37,11 +37,18 @@ internal object CoreTelemetryScanners {
         return if (validPrefix && !prevBlocked && !isFile) start else null
     }
 
+    fun computeQueryAngleStopMask(text: String, urlStart: Int, inDoubleQuote: Boolean): Int {
+        val wrappedInAngle = urlStart > 0 && text[urlStart - 1] == '<'
+        val stopOnLess = !inDoubleQuote && !wrappedInAngle
+        val stopOnGreater = !inDoubleQuote || wrappedInAngle
+        return (if (stopOnLess) 1 else 0) or (if (stopOnGreater) 2 else 0)
+    }
+
     fun scanUrlAfterScheme(
         text: String,
         start: Int,
         sep: Int,
-        allowAngleBrackets: Boolean = false
+        angleStopMask: Int = 3
     ): UrlSpan? {
         val afterHost = scanUrlHost(text, sep + SCHEME_SEP_LEN) ?: return null
         val afterPort = scanOptionalPort(text, afterHost) ?: return null
@@ -51,7 +58,7 @@ internal object CoreTelemetryScanners {
             afterPort to false
         }
         val startsQf = !truncated && baseEnd < text.length && (text[baseEnd] == '?' || text[baseEnd] == '#')
-        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd, allowAngleBrackets) else baseEnd
+        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd, angleStopMask) else baseEnd
         val boundaryOk = totalEnd == text.length || isUrlEndBoundary(text, totalEnd)
         return if (boundaryOk) UrlSpan(start, baseEnd, totalEnd, startsQf) else null
     }
@@ -460,13 +467,14 @@ internal object CoreTelemetryScanners {
         return text[nextPos] == ':' || startsEmbeddedFilesystemPath(text, nextPos)
     }
 
-    fun scanQueryOrFragment(text: String, start: Int, allowAngleBrackets: Boolean = false): Int {
+    fun scanQueryOrFragment(text: String, start: Int, angleStopMask: Int = 3): Int {
         var p = start + 1
         var stopped = false
         while (p < text.length && !stopped) {
             val ch = text[p]
-            val isAngleStop = !allowAngleBrackets && (ch == '<' || ch == '>')
-            if (ch.isWhitespace() || isAngleStop) {
+            val isLessStop = ch == '<' && (angleStopMask and 1) != 0
+            val isGreaterStop = ch == '>' && (angleStopMask and 2) != 0
+            if (ch.isWhitespace() || isLessStop || isGreaterStop) {
                 stopped = true
             } else if (ch == '"' && isUnescapedQueryQuote(text, start, p)) {
                 stopped = true
