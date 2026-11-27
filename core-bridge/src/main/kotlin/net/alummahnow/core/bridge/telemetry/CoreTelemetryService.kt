@@ -366,8 +366,8 @@ class CoreTelemetryService(
 
         private val urlVaultRegex = Regex(
             """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://(?:\[([^\]\s"'<>\\{}\r\n]+)\]|""" +
-                """(?:[A-Za-z0-9._~!$&'*+=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
-                """(?:[/?#](?:[^\s"<>\\{},;()\[\]\r\n]|\([^\s"<>\\{},;()\[\]/:\\]+\)|""" +
+                """(?:[A-Za-z0-9._~!$&'*+;=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
+                """(?:[/?#](?:[^\s"<>\\{},()\[\]\r\n]|\([^\s"<>\\{},;()\[\]/:\\]+\)|""" +
                 """\[[^\s"<>\\{},;()\[\]/:\\]+\])*|(?=$|[\s"'<>\\{},;()\[\]]))""",
             RegexOption.IGNORE_CASE
         )
@@ -381,19 +381,20 @@ class CoreTelemetryService(
                 "csv|json|xml|yaml|yml|toml|ini|cfg|conf|log|srt|vtt|ass|ssa|" +
                 "zip|tar|gz|tgz|bz2|xz|7z|rar|dmg|pkg|msi|exe|apk|aab|ipa|" +
                 "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
+        private val sourceLineExts = "kt|java|swift|cs|cpp|cc|c|h|hpp|rs|py|js|ts|go|rb|m|mm"
         private val pathRedactionRules: List<Pair<Regex, String>> = listOf(
             Regex("""(?<![A-Za-z0-9+.-])file://[^\r\n]+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
             Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
             Regex(
-                """(\()(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:\u001E\u001F]+/[^()\r\n]+(\))""",
+                """(\()(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^()\r\n]+(\))""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]$2",
             Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
-            Regex("""(^|[\s(\[{"'=,:;])[^\s\\/"'<>]+\\[^\r\n]+""") to "$1[redacted-path]",
+            Regex("""(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>(),;\u001E\u001F]+\\[^\r\n\u001E\u001F]+""") to "$1[redacted-path]",
             Regex("""["']/[ \t]+[^\r\n]+""") to "[redacted-path]",
             Regex("""(?<![\p{L}\p{M}\p{N}._/-])(?:~/|//+(?=[ \t]*[^\s/])|/(?=[ \t]*[^\s/]))[^\r\n]+""") to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{"'=,:;])(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:]+/[^\r\n]+""",
+                """(^|[\s(\[{"'=,:;\u001F])(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^\r\n\u001E\u001F]+""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(""""[^"\r\n/\\]*\.[A-Za-z0-9]{1,16}"""") to "[redacted-path]",
@@ -403,7 +404,8 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(\b(?:$ioKeywordVerbs)\b(?:\s*[:=]\s*|\s+))(?!\u001E)[^\r\n\u001E\u001F]*\.[A-Za-z0-9]{1,16}\b(?!\(|:\d+)""",
+                """(\b(?:$ioKeywordVerbs)\b(?:\s*[:=]\s*|\s+))(?!\u001E)[^\r\n\u001E\u001F]*\.(?!(?:$sourceLineExts):\d+)""" +
+                    """[A-Za-z0-9]{1,16}\b(?!\()""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
@@ -411,7 +413,7 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?:$bareFilenameExtensions)\b(?!\(|:\d+)""",
+                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?:$bareFilenameExtensions)\b(?!\()""",
                 RegexOption.IGNORE_CASE
             ) to "$1$2[redacted-path]"
         )
@@ -513,9 +515,13 @@ class CoreTelemetryService(
                 } else {
                     var url = raw
                     var tail = ""
+                    if (url.endsWith(';')) {
+                        url = url.dropLast(1)
+                        tail = ";"
+                    }
                     if (match.range.first > 0 && text[match.range.first - 1] == '\'' && url.endsWith('\'')) {
                         url = url.dropLast(1)
-                        tail = "'"
+                        tail = "'$tail"
                     }
                     val idx = vaultedUrls.size
                     vaultedUrls += url

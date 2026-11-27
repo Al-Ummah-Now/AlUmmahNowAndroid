@@ -160,6 +160,22 @@ class CoreTelemetryServiceTest {
             "[redacted-path] (missing)",
             CoreTelemetryService.sanitizeLocalPaths("Secret Project.mov (missing)")
         )
+        assertEquals(
+            "open [redacted-path]:42",
+            CoreTelemetryService.sanitizeLocalPaths("open Secret.mov:42")
+        )
+        assertEquals(
+            "https://example.com/api,[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,private/Secret.mov")
+        )
+        assertEquals(
+            "https://one;two.example/api",
+            CoreTelemetryService.sanitizeLocalPaths("https://one;two.example/api")
+        )
+        assertEquals(
+            "https://example.com/v1;version=2/items",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/v1;version=2/items")
+        )
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://[:::]/api") == "https://[:::]/api")
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://bad%zz/api") == "https://bad%zz/api")
     }
