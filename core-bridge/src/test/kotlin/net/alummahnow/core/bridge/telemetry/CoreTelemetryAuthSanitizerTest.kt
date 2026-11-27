@@ -153,6 +153,10 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("note \"hi\", \"Authorization\": \"firstValue\" } opaqueSecret123")
         )
         assertEquals(
+            "note: \"hi\", \"Authorization\": \"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("note: \"hi\", \"Authorization\": \"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
             "{\"a\":{\"b\":1},\"Authorization\":\"[redacted]\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"a\":{\"b\":1},\"Authorization\":\"opaqueSecret123\"}")
         )
@@ -173,6 +177,10 @@ class CoreTelemetryAuthSanitizerTest {
         assertEquals(
             "https://hooks.slack.com/services/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://hooks.slack." + "com/services/T0000/B0000/fakeWebhookToken")
+        )
+        assertEquals(
+            "https://hooks.slack.com:443/services/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://hooks.slack." + "com:443/services/T0000/B0000/fakeWebhookToken")
         )
         assertEquals(
             "https://api.telegram.org/bot123456:[redacted]/getMe",

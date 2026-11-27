@@ -60,10 +60,19 @@ internal object CoreTelemetryAuthJsonHelpers {
     }
 
     private fun isPrecededByColon(text: String, valueStart: Int): Boolean {
-        if (valueStart <= 0) return false
-        var p = valueStart - 1
+        val colonPos = skipJsonWhitespaceBackward(text, valueStart - 1)
+        if (colonPos <= 0 || text[colonPos] != ':') return false
+        val keyEnd = skipJsonWhitespaceBackward(text, colonPos - 1)
+        if (keyEnd <= 0 || text[keyEnd] != '"') return false
+        val keyStart = scanJsonStringStartBackward(text, keyEnd)
+        val beforeKey = if (keyStart > 0) skipJsonWhitespaceBackward(text, keyStart - 1) else -1
+        return beforeKey >= 0 && (text[beforeKey] == '{' || text[beforeKey] == ',')
+    }
+
+    private fun skipJsonWhitespaceBackward(text: String, start: Int): Int {
+        var p = start
         while (p >= 0 && isJsonWhitespace(text[p])) p--
-        return p >= 0 && text[p] == ':'
+        return p
     }
 
     private fun isEscapedQuote(text: String, quotePos: Int): Boolean {
