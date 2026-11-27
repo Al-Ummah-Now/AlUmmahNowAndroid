@@ -12,6 +12,7 @@ import net.alummahnow.core.bridge.live.LiveRepository
 import net.alummahnow.core.bridge.safety.ViewerBlockStore
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.NullTelemetryService
+import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.core.bridge.telemetry.TelemetryService
 
 /** What the app's screens need. [AppContainer] is the real one; tests hand in fakes. */
@@ -35,13 +36,20 @@ class AppContainer(context: Context) : ViewerContainer {
     override val blockStore = ViewerBlockStore(
         context.applicationContext.getSharedPreferences("aun_viewer_blocks", Context.MODE_PRIVATE)
     )
-    override val telemetry: TelemetryService = CoreTelemetryService.createOrNull(
-        appVersion = BuildConfig.VERSION_NAME,
-        deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
-        videosApiBaseUrl = BuildConfig.API_BASE_URL,
-        userAgent = "AlUmmahNow-Viewer-Android/${BuildConfig.VERSION_NAME}",
-        clientHeader = AunClient.value("viewer", BuildConfig.VERSION_NAME),
-        bufferPath = File(context.applicationContext.noBackupFilesDir, "viewer-telemetry-buffer.json").absolutePath,
-        initialEnabled = displayPrefs.isTelemetryEnabled()
-    )
+    override val telemetry: TelemetryService = run {
+        val initialEnabled = displayPrefs.isTelemetryEnabled()
+        CoreTelemetryService.createOrNull(
+            appVersion = BuildConfig.VERSION_NAME,
+            deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
+            videosApiBaseUrl = BuildConfig.API_BASE_URL,
+            userAgent = "AlUmmahNow-Viewer-Android/${BuildConfig.VERSION_NAME}",
+            clientHeader = AunClient.value("viewer", BuildConfig.VERSION_NAME),
+            bufferPath = File(context.applicationContext.noBackupFilesDir, "viewer-telemetry-buffer.json").absolutePath,
+            initialEnabled = initialEnabled
+        ).also { service ->
+            if (initialEnabled && service.consent == TelemetryConsent.OFF) {
+                displayPrefs.setTelemetryEnabled(false)
+            }
+        }
+    }
 }

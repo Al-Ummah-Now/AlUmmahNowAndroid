@@ -31,6 +31,7 @@ import net.alummahnow.core.bridge.studio.deletion.HttpDeletionApi
 import net.alummahnow.core.bridge.studio.deletion.SecureDeletionRecords
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
+import net.alummahnow.core.bridge.telemetry.TelemetryConsentStore
 import net.alummahnow.core.bridge.telemetry.TelemetryService
 import net.alummahnow.design.R as DesignR
 import net.alummahnow.feature.editor.editorExportDir
@@ -83,7 +84,13 @@ class AppContainer(context: Context) : StudioContainer {
 
     override val exports = PendingExports(editorExportDir(context), File(context.filesDir, "pending-exports.json"))
 
-    private val telemetryPrefs = context.applicationContext.getSharedPreferences("aun_studio_telemetry", Context.MODE_PRIVATE)
+    private val telemetryConsentStore = TelemetryConsentStore(
+        prefs = context.applicationContext.getSharedPreferences("aun_studio_telemetry", Context.MODE_PRIVATE),
+        prefKey = KEY_TELEMETRY_ENABLED,
+        optInMarkerFile = File(context.applicationContext.noBackupFilesDir, "studio-telemetry-opt-in")
+    )
+
+    private val initialTelemetryEnabled = telemetryConsentStore.isEnabled()
 
     override val telemetry: TelemetryService = CoreTelemetryService.createOrNull(
         appVersion = BuildConfig.VERSION_NAME,
@@ -92,10 +99,14 @@ class AppContainer(context: Context) : StudioContainer {
         userAgent = "AlUmmahNow-Studio-Android/${BuildConfig.VERSION_NAME}",
         clientHeader = AunClient.value("studio", BuildConfig.VERSION_NAME),
         bufferPath = File(context.applicationContext.noBackupFilesDir, "studio-telemetry-buffer.json").absolutePath,
-        initialEnabled = telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false)
+        initialEnabled = initialTelemetryEnabled
     )
 
-    private val telemetryEnabledState = MutableStateFlow(telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false))
+    private val telemetryEnabledState = MutableStateFlow(
+        (initialTelemetryEnabled && telemetry.consent != TelemetryConsent.OFF).also { active ->
+            if (initialTelemetryEnabled && !active) telemetryConsentStore.setEnabled(false)
+        }
+    )
     private val telemetrySaveFailedState = MutableStateFlow(false)
     private val telemetryWarningResState = MutableStateFlow<Int?>(null)
 
@@ -116,9 +127,9 @@ class AppContainer(context: Context) : StudioContainer {
             telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
             return false
         }
-        if (!telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, true).commit()) {
+        if (!telemetryConsentStore.setEnabled(true)) {
             telemetry.setConsent(TelemetryConsent.OFF)
-            val rolledBack = telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+            val rolledBack = telemetryConsentStore.setEnabled(false)
             if (rolledBack) telemetryEnabledState.value = false
             telemetrySaveFailedState.value = !rolledBack
             telemetryWarningResState.value = if (rolledBack) {
@@ -136,7 +147,7 @@ class AppContainer(context: Context) : StudioContainer {
 
     private fun disableTelemetry(): Boolean {
         val purged = telemetry.setConsent(TelemetryConsent.OFF)
-        val saved = telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+        val saved = telemetryConsentStore.setEnabled(false)
         if (saved) telemetryEnabledState.value = false
         telemetrySaveFailedState.value = !saved
         telemetryWarningResState.value = when {

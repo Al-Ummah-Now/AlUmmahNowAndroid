@@ -1,7 +1,6 @@
 package net.alummahnow.tv
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -31,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import net.alummahnow.core.bridge.AunClient
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
+import net.alummahnow.core.bridge.telemetry.TelemetryConsentStore
 import net.alummahnow.core.bridge.telemetry.TelemetryService
 import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.theme.AunTheme
@@ -41,7 +41,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val telemetry = getTelemetry(applicationContext, prefs)
+        val consentStore = TelemetryConsentStore(
+            prefs = prefs,
+            prefKey = KEY_TELEMETRY,
+            optInMarkerFile = File(applicationContext.noBackupFilesDir, "tv-telemetry-opt-in")
+        )
+        val telemetry = getTelemetry(applicationContext, consentStore)
         setContent {
             val telemetryEnabledPref by telemetryEnabledState.collectAsState()
             val telemetrySaveUncertain by telemetrySaveUncertainState.collectAsState()
@@ -63,21 +68,21 @@ class MainActivity : ComponentActivity() {
             TvApp(
                 telemetryEnabled = telemetryEnabled,
                 telemetryWarning = telemetryWarning,
-                onToggleTelemetry = { toggleTelemetry(telemetry, prefs, telemetryEnabled) }
+                onToggleTelemetry = { toggleTelemetry(telemetry, consentStore, telemetryEnabled) }
             )
         }
     }
 
-    private fun toggleTelemetry(telemetry: TelemetryService, prefs: SharedPreferences, currentlyEnabled: Boolean) {
+    private fun toggleTelemetry(telemetry: TelemetryService, consentStore: TelemetryConsentStore, currentlyEnabled: Boolean) {
         if (!currentlyEnabled) {
             if (telemetry.setConsent(TelemetryConsent.FULL)) {
-                if (prefs.edit().putBoolean(KEY_TELEMETRY, true).commit()) {
+                if (consentStore.setEnabled(true)) {
                     telemetryEnabledState.value = true
                     telemetrySaveUncertainState.value = false
                     telemetryWarningResState.value = null
                 } else {
                     telemetry.setConsent(TelemetryConsent.OFF)
-                    val rolledBack = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
+                    val rolledBack = consentStore.setEnabled(false)
                     if (rolledBack) telemetryEnabledState.value = false
                     telemetrySaveUncertainState.value = !rolledBack
                     telemetryWarningResState.value = if (rolledBack) {
@@ -92,7 +97,7 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             val purged = telemetry.setConsent(TelemetryConsent.OFF)
-            val saved = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
+            val saved = consentStore.setEnabled(false)
             if (saved) telemetryEnabledState.value = false
             telemetrySaveUncertainState.value = !saved
             telemetryWarningResState.value = when {
@@ -114,11 +119,10 @@ class MainActivity : ComponentActivity() {
         @Volatile
         private var telemetryInstance: TelemetryService? = null
 
-        private fun getTelemetry(appContext: Context, prefs: SharedPreferences): TelemetryService =
+        private fun getTelemetry(appContext: Context, consentStore: TelemetryConsentStore): TelemetryService =
             telemetryInstance ?: synchronized(telemetryLock) {
                 telemetryInstance ?: run {
-                    val initialEnabled = prefs.getBoolean(KEY_TELEMETRY, false)
-                    telemetryEnabledState.value = initialEnabled
+                    val initialEnabled = consentStore.isEnabled()
                     CoreTelemetryService.createOrNull(
                         appVersion = BuildConfig.VERSION_NAME,
                         deviceClass = "tv",
@@ -127,9 +131,12 @@ class MainActivity : ComponentActivity() {
                         clientHeader = AunClient.value("tv", BuildConfig.VERSION_NAME),
                         bufferPath = File(appContext.noBackupFilesDir, "tv-telemetry-buffer.json").absolutePath,
                         initialEnabled = initialEnabled
-                    ).also {
-                        telemetryInstance = it
-                        CoreTelemetryService.installUncaughtExceptionHandler(it)
+                    ).also { service ->
+                        val active = initialEnabled && service.consent != TelemetryConsent.OFF
+                        if (initialEnabled && !active) consentStore.setEnabled(false)
+                        telemetryEnabledState.value = active
+                        telemetryInstance = service
+                        CoreTelemetryService.installUncaughtExceptionHandler(service)
                     }
                 }
             }

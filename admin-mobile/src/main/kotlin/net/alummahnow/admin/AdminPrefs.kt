@@ -1,10 +1,12 @@
 package net.alummahnow.admin
 
 import android.content.Context
+import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import net.alummahnow.core.bridge.telemetry.TelemetryConsentStore
 
 /**
  * Small per-device settings: the explicit Light/Dark choice, the app language and the push install id. No media, no
@@ -12,7 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class AdminPrefs(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
-    private val _telemetryEnabled = MutableStateFlow(prefs.getBoolean(KEY_TELEMETRY, false))
+    private val telemetryConsentStore = TelemetryConsentStore(
+        prefs = prefs,
+        prefKey = KEY_TELEMETRY,
+        optInMarkerFile = File(context.applicationContext.noBackupFilesDir, "admin-telemetry-opt-in")
+    )
+    private val _telemetryEnabled = MutableStateFlow(telemetryConsentStore.isEnabled())
     private val _telemetrySaveUncertain = MutableStateFlow(false)
     private val _telemetryWarningRes = MutableStateFlow<Int?>(null)
 
@@ -51,7 +58,7 @@ class AdminPrefs(context: Context) {
 
     /** Persists telemetry preference synchronously and returns whether the write committed. */
     fun setTelemetryEnabled(enabled: Boolean): Boolean {
-        val committed = prefs.edit().putBoolean(KEY_TELEMETRY, enabled).commit()
+        val committed = telemetryConsentStore.setEnabled(enabled)
         if (committed) _telemetryEnabled.value = enabled
         return committed
     }

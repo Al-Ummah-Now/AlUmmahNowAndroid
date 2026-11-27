@@ -267,12 +267,35 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("\"relative/My Clip.mov\" and (https://example.com/api)")
                 .contains("https://example.com/api")
         )
-        assertTrue(
+        assertEquals(
+            "progress 1/2 (https://example.com/api)",
             CoreTelemetryService.sanitizeLocalPaths("progress 1/2 (https://example.com/api)")
-                .contains("https://example.com/api")
+        )
+        assertEquals("progress 1/2.", CoreTelemetryService.sanitizeLocalPaths("progress 1/2."))
+        assertEquals("progress (1/2.)", CoreTelemetryService.sanitizeLocalPaths("progress (1/2.)"))
+        assertEquals(
+            "progress 1/2. (https://example.com/api)",
+            CoreTelemetryService.sanitizeLocalPaths("progress 1/2. (https://example.com/api)")
+        )
+        assertEquals("opening [redacted-path]", CoreTelemetryService.sanitizeLocalPaths("opening 1/2.mov"))
+        assertEquals(
+            "opening\u00A0[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("opening\u00A0Acquisition.qzx")
         )
         assertFalse(
             CoreTelemetryService.sanitizeLocalPaths("opening \"1/2 (https://private.example/Acquisition.mov)\"")
+                .contains("private.example")
+        )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening \"HTTP/2 (https://private.example/Acquisition.mov)\"")
+                .contains("private.example")
+        )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening \"My Project/Clip https://private.example/Acquisition.mov\"")
+                .contains("private.example")
+        )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening \"(relative/My Clip.mov) https://private.example/Acquisition.mov\"")
                 .contains("private.example")
         )
         assertFalse(
@@ -295,6 +318,40 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("opening relative/My(1) (https://private.example/Acquisition.mov)")
                 .contains("private.example")
         )
+        assertEquals(
+            "can't reach https://example.com/api",
+            CoreTelemetryService.sanitizeLocalPaths("can't reach https://example.com/api")
+        )
+        val longAlpha = "a".repeat(100_000)
+        assertEquals(longAlpha, CoreTelemetryService.sanitizeLocalPaths(longAlpha))
+        val repeatedKeywords = "open ".repeat(20_000) + "."
+        assertEquals(repeatedKeywords, CoreTelemetryService.sanitizeLocalPaths(repeatedKeywords))
+        val repeatedQuotes = "'a ".repeat(20_000) + "."
+        assertEquals(repeatedQuotes, CoreTelemetryService.sanitizeLocalPaths(repeatedQuotes))
+    }
+
+    @Test
+    fun `telemetryConsentStore fails closed across restart when opt-out pref commit fails`() {
+        val marker = java.io.File.createTempFile("aun-consent-test-", ".flag")
+        marker.delete()
+        try {
+            val prefs = FakeFailingSharedPreferences()
+            val store = TelemetryConsentStore(prefs, "telemetry_enabled", marker)
+            assertFalse(store.isEnabled())
+            assertTrue(store.setEnabled(true))
+            assertTrue(store.isEnabled())
+            assertTrue(marker.exists())
+
+            prefs.failNextCommit = true
+            assertTrue(store.setEnabled(false))
+            assertFalse(marker.exists())
+            // Simulated restart with fresh store instance: stale `true` pref must NOT re-enable telemetry.
+            val restartedStore = TelemetryConsentStore(prefs, "telemetry_enabled", marker)
+            assertFalse(restartedStore.isEnabled())
+            assertFalse(prefs.getBoolean("telemetry_enabled", false))
+        } finally {
+            marker.delete()
+        }
     }
 
     @Test
@@ -318,5 +375,48 @@ class CoreTelemetryServiceTest {
             mapOf("screen" to "home", "count" to 2, "ok" to true, "drop" to null)
         )
         assertEquals("""{"screen":"home","count":2,"ok":true}""", json)
+    }
+
+    private class FakeFailingSharedPreferences : android.content.SharedPreferences {
+        private val data = mutableMapOf<String, Any?>()
+        var failNextCommit = false
+
+        override fun getAll(): MutableMap<String, *> = data.toMutableMap()
+        override fun getString(key: String?, defValue: String?): String? = data[key] as? String ?: defValue
+        override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = defValues
+        override fun getInt(key: String?, defValue: Int): Int = data[key] as? Int ?: defValue
+        override fun getLong(key: String?, defValue: Long): Long = data[key] as? Long ?: defValue
+        override fun getFloat(key: String?, defValue: Float): Float = data[key] as? Float ?: defValue
+        override fun getBoolean(key: String?, defValue: Boolean): Boolean = data[key] as? Boolean ?: defValue
+        override fun contains(key: String?): Boolean = data.containsKey(key)
+        override fun registerOnSharedPreferenceChangeListener(
+            listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?
+        ) = Unit
+        override fun unregisterOnSharedPreferenceChangeListener(
+            listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?
+        ) = Unit
+
+        override fun edit(): android.content.SharedPreferences.Editor = object : android.content.SharedPreferences.Editor {
+            private val pending = mutableMapOf<String, Any?>()
+            override fun putString(key: String?, value: String?) = apply { if (key != null) pending[key] = value }
+            override fun putStringSet(key: String?, values: MutableSet<String>?) = apply { if (key != null) pending[key] = values }
+            override fun putInt(key: String?, value: Int) = apply { if (key != null) pending[key] = value }
+            override fun putLong(key: String?, value: Long) = apply { if (key != null) pending[key] = value }
+            override fun putFloat(key: String?, value: Float) = apply { if (key != null) pending[key] = value }
+            override fun putBoolean(key: String?, value: Boolean) = apply { if (key != null) pending[key] = value }
+            override fun remove(key: String?) = apply { if (key != null) pending[key] = null }
+            override fun clear() = apply { pending.clear() }
+            override fun apply() {
+                commit()
+            }
+            override fun commit(): Boolean {
+                if (failNextCommit) {
+                    failNextCommit = false
+                    return false
+                }
+                pending.forEach { (k, v) -> if (v == null) data.remove(k) else data[k] = v }
+                return true
+            }
+        }
     }
 }

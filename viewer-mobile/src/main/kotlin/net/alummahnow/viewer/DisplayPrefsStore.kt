@@ -4,11 +4,13 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import net.alummahnow.core.bridge.telemetry.TelemetryConsentStore
 import net.alummahnow.design.theme.ThemeMode
 
 private val Context.dataStore by preferencesDataStore(name = "display")
@@ -16,7 +18,11 @@ private val Context.dataStore by preferencesDataStore(name = "display")
 /** Persists the theme choice and opt-in telemetry preference. Language uses the platform per-app locale (Android 13+). */
 class DisplayPrefsStore(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme")
-    private val telemetryPrefs = context.applicationContext.getSharedPreferences(TELEMETRY_PREFS, Context.MODE_PRIVATE)
+    private val telemetryConsentStore = TelemetryConsentStore(
+        prefs = context.applicationContext.getSharedPreferences(TELEMETRY_PREFS, Context.MODE_PRIVATE),
+        prefKey = KEY_TELEMETRY,
+        optInMarkerFile = File(context.applicationContext.noBackupFilesDir, "viewer-telemetry-opt-in")
+    )
     private val _telemetryEnabled = MutableStateFlow(isTelemetryEnabled())
     private val _telemetrySaveUncertain = MutableStateFlow(false)
     private val _telemetryWarningRes = MutableStateFlow<Int?>(null)
@@ -36,7 +42,7 @@ class DisplayPrefsStore(private val context: Context) {
     val telemetryWarningRes: StateFlow<Int?> = _telemetryWarningRes.asStateFlow()
 
     /** Synchronous consent check for startup initialization before any buffer load or purge. */
-    fun isTelemetryEnabled(): Boolean = telemetryPrefs.getBoolean(KEY_TELEMETRY, false)
+    fun isTelemetryEnabled(): Boolean = telemetryConsentStore.isEnabled()
 
     fun setTelemetrySaveUncertain(uncertain: Boolean) {
         _telemetrySaveUncertain.value = uncertain
@@ -59,7 +65,7 @@ class DisplayPrefsStore(private val context: Context) {
     }
 
     fun setTelemetryEnabled(enabled: Boolean): Boolean {
-        val committed = telemetryPrefs.edit().putBoolean(KEY_TELEMETRY, enabled).commit()
+        val committed = telemetryConsentStore.setEnabled(enabled)
         if (committed) _telemetryEnabled.value = enabled
         return committed
     }

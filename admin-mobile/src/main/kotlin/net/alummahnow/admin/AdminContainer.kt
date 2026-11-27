@@ -17,6 +17,7 @@ import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.NullTelemetryService
+import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.core.bridge.telemetry.TelemetryService
 import net.alummahnow.integrity.PlayIntegrityTokenSource
 
@@ -57,15 +58,23 @@ class AdminContainer(context: Context) : AdminServices {
     override val prefs = AdminPrefs(context)
     override val lock = AppLock()
     override val stepUp = StepUp()
-    override val telemetry: TelemetryService = CoreTelemetryService.createOrNull(
-        appVersion = BuildConfig.VERSION_NAME,
-        deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
-        videosApiBaseUrl = BuildConfig.API_BASE_URL,
-        userAgent = "AlUmmahNow-Admin-Android/${BuildConfig.VERSION_NAME}",
-        clientHeader = AunClient.value("admin", BuildConfig.VERSION_NAME),
-        bufferPath = File(context.applicationContext.noBackupFilesDir, "admin-telemetry-buffer.json").absolutePath,
-        initialEnabled = prefs.telemetryEnabled
-    ).also { CoreTelemetryService.installUncaughtExceptionHandler(it) }
+    override val telemetry: TelemetryService = run {
+        val initialEnabled = prefs.telemetryEnabled
+        CoreTelemetryService.createOrNull(
+            appVersion = BuildConfig.VERSION_NAME,
+            deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
+            videosApiBaseUrl = BuildConfig.API_BASE_URL,
+            userAgent = "AlUmmahNow-Admin-Android/${BuildConfig.VERSION_NAME}",
+            clientHeader = AunClient.value("admin", BuildConfig.VERSION_NAME),
+            bufferPath = File(context.applicationContext.noBackupFilesDir, "admin-telemetry-buffer.json").absolutePath,
+            initialEnabled = initialEnabled
+        ).also { service ->
+            if (initialEnabled && service.consent == TelemetryConsent.OFF) {
+                prefs.setTelemetryEnabled(false)
+            }
+            CoreTelemetryService.installUncaughtExceptionHandler(service)
+        }
+    }
 
     companion object {
         const val REDIRECT_URI = "alummahnow-admin://auth/callback"
