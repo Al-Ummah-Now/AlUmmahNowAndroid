@@ -91,24 +91,24 @@ internal object CoreTelemetryScanners {
         return isHexDigit(text[pos + 1]) && isHexDigit(text[pos + 2])
     }
 
-    private val urlPathSecretRules: List<Pair<Regex, Boolean>> = listOf(
-        Regex("""((?:^|/)webhooks?/)[^\s?#]+""", RegexOption.IGNORE_CASE) to false,
+    private val urlPathSecretRules: List<Regex> = listOf(
+        Regex("""((?:^|/|%2[fF])webhooks?(?:/|%2[fF]))[^\s?#]+""", RegexOption.IGNORE_CASE),
         Regex(
-            """(https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?/(?:services|workflows|triggers)/)[^\s?#]+""",
+            """(https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?(?:/|%2[fF])(?:services|workflows|triggers)(?:/|%2[fF]))[^\s?#]+""",
             RegexOption.IGNORE_CASE
-        ) to false,
-        Regex("""(/bot\d+:)[^/\s?#]+""", RegexOption.IGNORE_CASE) to true
+        ),
+        Regex("""((?:/|%2[fF])bot\d+:)[^/\s?#]+""", RegexOption.IGNORE_CASE)
     )
 
     fun redactUrlPathSecrets(url: String): String {
         var result = url
-        for ((regex, stopAtLiteralSlash) in urlPathSecretRules) {
-            result = replaceUrlPathSecret(result, regex, stopAtLiteralSlash)
+        for (regex in urlPathSecretRules) {
+            result = replaceUrlPathSecret(result, regex)
         }
         return result
     }
 
-    private fun replaceUrlPathSecret(url: String, regex: Regex, stopAtLiteralSlash: Boolean): String {
+    private fun replaceUrlPathSecret(url: String, regex: Regex): String {
         if (url.indexOf('%') < 0) return regex.replace(url, "$1[redacted]")
         val (decoded, origOffsets) = decodeUrlForPathSecretMatch(url)
         val matches = regex.findAll(decoded).toList()
@@ -119,23 +119,13 @@ internal object CoreTelemetryScanners {
             val g1 = match.groups[1] ?: continue
             val secretStart = origOffsets[g1.range.last + 1]
             if (secretStart >= copied) {
-                val rawEnd = origOffsets[match.range.last + 1]
-                val secretEnd = if (stopAtLiteralSlash) extendToLiteralSlashStop(url, rawEnd) else rawEnd
+                val secretEnd = origOffsets[match.range.last + 1]
                 sb.append(url, copied, secretStart).append("[redacted]")
                 copied = secretEnd
             }
         }
         return if (copied == 0) url else sb.append(url, copied, url.length).toString()
     }
-
-    private fun extendToLiteralSlashStop(url: String, start: Int): Int {
-        var pos = start
-        while (pos < url.length && !isTelegramSecretStop(url[pos])) pos++
-        return pos
-    }
-
-    private fun isTelegramSecretStop(ch: Char): Boolean =
-        ch == '/' || ch == '?' || ch == '#' || ch.isWhitespace()
 
     private fun decodeUrlForPathSecretMatch(url: String): Pair<String, IntArray> {
         val decoded = StringBuilder(url.length)
@@ -158,7 +148,7 @@ internal object CoreTelemetryScanners {
     }
 
     private fun isDecodablePathSecretByte(b: Int): Boolean =
-        b in DECODED_ASCII_MIN..DECODED_ASCII_MAX && b != '?'.code && b != '#'.code
+        b in DECODED_ASCII_MIN..DECODED_ASCII_MAX && b != '/'.code && b != '?'.code && b != '#'.code
 
     private fun parseHexByte(hi: Char, lo: Char): Int {
         val h = Character.digit(hi, HEX_RADIX)
@@ -193,17 +183,13 @@ internal object CoreTelemetryScanners {
     ): Int {
         val ch = text[p]
         return when {
-            isPathStopChar(text, p, ch) -> -1
-            ch == ',' && !isCommaBeforeQueryOrFragment(text, p) -> -1
+            isPathStopChar(text, p, ch) || ch == ',' -> -1
             ch == '(' || ch == '[' -> pushGroupOpener(text, p, openPositions, openChars)
             ch == ')' || ch == ']' -> popGroupCloser(p, ch, openPositions, openChars)
             openChars.isNotEmpty() && ch == ':' -> -1
             else -> p + 1
         }
     }
-
-    private fun isCommaBeforeQueryOrFragment(text: String, pos: Int): Boolean =
-        pos + 1 < text.length && (text[pos + 1] == '?' || text[pos + 1] == '#')
 
     private fun pushGroupOpener(
         text: String,
@@ -235,16 +221,21 @@ internal object CoreTelemetryScanners {
         return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
-    fun scanWebhookContinuation(text: String, start: Int): Int {
+    private val webUrlSchemes = listOf("https://", "http://", "wss://", "ws://", "ftp://")
+
+    fun scanUrlContinuation(text: String, start: Int): Int {
         var p = start
         while (p < text.length) {
             val ch = text[p]
-            val embedsPath = ch in "(,[" && startsEmbeddedFilesystemPath(text, p + 1)
-            if (isPathStopChar(text, p, ch) || embedsPath) break
+            val startsWebScheme = p > start && text[p - 1] in ",;()[]'" && isWebUrlSchemeAt(text, p)
+            if (isPathStopChar(text, p, ch) || startsWebScheme) break
             p++
         }
         return p
     }
+
+    private fun isWebUrlSchemeAt(text: String, pos: Int): Boolean =
+        webUrlSchemes.any { text.regionMatches(pos, it, 0, it.length, ignoreCase = true) }
 
     fun trimWebhookContinuationEnd(text: String, urlStart: Int, minEnd: Int, scanEnd: Int): Int {
         val excess = countExcessGroupClosers(text, urlStart, scanEnd)
