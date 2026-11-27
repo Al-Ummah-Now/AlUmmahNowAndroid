@@ -294,18 +294,29 @@ class CoreTelemetryServiceTest {
 
     @Test
     fun `sanitizeLocalPaths redacts quoted file uris apostrophes and backslash paths`() {
-        assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/User's Private Project'"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/User's Private Project'"))
         assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/O'Brien Secret"))
-        assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/Artists' Private Project'"))
-        assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/Project'2 Secret'"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/Artists' Private Project'"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/Project'2 Secret'"))
         assertEquals(
             "\"[redacted-path]\" progress \"done\"",
             CoreTelemetryService.sanitizeLocalPaths("\"file:///tmp/Secret\" progress \"done\"")
         )
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/O' Connor Private"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/O' Connor Private'"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/O'Connor' Private'Collection Plan"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/Artists' Private 'Collection'"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/Artists' Private 'Collection"))
         assertEquals(
-            "'[redacted-path]' progress 1/2 '[redacted-path]'",
-            CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/a' progress 1/2 'file:///tmp/b'")
+            "'[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/O' Connor Private (https://private.example/Acquisition.mov)")
         )
+        assertEquals(
+            "status 'ready' (https://example.com/api)",
+            CoreTelemetryService.sanitizeLocalPaths("status 'ready' (https://example.com/api)")
+        )
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("/tmp/Private\u2028Acquisition Plan"))
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Private.qzx'2 Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2's Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2' Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 'Private Acquisition.qzx'"))
@@ -338,7 +349,7 @@ class CoreTelemetryServiceTest {
             "opening relative/My(1) (https://private.example/Acquisition.mov)"
         )
         for (input in privateCases) {
-            assertFalse(CoreTelemetryService.sanitizeLocalPaths(input).contains("private.example"), "leaked: $input")
+            assertFalse("leaked: $input", CoreTelemetryService.sanitizeLocalPaths(input).contains("private.example"))
         }
         assertTrue(
             CoreTelemetryService.sanitizeLocalPaths("opening \"relative/My's Clip.mov\" (https://example.com/api)")
@@ -366,6 +377,10 @@ class CoreTelemetryServiceTest {
         assertEquals(repeatedClosers, CoreTelemetryService.sanitizeLocalPaths(repeatedClosers))
         val embeddedQueries = "/tmp;" + "https://host?x;".repeat(5_000)
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(embeddedQueries))
+        val longWindowsPath = "C:\\Private" + " folder".repeat(20_000)
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(longWindowsPath))
+        val longFractionUrls = "1".repeat(50_000) + "/" + "https://a;".repeat(2_000)
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(longFractionUrls))
     }
 
     @Test

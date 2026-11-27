@@ -398,23 +398,26 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]$2",
             Regex(
-                """(?:[A-Za-z]:[\\/]|\\\\)[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\s\p{Zs}]+)*""",
+                """(?:[A-Za-z]:[\\/]|\\\\)[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]""" +
+                    """(?:[^\r\n\u001E]*[^\r\n\u001E\s\p{Zs}])?""",
                 RegexOption.IGNORE_CASE
             ) to "[redacted-path]",
             Regex(
                 """(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>()\[{:,;=\u001E\u001F]+\\""" +
-                    """[^\r\n\u001E\u001F\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\u001F\s\p{Zs}]+)*"""
+                    """[^\r\n\u001E\u001F\s\p{Zs}]""" +
+                    """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?"""
             ) to "$1[redacted-path]",
             Regex("""["']/[ \t]+[^\r\n\u001E]+""") to "[redacted-path]",
             Regex(
-                """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|//+(?=[ \t]*[^\s/])|/(?=[ \t]*[^\s/]))""" +
-                    """[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\s\p{Zs}]+)*"""
+                """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|//+(?=[ \t\p{Zs}]*[^\s\p{Zs}/])|/(?=[ \t\p{Zs}]*[^\s\p{Zs}/]))""" +
+                    """[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]""" +
+                    """(?:[^\r\n\u001E]*[^\r\n\u001E\s\p{Zs}])?"""
             ) to "[redacted-path]",
             Regex(
                 """(^|[\s(\[{"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
-                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/""" +
-                    """[^\r\n\u001E\u001F\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\u001F\s\p{Zs}]+)*""",
+                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s\p{Zs}]""" +
+                    """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]"
         )
@@ -563,7 +566,9 @@ class CoreTelemetryService(
                 if (text[dot] != '.') continue
                 val extStart = dot + 1
                 var extEnd = extStart
-                while (extEnd < segEnd && extEnd - extStart < MAX_FILENAME_EXT_CHECK &&
+                while (
+                    extEnd < segEnd &&
+                    extEnd - extStart < MAX_FILENAME_EXT_CHECK &&
                     CoreTelemetryScanners.isAsciiAlphaNum(text[extEnd])
                 ) {
                     extEnd++
@@ -637,13 +642,20 @@ class CoreTelemetryService(
             private var tokenStart = -1
             private var tokenEnd = -1
             private var tokenHasPathSep = false
+            private var tokenFirstSlash = -1
+            private var tokenSlashCount = 0
+            private var tokenHasBackslash = false
+            private var tokenAllDigitsBeforeSlash = true
+            private var tokenHasDigitAfterSlash = false
+            private var tokenAllDigitsAfterSlash = true
+            private var tokenSawPunctAfterSlash = false
             private var inWrapperRun = false
             private var wsBeforeRun = false
 
             fun isEmbeddedInPath(text: String, matchStart: Int): Boolean {
                 advanceTo(text, matchStart)
-                val curTokenIsPath = tokenHasPathSep && !isNonPathSlashToken(text, tokenStart, tokenEnd, openQuote != '\u0000')
-                return pathQuote != '\u0000' || curTokenIsPath || (hasPathOnLine && (!wsBeforeRun || inWrapperRun))
+                val lineEmbedded = pathQuote != '\u0000' || (hasPathOnLine && (!wsBeforeRun || inWrapperRun))
+                return lineEmbedded || isCurrentTokenPath(text)
             }
 
             fun onVaultedUrl(matchEnd: Int) {
@@ -651,14 +663,24 @@ class CoreTelemetryService(
                 resetLineState()
             }
 
+            private fun resetTokenState() {
+                tokenStart = -1
+                tokenEnd = -1
+                tokenFirstSlash = -1
+                tokenSlashCount = 0
+                tokenHasBackslash = false
+                tokenAllDigitsBeforeSlash = true
+                tokenHasDigitAfterSlash = false
+                tokenAllDigitsAfterSlash = true
+                tokenSawPunctAfterSlash = false
+            }
+
             private fun resetLineState() {
                 hasPathOnLine = false
                 openQuote = '\u0000'
                 pathQuote = '\u0000'
                 escapedBackslash = false
-                tokenStart = -1
-                tokenEnd = -1
-                tokenHasPathSep = false
+                resetTokenState()
                 inWrapperRun = false
                 wsBeforeRun = false
             }
@@ -689,13 +711,16 @@ class CoreTelemetryService(
             private fun handleClosingQuote(text: String, ch: Char): Boolean {
                 if (escapedBackslash || openQuote == '\u0000' || ch != openQuote) return false
                 if (isInnerApostrophe(text, cursor, ch)) return false
+                if (ch == '\'' && hasPathOnLine) {
+                    // Single-quoted paths may contain unescaped apostrophes; fail closed on this line.
+                    escapedBackslash = false
+                    return true
+                }
                 if (pathQuote == ch || !hasPathOnLine) {
                     resetLineState()
                 } else {
                     openQuote = '\u0000'
-                    tokenStart = -1
-                    tokenEnd = -1
-                    tokenHasPathSep = false
+                    resetTokenState()
                     inWrapperRun = false
                     wsBeforeRun = false
                     escapedBackslash = false
@@ -704,7 +729,7 @@ class CoreTelemetryService(
             }
 
             private fun promoteTokenPath(text: String) {
-                if (tokenHasPathSep && !isNonPathSlashToken(text, tokenStart, tokenEnd, openQuote != '\u0000')) {
+                if (isCurrentTokenPath(text)) {
                     hasPathOnLine = true
                     if (pathQuote == '\u0000' && openQuote != '\u0000') pathQuote = openQuote
                 }
@@ -714,10 +739,8 @@ class CoreTelemetryService(
                 when {
                     ch.isWhitespace() -> if (!inWrapperRun) {
                         promoteTokenPath(text)
-                        tokenStart = -1
-                        tokenEnd = -1
+                        resetTokenState()
                         wsBeforeRun = true
-                        tokenHasPathSep = false
                     }
                     isOpeningWrapper(ch) -> {
                         if (!inWrapperRun) promoteTokenPath(text)
@@ -728,15 +751,58 @@ class CoreTelemetryService(
                     }
                     else -> {
                         if (tokenStart < 0 || inWrapperRun) {
+                            resetTokenState()
                             tokenStart = cursor
-                            tokenHasPathSep = false
                         }
                         tokenEnd = cursor + 1
-                        if (isPathSep(ch)) tokenHasPathSep = true
+                        trackTokenChar(ch)
                         inWrapperRun = false
                         wsBeforeRun = false
                     }
                 }
+            }
+
+            private fun trackTokenChar(ch: Char) {
+                when {
+                    ch == '\\' -> tokenHasBackslash = true
+                    ch == '/' -> {
+                        if (tokenSlashCount == 0) tokenFirstSlash = cursor
+                        tokenSlashCount++
+                    }
+                    tokenSlashCount == 0 -> if (ch !in '0'..'9') tokenAllDigitsBeforeSlash = false
+                    tokenSlashCount == 1 -> trackAfterSlashChar(ch)
+                }
+            }
+
+            private fun trackAfterSlashChar(ch: Char) {
+                when {
+                    isTrailingSentencePunct(ch) -> tokenSawPunctAfterSlash = true
+                    ch in '0'..'9' -> if (tokenSawPunctAfterSlash) {
+                        tokenAllDigitsAfterSlash = false
+                    } else {
+                        tokenHasDigitAfterSlash = true
+                    }
+                    else -> tokenAllDigitsAfterSlash = false
+                }
+            }
+
+            private fun isCurrentTokenPath(text: String): Boolean {
+                if (tokenSlashCount == 0 && !tokenHasBackslash) return false
+                val singleUnquotedSlash = openQuote == '\u0000' && tokenSlashCount == 1 && !tokenHasBackslash
+                if (!singleUnquotedSlash || tokenStart < 0) return true
+                val beforeLen = tokenFirstSlash - tokenStart
+                val validBounds = beforeLen > 0 && tokenFirstSlash + 1 < tokenEnd
+                val isFraction = tokenAllDigitsBeforeSlash && tokenHasDigitAfterSlash && tokenAllDigitsAfterSlash
+                return !validBounds || (!isFraction && !isProtocolPrefix(text, tokenStart, beforeLen, tokenFirstSlash + 1))
+            }
+
+            private fun isProtocolPrefix(text: String, start: Int, len: Int, afterSlash: Int): Boolean {
+                val hasDigit = (len == 3 || len == 4) && text[afterSlash] in '0'..'9'
+                if (!hasDigit) return false
+                val isHttp = len == 4 && text.regionMatches(start, "HTTP", 0, 4, ignoreCase = true)
+                val isTls = len == 3 && text.regionMatches(start, "TLS", 0, 3, ignoreCase = true)
+                val isSsl = len == 3 && text.regionMatches(start, "SSL", 0, 3, ignoreCase = true)
+                return isHttp || isTls || isSsl
             }
         }
 
@@ -759,29 +825,7 @@ class CoreTelemetryService(
             }
         }
 
-        private fun isNonPathSlashToken(text: String, start: Int, end: Int, insideQuote: Boolean): Boolean {
-            if (insideQuote || start < 0 || end <= start) return false
-            var trimmedEnd = end
-            while (trimmedEnd > start && isTrailingSentencePunct(text[trimmedEnd - 1])) trimmedEnd--
-            return trimmedEnd > start && isAllowedNonPathSlash(text.substring(start, trimmedEnd))
-        }
-
-        private fun isAllowedNonPathSlash(token: String): Boolean {
-            val slashIdx = token.indexOf('/')
-            val validSplit = slashIdx > 0 && slashIdx + 1 < token.length && !token.contains('\\')
-            if (!validSplit || token.indexOf('/', slashIdx + 1) >= 0) return false
-            val before = token.substring(0, slashIdx)
-            val after = token.substring(slashIdx + 1)
-            return isProtocolPair(before, after) || (before.all { it in '0'..'9' } && after.all { it in '0'..'9' })
-        }
-
         private fun isTrailingSentencePunct(ch: Char): Boolean = ch in ".,;:!?)]}"
-
-        private fun isProtocolPair(before: String, after: String): Boolean {
-            if (after[0] !in '0'..'9') return false
-            val upper = before.uppercase(Locale.ROOT)
-            return upper == "HTTP" || upper == "TLS" || upper == "SSL"
-        }
 
         private fun isFileSchemeAt(text: String, pos: Int): Boolean =
             CoreTelemetryScanners.isFileSchemeAt(text, pos)
@@ -798,8 +842,8 @@ class CoreTelemetryService(
             var pos = 0
             while (pos < text.length) {
                 if (CoreTelemetryScanners.isFileSchemeAt(text, pos)) {
-                    val quote = if (pos > 0 && (text[pos - 1] == '"' || text[pos - 1] == '\'')) text[pos - 1] else '\u0000'
-                    val (rawEnd, trimmedEnd) = CoreTelemetryScanners.fileUriSpanEnd(text, pos + schemeLen, quote, vaultPrefix)
+                    val isDoubleQuoted = pos > 0 && text[pos - 1] == '"'
+                    val (rawEnd, trimmedEnd) = CoreTelemetryScanners.fileUriSpanEnd(text, pos + schemeLen, isDoubleQuoted, vaultPrefix)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copyStart, pos).append("[redacted-path]").append(text, trimmedEnd, rawEnd)
                     copyStart = rawEnd

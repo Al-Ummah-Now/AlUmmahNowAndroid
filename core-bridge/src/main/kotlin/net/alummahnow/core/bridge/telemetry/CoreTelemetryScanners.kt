@@ -250,13 +250,13 @@ internal object CoreTelemetryScanners {
                     open = pos
                     candidateClose = -1
                 }
-            } else if (open >= 0) {
+            } else if (open >= 0 && (pos + 1 == segEnd || !text[pos + 1].isLetterOrDigit())) {
                 if (endsWithFilenameExt(text, open + 1, pos)) {
                     onMatch(open, pos)
                     copied = pos + 1
                     open = -1
                     candidateClose = -1
-                } else if (pos + 1 == segEnd || !text[pos + 1].isLetterOrDigit()) {
+                } else {
                     candidateClose = pos
                 }
             }
@@ -275,11 +275,15 @@ internal object CoreTelemetryScanners {
         return extLen in 1..MAX_EXT_LEN && extStart > start && text[extStart - 1] == '.'
     }
 
-    fun fileUriSpanEnd(text: String, schemeEnd: Int, quote: Char, vaultPrefix: String): Pair<Int, Int> {
+    /**
+     * Double-quoted file:// URIs terminate at the next unescaped '"'. Unquoted and single-quoted
+     * file:// URIs fail closed to the next vaulted URL or line break so unescaped apostrophes
+     * inside filenames (e.g. "O' Connor") can never leak suffixes.
+     */
+    fun fileUriSpanEnd(text: String, schemeEnd: Int, isDoubleQuoted: Boolean, vaultPrefix: String): Pair<Int, Int> {
         var rawEnd = schemeEnd
         var stoppedAtVault = false
         var escapedBackslash = false
-        var candidateClose = -1
         var done = false
         while (rawEnd < text.length && !done) {
             val ch = text[rawEnd]
@@ -287,35 +291,15 @@ internal object CoreTelemetryScanners {
             if (ch == '\r' || ch == '\n' || atVault) {
                 stoppedAtVault = atVault
                 done = true
+            } else if (isDoubleQuoted && ch == '"' && !escapedBackslash) {
+                done = true
             } else {
-                if (quote != '\u0000' && ch == quote && !escapedBackslash) {
-                    val nextClose = evaluateFileUriQuote(text, rawEnd, schemeEnd, quote, candidateClose)
-                    if (nextClose >= 0) candidateClose = nextClose
-                    done = nextClose == -2 || quote == '"'
-                }
-                if (!done) {
-                    escapedBackslash = if (ch == '\\') !escapedBackslash else false
-                    rawEnd++
-                }
+                escapedBackslash = ch == '\\' && !escapedBackslash
+                rawEnd++
             }
         }
-        if (candidateClose >= 0) return candidateClose to candidateClose
         val trimmedEnd = if (stoppedAtVault) trimFileUriTail(text, schemeEnd, rawEnd) else rawEnd
         return rawEnd to trimmedEnd
-    }
-
-    private fun evaluateFileUriQuote(
-        text: String,
-        pos: Int,
-        schemeEnd: Int,
-        quote: Char,
-        candidateClose: Int
-    ): Int {
-        if (quote == '"') return pos
-        val opensNewQuote = candidateClose >= 0 && pos > schemeEnd && !text[pos - 1].isLetterOrDigit()
-        if (opensNewQuote) return -2
-        val canClose = pos + 1 == text.length || !text[pos + 1].isLetterOrDigit()
-        return if (canClose) pos else -1
     }
 
     private fun trimFileUriTail(text: String, schemeEnd: Int, rawEnd: Int): Int {
