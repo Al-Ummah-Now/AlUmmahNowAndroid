@@ -392,6 +392,34 @@ class CoreTelemetryServiceTest {
         assertEquals("file [redacted-email]", CoreTelemetryService.sanitizeLocalPaths("file alice.txt@localhost"))
         assertEquals("file [redacted-path]", CoreTelemetryService.sanitizeLocalPaths("file Private Project alice.txt@example.com"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'alice.txt'@example.com"))
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts auth headers domain-ext emails and repeated filename emails`() {
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice@internal.pdf.example.org"))
+        assertEquals("[redacted-email]", CoreTelemetryService.sanitizeLocalPaths("alice.txt@example.zip.private"))
+        assertEquals(
+            "Authorization: Basic [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Authorization: Basic YWxpY2U6c2VjcmV0")
+        )
+        assertEquals(
+            "Proxy-Authorization: Basic [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Proxy-Authorization: Basic YWxpY2U6c2VjcmV0")
+        )
+        assertEquals(
+            "Authorization: Digest [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Authorization: Digest username=\"alice\", response=\"deadbeef\"")
+        )
+        assertEquals(
+            "{\"Authorization\": \"Basic [redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\": \"Basic YWxpY2U6c2VjcmV0\"}")
+        )
+        assertEquals("Basic auth failed", CoreTelemetryService.sanitizeLocalPaths("Basic auth failed"))
+        val repeatedFilenameEmails = "alice.txt@example.org ".repeat(5_000)
+        assertEquals(
+            "[redacted-email] ".repeat(5_000),
+            CoreTelemetryService.sanitizeLocalPaths(repeatedFilenameEmails)
+        )
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("/tmp/Private\u2028Acquisition Plan"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Private.qzx'2 Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2's Acquisition.qzx'"))

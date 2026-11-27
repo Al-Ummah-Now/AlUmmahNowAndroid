@@ -196,7 +196,7 @@ class CoreTelemetryService(
     }
 
     override fun addBreadcrumb(category: String, message: String, level: TelemetryBreadcrumbSeverity) {
-        if (category.isBlank()) return
+        if (category.isBlank() || consent == TelemetryConsent.OFF) return
         val mapped = when (level) {
             TelemetryBreadcrumbSeverity.DEBUG -> TelemetryBreadcrumbLevel.DEBUG
             TelemetryBreadcrumbSeverity.INFO -> TelemetryBreadcrumbLevel.INFO
@@ -211,6 +211,7 @@ class CoreTelemetryService(
     }
 
     override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
+        if (consent == TelemetryConsent.OFF) return
         val safeKind = kind.ifBlank { "UnhandledException" }
         val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message)
         val safeStack = stack?.let(::sanitizeLocalPaths)
@@ -432,7 +433,14 @@ class CoreTelemetryService(
                 """(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
             RegexOption.IGNORE_CASE
         )
+        private val authHeaderRegex = Regex(
+            """(\b(?:Proxy-)?Authorization\s*:\s*(?:[A-Za-z0-9._-]+\s+)?)[^\r\n]+""",
+            RegexOption.IGNORE_CASE
+        )
         private val bearerTokenRegex = Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE)
+        private val basicTokenRegex = Regex(
+            """\b[Bb]asic\s+(?=[A-Za-z0-9+/]{8,}={0,2}(?=$|[\s"',;)\]}]))(?=[A-Za-z0-9+/]*[0-9+/A-Z])[A-Za-z0-9+/]+={0,2}"""
+        )
 
         /**
          * Creates a live [CoreTelemetryService], falling back to [NullTelemetryService] when the
@@ -531,10 +539,17 @@ class CoreTelemetryService(
             scrubbed = keywordQuotedPathRegex.replace(scrubbed, "$1[redacted-path]")
             scrubbed = redactKeywordUnquotedFilenames(scrubbed)
             scrubbed = keywordAssignedPathRegex.replace(scrubbed, "$1[redacted-path]")
-            scrubbed = CoreTelemetryEmailScanner.redactBareFilenames(scrubbed, bareFilenameRegex)
-            scrubbed = restoreVaultedUrls(scrubbed, VAULT_PREFIX, vaultedUrls)
             scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)
+            if (scrubbed.indexOf('.') >= 0) {
+                scrubbed = bareFilenameRegex.replace(scrubbed, "$1$2[redacted-path]")
+            }
+            scrubbed = restoreVaultedUrls(scrubbed, VAULT_PREFIX, vaultedUrls)
+            if (vaultedUrls.isNotEmpty()) {
+                scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)
+            }
+            scrubbed = authHeaderRegex.replace(scrubbed, "$1[redacted]")
             scrubbed = bearerTokenRegex.replace(scrubbed, "Bearer [redacted]")
+            scrubbed = basicTokenRegex.replace(scrubbed, "Basic [redacted]")
             return if (hadSentinels) unescapeSentinels(scrubbed) else scrubbed
         }
 

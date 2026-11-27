@@ -47,36 +47,12 @@ internal object CoreTelemetryEmailScanner {
         else -> 0
     }
 
-    fun findEmailTailAt(text: String, pos: Int): Int {
+    fun findEmailTailEnd(text: String, pos: Int): Int {
         var p = pos
         while (p < text.length && isEmailLocalChar(text, p)) p++
         if (p >= text.length) return -1
         val atLen = emailAtLength(text, p)
-        return if (atLen > 0 && findEmailDomainEnd(text, p + atLen) > 0) p else -1
-    }
-
-    fun findEmailTailEnd(text: String, pos: Int): Int {
-        val atPos = findEmailTailAt(text, pos)
-        return if (atPos >= 0) findEmailDomainEnd(text, atPos + emailAtLength(text, atPos)) else -1
-    }
-
-    fun redactBareFilenames(text: String, regex: Regex): String {
-        if (text.indexOf('.') < 0) return text
-        if (!hasEmailAt(text)) return regex.replace(text, "$1$2[redacted-path]")
-        var sb: StringBuilder? = null
-        var copied = 0
-        for (match in regex.findAll(text)) {
-            if (match.range.first < copied) continue
-            val resolved = resolveNonEmailBareMatch(text, match, regex)
-            if (resolved != null) {
-                val out = sb ?: StringBuilder(text.length).also { sb = it }
-                out.append(text, copied, resolved.range.first)
-                out.append(resolved.groupValues[1]).append(resolved.groupValues[2]).append("[redacted-path]")
-                copied = resolved.range.last + 1
-            }
-        }
-        val out = sb ?: return text
-        return out.append(text, copied, text.length).toString()
+        return if (atLen > 0) findEmailDomainEnd(text, p + atLen) else -1
     }
 
     fun redactQuotedEmails(text: String): String {
@@ -122,26 +98,6 @@ internal object CoreTelemetryEmailScanner {
         }
         val out = sb ?: return text
         return out.append(text, copied, text.length).toString()
-    }
-
-    private fun resolveNonEmailBareMatch(text: String, match: MatchResult, regex: Regex): MatchResult? {
-        val baseStart = match.range.first
-        var current: MatchResult? = match
-        var resolved: MatchResult? = null
-        while (current != null && resolved == null) {
-            val emailAt = findEmailTailAt(text, current.range.last + 1)
-            if (emailAt < 0) {
-                resolved = current
-            } else {
-                val localStart = scanEmailLocalStart(text, emailAt, baseStart)
-                current = if (localStart > baseStart) {
-                    regex.find(text.substring(0, localStart), baseStart)
-                } else {
-                    null
-                }
-            }
-        }
-        return resolved
     }
 
     private fun matchEmailAt(text: String, i: Int, copied: Int, quoteCache: EmailQuoteCache): Pair<Int, Int>? {
