@@ -41,7 +41,11 @@ internal object CoreTelemetryScanners {
         val wrappedInAngle = urlStart > 0 && text[urlStart - 1] == '<'
         val stopOnLess = !inDoubleQuote && !wrappedInAngle
         val stopOnGreater = !inDoubleQuote || wrappedInAngle
-        return (if (stopOnLess) 1 else 0) or (if (stopOnGreater) 2 else 0)
+        val allowInlineSpace = inDoubleQuote &&
+            urlStart > 0 &&
+            text[urlStart - 1] == '"' &&
+            !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, urlStart - 1, 0)
+        return (if (stopOnLess) 1 else 0) or (if (stopOnGreater) 2 else 0) or (if (allowInlineSpace) 4 else 0)
     }
 
     fun scanUrlAfterScheme(
@@ -474,7 +478,8 @@ internal object CoreTelemetryScanners {
             val ch = text[p]
             val isLessStop = ch == '<' && (angleStopMask and 1) != 0
             val isGreaterStop = ch == '>' && (angleStopMask and 2) != 0
-            if (ch.isWhitespace() || isLessStop || isGreaterStop) {
+            val isSpaceStop = ch == '\r' || ch == '\n' || ((angleStopMask and 4) == 0 && isSpace(ch))
+            if (isSpaceStop || isLessStop || isGreaterStop) {
                 stopped = true
             } else if (ch == '"' && isUnescapedQueryQuote(text, start, p)) {
                 stopped = true

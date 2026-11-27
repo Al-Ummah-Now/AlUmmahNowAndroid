@@ -167,9 +167,26 @@ internal object CoreTelemetryEmailScanner {
         while (localStart > minPos && isEmailLocalChar(text, localStart - 1) && !isSchemeSlash(text, localStart - 1)) {
             localStart--
         }
+        localStart = adjustEmailLocalEscapeStart(text, localStart, atPos, minPos)
         var trimmedStart = localStart
         while (trimmedStart < atPos && isEmailLeadingWrapper(text[trimmedStart])) trimmedStart++
         return if (trimmedStart < atPos) trimmedStart else localStart
+    }
+
+    private fun adjustEmailLocalEscapeStart(text: String, localStart: Int, atPos: Int, minPos: Int): Int {
+        if (localStart >= atPos || localStart <= minPos || !isPrecededByOddBackslashes(text, localStart, minPos)) {
+            return localStart
+        }
+        val esc = text[localStart]
+        if (esc in "nrtbf/") return localStart + 1
+        if (esc == 'u' && localStart + 5 <= atPos) {
+            val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, localStart + 1)
+            if (code >= 0) {
+                val decoded = code.toChar().toString()
+                return if (isEmailLocalChar(decoded, 0)) localStart - 1 else localStart + 5
+            }
+        }
+        return localStart
     }
 
     private fun findQuotedEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
@@ -183,7 +200,7 @@ internal object CoreTelemetryEmailScanner {
         return atPos
     }
 
-    private fun isPrecededByOddBackslashes(text: String, pos: Int, minPos: Int): Boolean {
+    fun isPrecededByOddBackslashes(text: String, pos: Int, minPos: Int): Boolean {
         var count = 0
         var p = pos - 1
         while (p >= minPos && text[p] == '\\') {

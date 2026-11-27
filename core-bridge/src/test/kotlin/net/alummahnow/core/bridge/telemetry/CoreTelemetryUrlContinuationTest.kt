@@ -411,4 +411,29 @@ class CoreTelemetryUrlContinuationTest {
         val expectedFileUris = List(2000) { "open [redacted-path]" }.joinToString("\n")
         assertEquals(expectedFileUris, CoreTelemetryService.sanitizeLocalPaths(manyFileUris))
     }
+
+    @Test
+    fun `sanitizeLocalPaths preserves vault quote state inline query spaces and escapes before emails`() {
+        val cases = listOf(
+            "[\"https://example.test/api\\u0028v1\\u0029?token=opaqueSecret123\"]" to
+                "[\"https://example.test/api(v1)?[redacted]\"]",
+            "[\"https://example.com/api?token=first secondSecret\"]" to
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/api?token=first\u00A0secondSecret\"]" to
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/api#first secondSecret\"]" to
+                "[\"https://example.com/api#[redacted]\"]",
+            "[\"https:\\/\\/example.com\\/api?token=first secondSecret\"]" to
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/webhook/first\\u0022secondSecret\"]" to
+                "[\"https://example.com/webhook/[redacted]\"]",
+            "[\"prefix\\nalice@example.com\"]" to "[\"prefix\\n[redacted-email]\"]",
+            "[\"\\u0020alice@example.com ok\"]" to "[\"\\u0020[redacted-email] ok\"]",
+            "[\"https://a.test\",\"open /foo\",\"https://b.test\"]" to
+                "[\"https://a.test\",\"open [redacted-path]\",\"https://b.test\"]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+    }
 }

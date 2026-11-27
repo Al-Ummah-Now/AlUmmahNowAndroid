@@ -325,7 +325,7 @@ internal object CoreTelemetryQuotedPathRedactor {
         else -> null
     }
 
-    private fun parseHex4(text: String, pos: Int): Int {
+    fun parseHex4(text: String, pos: Int): Int {
         var value = 0
         for (offset in 0 until 4) {
             val d = hexDigitValue(text[pos + offset])
@@ -533,7 +533,7 @@ internal object CoreTelemetryQuotedPathRedactor {
     private fun isUrlStructuralEscape(ch: Char): Boolean {
         val blockedRange = ch <= '\u0020' || ch in '\u007F'..'\u009F' || ch in '\uD800'..'\uDFFF'
         if (blockedRange || ch.isWhitespace() || Character.isSpaceChar(ch)) return false
-        return ch !in "\"\\<>'()[]{},;"
+        return ch !in "\"\\<>"
     }
 
     private fun decodeUrlEscapesForVault(text: String, start: Int, end: Int): String {
@@ -544,15 +544,23 @@ internal object CoreTelemetryQuotedPathRedactor {
             if (ch == '\\' && pos + 1 < end) {
                 val next = text[pos + 1]
                 val uCode = if (next == 'u' && pos + 5 < end) parseHex4(text, pos + 2) else -1
-                if (next == '/') {
-                    sb.append('/')
-                    pos += 2
-                } else if (uCode >= 0 && isUrlStructuralEscape(uCode.toChar())) {
-                    sb.append(uCode.toChar())
-                    pos += 6
-                } else {
-                    sb.append(ch).append(next)
-                    pos += 2
+                when {
+                    next == '/' -> {
+                        sb.append('/')
+                        pos += 2
+                    }
+                    uCode == '"'.code -> {
+                        sb.append("\\\"")
+                        pos += 6
+                    }
+                    uCode >= 0 && isUrlStructuralEscape(uCode.toChar()) -> {
+                        sb.append(uCode.toChar())
+                        pos += 6
+                    }
+                    else -> {
+                        sb.append(ch).append(next)
+                        pos += 2
+                    }
                 }
             } else {
                 sb.append(ch)

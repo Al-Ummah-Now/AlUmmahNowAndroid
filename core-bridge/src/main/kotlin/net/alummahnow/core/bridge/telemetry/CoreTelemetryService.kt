@@ -650,9 +650,10 @@ class CoreTelemetryService(
                 return lineEmbedded || isCurrentTokenPath(text)
             }
 
-            fun onVaultedUrl(matchEnd: Int) {
+            fun onVaultedUrl(matchEnd: Int, activeQuote: Char = '\u0000') {
                 cursor = matchEnd
                 resetLineState()
+                openQuote = activeQuote
             }
 
             private fun resetTokenState() {
@@ -756,8 +757,8 @@ class CoreTelemetryService(
             }
 
             private fun isLeadingEscapedQuote(text: String): Boolean {
-                val inDoubleAtStart = openQuote == '"' && !escapedBackslash && tokenStart == cursor
-                return inDoubleAtStart && cursor + 1 < text.length && text[cursor + 1] == '"'
+                val inDouble = openQuote == '"' && !escapedBackslash
+                return inDouble && cursor + 1 < text.length && text[cursor + 1] == '"'
             }
 
             private fun trackTokenChar(text: String, ch: Char) {
@@ -943,7 +944,7 @@ class CoreTelemetryService(
                         span.totalEnd
                     }
                     quoteState = cont.advanceQuoteState(finalTail, 0, finalTail.length, quoteState)
-                    tracker.onVaultedUrl(endPos)
+                    tracker.onVaultedUrl(endPos, activeQuoteFromState(quoteState))
                     copied = endPos
                     quoteCursor = endPos
                     searchFrom = endPos
@@ -951,6 +952,12 @@ class CoreTelemetryService(
             }
             val out = sb ?: return text
             return out.append(text, copied, text.length).toString()
+        }
+
+        private fun activeQuoteFromState(quoteState: Int): Char = when {
+            (quoteState and 2) != 0 -> '"'
+            (quoteState and 1) != 0 -> '\''
+            else -> '\u0000'
         }
 
         private fun restoreVaultedUrls(text: String, prefix: String, vaultedUrls: List<String>): String {
