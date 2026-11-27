@@ -19,6 +19,7 @@ class DisplayPrefsStore(private val context: Context) {
     private val telemetryPrefs = context.applicationContext.getSharedPreferences(TELEMETRY_PREFS, Context.MODE_PRIVATE)
     private val _telemetryEnabled = MutableStateFlow(isTelemetryEnabled())
     private val _telemetrySaveUncertain = MutableStateFlow(false)
+    private val _telemetryWarningRes = MutableStateFlow<Int?>(null)
 
     /** The stored mode, or null until one is stored (then the app follows the device). A stored "SYSTEM" is null. */
     val theme: Flow<ThemeMode?> = context.dataStore.data.map { prefs ->
@@ -31,11 +32,18 @@ class DisplayPrefsStore(private val context: Context) {
     /** Process-scoped flag kept true across Activity recreation when a preference rollback commit failed. */
     val telemetrySaveUncertain: StateFlow<Boolean> = _telemetrySaveUncertain.asStateFlow()
 
+    /** Process-scoped warning resource id preserved across Activity recreation and new launches. */
+    val telemetryWarningRes: StateFlow<Int?> = _telemetryWarningRes.asStateFlow()
+
     /** Synchronous consent check for startup initialization before any buffer load or purge. */
     fun isTelemetryEnabled(): Boolean = telemetryPrefs.getBoolean(KEY_TELEMETRY, false)
 
     fun setTelemetrySaveUncertain(uncertain: Boolean) {
         _telemetrySaveUncertain.value = uncertain
+    }
+
+    fun setTelemetryWarningRes(resId: Int?) {
+        _telemetryWarningRes.value = resId
     }
 
     /** Stores the device's mode the first time the app starts (owner 2026-11-13: Light or Dark, no System). */

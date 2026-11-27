@@ -1,6 +1,7 @@
 package net.alummahnow.tv
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -17,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -25,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.io.File
+import kotlinx.coroutines.flow.MutableStateFlow
 import net.alummahnow.core.bridge.AunClient
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
@@ -38,13 +41,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val initialEnabled = prefs.getBoolean(KEY_TELEMETRY, false)
-        val telemetry = getTelemetry(applicationContext, initialEnabled)
+        val telemetry = getTelemetry(applicationContext, prefs)
         setContent {
-            var telemetryEnabled by rememberSaveable { mutableStateOf(initialEnabled) }
-            var telemetryWarning by rememberSaveable { mutableStateOf<String?>(null) }
-            LaunchedEffect(telemetryEnabled) {
-                if (telemetryEnabled) telemetry.flush()
+            val telemetryEnabledPref by telemetryEnabledState.collectAsState()
+            val telemetrySaveUncertain by telemetrySaveUncertainState.collectAsState()
+            val telemetryWarningRes by telemetryWarningResState.collectAsState()
+            val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
+            val telemetryWarning = telemetryWarningRes?.let { stringResource(it) }
+            LaunchedEffect(telemetryEnabledPref) {
+                if (telemetryEnabledPref) telemetry.flush()
             }
             DisposableEffect(Unit) {
                 onDispose { telemetry.persist() }
@@ -57,31 +62,32 @@ class MainActivity : ComponentActivity() {
                     if (next) {
                         if (telemetry.setConsent(TelemetryConsent.FULL)) {
                             if (prefs.edit().putBoolean(KEY_TELEMETRY, true).commit()) {
-                                telemetryEnabled = true
-                                telemetryWarning = null
+                                telemetryEnabledState.value = true
+                                telemetrySaveUncertainState.value = false
+                                telemetryWarningResState.value = null
                             } else {
                                 telemetry.setConsent(TelemetryConsent.OFF)
                                 val rolledBack = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
-                                telemetryEnabled = !rolledBack
-                                telemetryWarning = getString(
-                                    if (rolledBack) DesignR.string.aun_diagnostics_enable_error
-                                    else DesignR.string.aun_diagnostics_disable_error
-                                )
+                                if (rolledBack) telemetryEnabledState.value = false
+                                telemetrySaveUncertainState.value = !rolledBack
+                                telemetryWarningResState.value = if (rolledBack) {
+                                    DesignR.string.aun_diagnostics_enable_error
+                                } else {
+                                    DesignR.string.aun_diagnostics_disable_error
+                                }
                             }
                         } else {
                             telemetry.setConsent(TelemetryConsent.OFF)
-                            telemetryEnabled = false
-                            telemetryWarning = getString(DesignR.string.aun_diagnostics_enable_error)
+                            telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
                         }
                     } else {
                         val purged = telemetry.setConsent(TelemetryConsent.OFF)
                         val saved = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
-                        if (saved) {
-                            telemetryEnabled = false
-                        }
-                        telemetryWarning = when {
-                            !saved -> getString(DesignR.string.aun_diagnostics_disable_error)
-                            !purged -> getString(DesignR.string.aun_diagnostics_purge_warning)
+                        if (saved) telemetryEnabledState.value = false
+                        telemetrySaveUncertainState.value = !saved
+                        telemetryWarningResState.value = when {
+                            !saved -> DesignR.string.aun_diagnostics_disable_error
+                            !purged -> DesignR.string.aun_diagnostics_purge_warning
                             else -> null
                         }
                     }
@@ -94,23 +100,30 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "aun_tv_prefs"
         private const val KEY_TELEMETRY = "telemetry_enabled"
         private val telemetryLock = Any()
+        private val telemetryEnabledState = MutableStateFlow(false)
+        private val telemetrySaveUncertainState = MutableStateFlow(false)
+        private val telemetryWarningResState = MutableStateFlow<Int?>(null)
 
         @Volatile
         private var telemetryInstance: TelemetryService? = null
 
-        private fun getTelemetry(appContext: Context, initialEnabled: Boolean): TelemetryService =
+        private fun getTelemetry(appContext: Context, prefs: SharedPreferences): TelemetryService =
             telemetryInstance ?: synchronized(telemetryLock) {
-                telemetryInstance ?: CoreTelemetryService.createOrNull(
-                    appVersion = BuildConfig.VERSION_NAME,
-                    deviceClass = "tv",
-                    videosApiBaseUrl = BuildConfig.API_BASE_URL,
-                    userAgent = "AlUmmahNow-TV-Android/${BuildConfig.VERSION_NAME}",
-                    clientHeader = AunClient.value("tv", BuildConfig.VERSION_NAME),
-                    bufferPath = File(appContext.noBackupFilesDir, "tv-telemetry-buffer.json").absolutePath,
-                    initialEnabled = initialEnabled
-                ).also {
-                    telemetryInstance = it
-                    CoreTelemetryService.installUncaughtExceptionHandler(it)
+                telemetryInstance ?: run {
+                    val initialEnabled = prefs.getBoolean(KEY_TELEMETRY, false)
+                    telemetryEnabledState.value = initialEnabled
+                    CoreTelemetryService.createOrNull(
+                        appVersion = BuildConfig.VERSION_NAME,
+                        deviceClass = "tv",
+                        videosApiBaseUrl = BuildConfig.API_BASE_URL,
+                        userAgent = "AlUmmahNow-TV-Android/${BuildConfig.VERSION_NAME}",
+                        clientHeader = AunClient.value("tv", BuildConfig.VERSION_NAME),
+                        bufferPath = File(appContext.noBackupFilesDir, "tv-telemetry-buffer.json").absolutePath,
+                        initialEnabled = initialEnabled
+                    ).also {
+                        telemetryInstance = it
+                        CoreTelemetryService.installUncaughtExceptionHandler(it)
+                    }
                 }
             }
     }

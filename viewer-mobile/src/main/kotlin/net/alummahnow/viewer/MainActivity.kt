@@ -25,9 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.util.Consumer
@@ -213,7 +213,8 @@ internal fun ViewerNavHost(
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
     val telemetryEnabled by container.displayPrefs.telemetryEnabled.collectAsState()
     val telemetrySaveUncertain by container.displayPrefs.telemetrySaveUncertain.collectAsState()
-    var telemetryWarning by rememberSaveable { mutableStateOf<String?>(null) }
+    val telemetryWarningRes by container.displayPrefs.telemetryWarningRes.collectAsState()
+    val telemetryWarning = telemetryWarningRes?.let { stringResource(it) }
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabled) {
         if (telemetryEnabled) container.telemetry.flush()
@@ -362,29 +363,31 @@ internal fun ViewerNavHost(
                     if (container.telemetry.setConsent(TelemetryConsent.FULL)) {
                         if (container.displayPrefs.setTelemetryEnabled(true)) {
                             container.displayPrefs.setTelemetrySaveUncertain(false)
-                            telemetryWarning = null
+                            container.displayPrefs.setTelemetryWarningRes(null)
                         } else {
                             container.telemetry.setConsent(TelemetryConsent.OFF)
                             val rolledBack = container.displayPrefs.setTelemetryEnabled(false)
                             container.displayPrefs.setTelemetrySaveUncertain(!rolledBack)
-                            telemetryWarning = context.getString(
+                            container.displayPrefs.setTelemetryWarningRes(
                                 if (rolledBack) DesignR.string.aun_diagnostics_enable_error
                                 else DesignR.string.aun_diagnostics_disable_error
                             )
                         }
                     } else {
                         container.telemetry.setConsent(TelemetryConsent.OFF)
-                        telemetryWarning = context.getString(DesignR.string.aun_diagnostics_enable_error)
+                        container.displayPrefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
                     }
                 } else {
                     val purged = container.telemetry.setConsent(TelemetryConsent.OFF)
                     val saved = container.displayPrefs.setTelemetryEnabled(false)
                     container.displayPrefs.setTelemetrySaveUncertain(!saved)
-                    telemetryWarning = when {
-                        !saved -> context.getString(DesignR.string.aun_diagnostics_disable_error)
-                        !purged -> context.getString(DesignR.string.aun_diagnostics_purge_warning)
-                        else -> null
-                    }
+                    container.displayPrefs.setTelemetryWarningRes(
+                        when {
+                            !saved -> DesignR.string.aun_diagnostics_disable_error
+                            !purged -> DesignR.string.aun_diagnostics_purge_warning
+                            else -> null
+                        }
+                    )
                 }
             },
             onOpenBlockedList = {

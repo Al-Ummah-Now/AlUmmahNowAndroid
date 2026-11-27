@@ -363,8 +363,8 @@ class CoreTelemetryService(
         private val windowsPathRegex = Regex("""(?:(?<![\p{L}\p{N}])[A-Za-z]:[\\/]|\\\\)[^\r\n]+""", RegexOption.IGNORE_CASE)
         private val quotedSpacedRootPathRegex = Regex("""["']/[ \t]+[^\r\n]+""")
         private val unixPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<![A-Za-z][A-Za-z0-9+.-]{0,20}:)//+(?=[^\s/])|""" +
-                """/(?=[ \t]+(?:[^\r\n/]+/|[^\r\n]*\.[\p{L}\p{N}]{1,10}\b))|/(?=[^\s/]))[^\r\n]+"""
+            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<![A-Za-z][A-Za-z0-9+.-]{0,31}:)//+(?=[ \t]*[^\s/])|""" +
+                """/(?=[ \t]*[^\s/]))[^\r\n]+"""
         )
 
         /**

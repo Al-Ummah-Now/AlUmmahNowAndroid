@@ -2,6 +2,9 @@ package net.alummahnow.admin
 
 import android.content.Context
 import java.util.UUID
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Small per-device settings: the explicit Light/Dark choice, the app language and the push install id. No media, no
@@ -9,6 +12,9 @@ import java.util.UUID
  */
 class AdminPrefs(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
+    private val _telemetryEnabled = MutableStateFlow(prefs.getBoolean(KEY_TELEMETRY, false))
+    private val _telemetrySaveUncertain = MutableStateFlow(false)
+    private val _telemetryWarningRes = MutableStateFlow<Int?>(null)
 
     /** `true` dark, `false` light, `null` until the first explicit choice (then the device's setting applies). */
     var dark: Boolean?
@@ -29,15 +35,34 @@ class AdminPrefs(context: Context) {
         get() = prefs.getString(KEY_INSTALL, null) ?: UUID.randomUUID().toString().also { prefs.edit().putString(KEY_INSTALL, it).apply() }
 
     /** Opt-in diagnostics & crash reports. Always defaults to `false`. */
+    val telemetryEnabledFlow: StateFlow<Boolean> = _telemetryEnabled.asStateFlow()
+
+    /** Process-scoped flag kept true across Activity recreation when a preference commit failed. */
+    val telemetrySaveUncertain: StateFlow<Boolean> = _telemetrySaveUncertain.asStateFlow()
+
+    /** Process-scoped warning string resource id preserved across Activity recreation and new launches. */
+    val telemetryWarningRes: StateFlow<Int?> = _telemetryWarningRes.asStateFlow()
+
     var telemetryEnabled: Boolean
-        get() = prefs.getBoolean(KEY_TELEMETRY, false)
+        get() = _telemetryEnabled.value || _telemetrySaveUncertain.value
         set(value) {
             setTelemetryEnabled(value)
         }
 
     /** Persists telemetry preference synchronously and returns whether the write committed. */
-    fun setTelemetryEnabled(enabled: Boolean): Boolean =
-        prefs.edit().putBoolean(KEY_TELEMETRY, enabled).commit()
+    fun setTelemetryEnabled(enabled: Boolean): Boolean {
+        val committed = prefs.edit().putBoolean(KEY_TELEMETRY, enabled).commit()
+        if (committed) _telemetryEnabled.value = enabled
+        return committed
+    }
+
+    fun setTelemetrySaveUncertain(uncertain: Boolean) {
+        _telemetrySaveUncertain.value = uncertain
+    }
+
+    fun setTelemetryWarningRes(resId: Int?) {
+        _telemetryWarningRes.value = resId
+    }
 
     companion object {
         private const val NAME = "aun_admin_prefs"

@@ -252,8 +252,11 @@ private fun StaffHome(
     val notice by session.notice.collectAsStateWithLifecycle()
     val account by services.session.active.collectAsStateWithLifecycle()
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    var telemetryEnabled by remember { mutableStateOf(services.prefs.telemetryEnabled) }
-    var telemetryWarning by remember { mutableStateOf<String?>(null) }
+    val telemetryEnabledPref by services.prefs.telemetryEnabledFlow.collectAsStateWithLifecycle()
+    val telemetrySaveUncertain by services.prefs.telemetrySaveUncertain.collectAsStateWithLifecycle()
+    val telemetryWarningRes by services.prefs.telemetryWarningRes.collectAsStateWithLifecycle()
+    val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
+    val telemetryWarning = telemetryWarningRes?.let { stringResource(it) }
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     var reblurTick by remember { mutableLongStateOf(0L) }
     val queue: QueueViewModel =
@@ -398,31 +401,32 @@ private fun StaffHome(
                 if (enabled) {
                     if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
                         if (services.prefs.setTelemetryEnabled(true)) {
-                            telemetryEnabled = true
-                            telemetryWarning = null
+                            services.prefs.setTelemetrySaveUncertain(false)
+                            services.prefs.setTelemetryWarningRes(null)
                         } else {
                             services.telemetry.setConsent(TelemetryConsent.OFF)
                             val rolledBack = services.prefs.setTelemetryEnabled(false)
-                            telemetryEnabled = !rolledBack
-                            telemetryWarning = resources.getString(
+                            services.prefs.setTelemetrySaveUncertain(!rolledBack)
+                            services.prefs.setTelemetryWarningRes(
                                 if (rolledBack) DesignR.string.aun_diagnostics_enable_error
                                 else DesignR.string.aun_diagnostics_disable_error
                             )
                         }
                     } else {
                         services.telemetry.setConsent(TelemetryConsent.OFF)
-                        telemetryEnabled = false
-                        telemetryWarning = resources.getString(DesignR.string.aun_diagnostics_enable_error)
+                        services.prefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
                     }
                 } else {
                     val purged = services.telemetry.setConsent(TelemetryConsent.OFF)
-                    if (!services.prefs.setTelemetryEnabled(false)) {
-                        telemetryEnabled = true
-                        telemetryWarning = resources.getString(DesignR.string.aun_diagnostics_disable_error)
-                    } else {
-                        telemetryEnabled = false
-                        telemetryWarning = if (purged) null else resources.getString(DesignR.string.aun_diagnostics_purge_warning)
-                    }
+                    val saved = services.prefs.setTelemetryEnabled(false)
+                    services.prefs.setTelemetrySaveUncertain(!saved)
+                    services.prefs.setTelemetryWarningRes(
+                        when {
+                            !saved -> DesignR.string.aun_diagnostics_disable_error
+                            !purged -> DesignR.string.aun_diagnostics_purge_warning
+                            else -> null
+                        }
+                    )
                 }
             }
         )
