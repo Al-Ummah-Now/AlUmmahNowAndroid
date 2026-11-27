@@ -908,7 +908,8 @@ class CoreTelemetryService(
                     val (url, baseTail) = cont.formatVaultedUrl(span, text, inSingleQuote)
                     val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
                     val rawUrl = text.substring(span.start, span.baseEnd)
-                    val extended = cont.extendUrlContinuation(text, span, rawUrl, baseTail, contLimits)
+                    val contInput = CoreTelemetryUrlContinuation.ContinuationInput(span, rawUrl, baseTail, inSingleQuote)
+                    val extended = cont.extendUrlContinuation(text, contInput, contLimits)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, span.start)
                     val finalTail: String

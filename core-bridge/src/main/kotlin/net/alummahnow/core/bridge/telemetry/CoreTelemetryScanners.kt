@@ -190,12 +190,15 @@ internal object CoreTelemetryScanners {
             ch in "([{" -> pushGroupOpener(text, p, openPositions, openChars, openBraces)
             ch in ")]}" -> popGroupCloser(p, ch, openPositions, openChars, openBraces)
             openBraces[0] > 0 && !isBraceTemplateChar(ch) -> -1
-            openChars.isNotEmpty() && (ch == ':' || ch == '\'') -> -1
+            openChars.isNotEmpty() && isRejectedInsideUrlGroup(text, p, ch) -> -1
             else -> p + 1
         }
     }
 
     private fun isBraceTemplateChar(ch: Char): Boolean = isAsciiAlphaNum(ch) || ch == '_' || ch == '-'
+
+    private fun isRejectedInsideUrlGroup(text: String, p: Int, ch: Char): Boolean =
+        ch == ':' || (ch == '\'' && (p == 0 || !isAsciiAlphaNum(text[p - 1])))
 
     private fun pushGroupOpener(
         text: String,
@@ -244,11 +247,13 @@ internal object CoreTelemetryScanners {
     internal class ContScanState(
         val allowDoubleQuotes: Boolean,
         val allowSingleQuotes: Boolean,
+        val outerQuote: Char,
         val stopAtSchemes: Boolean
     ) {
         val groupStack = ArrayList<Char>()
         var quoteChar: Char = '\u0000'
         var sawInnerQf = false
+        var sawNestedOuterQuote = false
     }
 
     fun scanUrlContinuation(text: String, start: Int, state: ContScanState): Int {
@@ -277,18 +282,33 @@ internal object CoreTelemetryScanners {
 
     private fun stepUnquotedContinuation(text: String, p: Int, start: Int, state: ContScanState): Int {
         val ch = text[p]
-        val startsScheme = state.stopAtSchemes && p > start && !isBlockedBeforeScheme(text[p - 1]) && isUrlSchemeAt(text, p)
+        val stopScheme = state.stopAtSchemes || state.sawNestedOuterQuote
+        val startsScheme = stopScheme && p > start && !isBlockedBeforeScheme(text[p - 1]) && isUrlSchemeAt(text, p)
         if (isContStopChar(text, p, ch) || startsScheme) return -1
-        if (ch == '"' || ch == '\'') {
-            val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
-            if (allowed && state.groupStack.isNotEmpty()) {
-                state.quoteChar = ch
-                return p + 1
-            }
-            return if (ch == '"') -1 else p + 1
-        }
+        if (ch == '"' || ch == '\'') return stepUnquotedQuoteChar(text, p, start, state)
         updateContGroupStack(ch, state.groupStack)
         return p + 1
+    }
+
+    private fun stepUnquotedQuoteChar(text: String, p: Int, start: Int, state: ContScanState): Int {
+        val ch = text[p]
+        if (ch == '\'' && CoreTelemetryUrlContinuation.isContractionApostrophe(text, p)) return p + 1
+        if (canOpenContinuationQuote(text, p, start, state)) {
+            state.quoteChar = ch
+            if (ch == state.outerQuote) state.sawNestedOuterQuote = true
+            return p + 1
+        }
+        val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
+        val stopsOuter = ch == state.outerQuote && (state.groupStack.isEmpty() || !allowed || state.sawNestedOuterQuote)
+        return if (ch == '"' || stopsOuter) -1 else p + 1
+    }
+
+    private fun canOpenContinuationQuote(text: String, p: Int, start: Int, state: ContScanState): Boolean {
+        val ch = text[p]
+        val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
+        if (!allowed || state.groupStack.isEmpty()) return false
+        val afterNonAlphaNum = p > start && !isAsciiAlphaNum(text[p - 1])
+        return if (ch == '"') state.outerQuote != '"' || afterNonAlphaNum else afterNonAlphaNum
     }
 
     private fun updateContGroupStack(ch: Char, stack: ArrayList<Char>) {
@@ -319,7 +339,8 @@ internal object CoreTelemetryScanners {
         quoteFlags: Int
     ): Int {
         val excess = countExcessGroupClosers(text, urlStart, scanEnd, quoteFlags)
-        val precededByQuote = urlStart > 0 && text[urlStart - 1] == '\''
+        val inSingleQuote = (quoteFlags and 4) != 0
+        val precededByQuote = inSingleQuote || (urlStart > 0 && text[urlStart - 1] == '\'')
         var end = scanEnd
         while (end > minEnd && consumeTrailingWebhookCloser(text[end - 1], precededByQuote, excess)) {
             end--
@@ -329,8 +350,6 @@ internal object CoreTelemetryScanners {
 
     private fun countExcessGroupClosers(text: String, start: Int, end: Int, quoteFlags: Int): IntArray {
         val excess = IntArray(4)
-        val allowDouble = (quoteFlags and 1) != 0
-        val allowSingle = (quoteFlags and 2) != 0
         var quoteChar = '\u0000'
         var i = start
         while (i < end) {
@@ -343,12 +362,23 @@ internal object CoreTelemetryScanners {
                     i++
                 }
             } else {
-                val openQuote = excess[3] > 0 && ((ch == '"' && allowDouble) || (ch == '\'' && allowSingle))
-                if (openQuote) quoteChar = ch else tallyGroupCloser(ch, excess)
+                if (canOpenCloserQuote(text, i, start, excess[3], quoteFlags)) quoteChar = ch else tallyGroupCloser(ch, excess)
                 i++
             }
         }
         return excess
+    }
+
+    private fun canOpenCloserQuote(text: String, i: Int, start: Int, openGroups: Int, quoteFlags: Int): Boolean {
+        if (openGroups <= 0) return false
+        val ch = text[i]
+        val afterNonAlphaNum = i > start && !isAsciiAlphaNum(text[i - 1])
+        val outerDouble = (quoteFlags and 8) != 0
+        return when (ch) {
+            '"' -> (quoteFlags and 1) != 0 && (!outerDouble || afterNonAlphaNum)
+            '\'' -> (quoteFlags and 2) != 0 && afterNonAlphaNum
+            else -> false
+        }
     }
 
     private fun tallyGroupCloser(ch: Char, excess: IntArray) {

@@ -71,4 +71,58 @@ class CoreTelemetryUrlContinuationTest {
         val repeatedEquals = List(500) { "https://a.test/x{a:\"https://b.test/x\"}" }.joinToString("=")
         assertEquals(repeatedEquals, CoreTelemetryService.sanitizeLocalPaths(repeatedEquals))
     }
+
+    @Test
+    fun `sanitizeLocalPaths handles outer quoted nested webhooks apostrophes and unclosed quote fallback`() {
+        assertEquals(
+            "'https://example.test/webhook/[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths("'https://example.test/webhook/fakeToken('a)first opaqueSecret123')'")
+        )
+        assertEquals(
+            "\"https://example.test/webhook/[redacted]\"",
+            CoreTelemetryService.sanitizeLocalPaths("\"https://example.test/webhook/fakeToken(\"a)first opaqueSecret123\")\"")
+        )
+        assertEquals(
+            "https://example.test/wiki/Writer_(O'Reilly)?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/wiki/Writer_(O'Reilly)?private=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.test/wiki/(Writers')?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/wiki/(Writers')?private=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.test/wiki/('unclosed)?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/wiki/('unclosed)?private=opaqueSecret123")
+        )
+        assertEquals(
+            "'see https://example.com/api{tag:\"value\"}?[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths("'see https://example.com/api{tag:\"value\"}?outer=value'")
+        )
+        assertEquals(
+            "https://example.com/api{url:\"see https://other.com/webhook/[redacted]\"}?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "https://example.com/api{url:\"see https://other.com/webhook/fakeToken('a)first opaqueSecret123')\"}?outer=value"
+            )
+        )
+        assertEquals(
+            "https://example.com/api{url:\"see https://other.com/webhook/[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "https://example.com/api{url:\"see https://other.com/webhook/fakeToken('a)first opaqueSecret123')\"}"
+            )
+        )
+        assertEquals(
+            "{'a':'https://example.test/webhook/[redacted]','b':'public-text'}",
+            CoreTelemetryService.sanitizeLocalPaths("{'a':'https://example.test/webhook/fakeToken(','b':'public-text'}")
+        )
+        assertEquals(
+            "{\"a\":\"https://example.test/webhook/[redacted]\",\"b\":\"public-text\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"a\":\"https://example.test/webhook/fakeToken(\",\"b\":\"public-text\"}")
+        )
+        assertEquals(
+            "['https://a.test/webhook/[redacted]','https://other.com/webhook/[redacted]']",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "['https://a.test/webhook/tok(','https://other.com/webhook/tok2('x)secret')']"
+            )
+        )
+    }
 }

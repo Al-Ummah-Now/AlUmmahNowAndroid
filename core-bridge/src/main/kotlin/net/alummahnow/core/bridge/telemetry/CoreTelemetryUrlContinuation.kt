@@ -15,10 +15,15 @@ internal object CoreTelemetryUrlContinuation {
         val endPos: Int
     )
 
-    private class ContinuationContext(
+    internal class ContinuationInput(
         val span: CoreTelemetryScanners.UrlSpan,
         val rawUrl: String,
         val baseTail: String,
+        val inSingleQuote: Boolean
+    )
+
+    private class ContinuationContext(
+        val input: ContinuationInput,
         val webhookProbe: String?,
         val quoteFlags: Int,
         val pathEnd: Int
@@ -55,31 +60,68 @@ internal object CoreTelemetryUrlContinuation {
 
     fun extendUrlContinuation(
         text: String,
-        span: CoreTelemetryScanners.UrlSpan,
-        rawUrl: String,
-        baseTail: String,
+        input: ContinuationInput,
         contLimits: IntArray
     ): UrlContinuationResult? {
-        val eligible = !span.hasQf && span.totalEnd >= contLimits[0] && span.totalEnd < text.length
-        if (!eligible || text[span.totalEnd] !in ",([]){}") return null
-        val allowDouble = canOpenContinuationQuote(text, span, contLimits[1], '"')
-        val allowSingle = canOpenContinuationQuote(text, span, contLimits[2], '\'')
-        val webhookProbe = probeWebhookPrefix(rawUrl)
-        val scanState = CoreTelemetryScanners.ContScanState(allowDouble, allowSingle, webhookProbe == null)
-        val pathEnd = CoreTelemetryScanners.scanUrlContinuation(text, span.totalEnd, scanState)
-        val quoteFlags = (if (allowDouble) 1 else 0) or (if (allowSingle) 2 else 0)
-        val ctx = ContinuationContext(span, rawUrl, baseTail, webhookProbe, quoteFlags, pathEnd)
+        val span = input.span
+        if (span.hasQf || span.totalEnd >= text.length || text[span.totalEnd] !in ",([]){}") return null
+        val webhookProbe = probeWebhookPrefix(input.rawUrl)
+        if (webhookProbe == null && span.totalEnd < contLimits[0]) return null
+        val outerQuote = resolveOuterQuote(text, span.start, input.inSingleQuote)
+        val initial = CoreTelemetryScanners.ContScanState(
+            span.totalEnd >= contLimits[1],
+            span.totalEnd >= contLimits[2],
+            outerQuote,
+            webhookProbe == null
+        )
+        val (scanState, pathEnd) = scanWithUnclosedFallback(text, span.totalEnd, webhookProbe, initial, contLimits)
+        val quoteFlags = buildQuoteFlags(scanState, input.inSingleQuote)
+        val ctx = ContinuationContext(input, webhookProbe, quoteFlags, pathEnd)
         val result = extendUrlContinuationQuery(text, ctx) ?: extendUrlContinuationSecret(text, ctx)
         if (result == null) recordFailedContinuation(scanState, pathEnd, contLimits)
         return result
     }
 
-    private fun canOpenContinuationQuote(
+    private fun resolveOuterQuote(text: String, spanStart: Int, inSingleQuote: Boolean): Char = when {
+        inSingleQuote || (spanStart > 0 && text[spanStart - 1] == '\'') -> '\''
+        spanStart > 0 && text[spanStart - 1] == '"' -> '"'
+        else -> '\u0000'
+    }
+
+    private fun buildQuoteFlags(state: CoreTelemetryScanners.ContScanState, inSingleQuote: Boolean): Int {
+        var flags = 0
+        if (state.allowDoubleQuotes) flags = flags or 1
+        if (state.allowSingleQuotes) flags = flags or 2
+        if (inSingleQuote) flags = flags or 4
+        if (state.outerQuote == '"') flags = flags or 8
+        return flags
+    }
+
+    private fun scanWithUnclosedFallback(
         text: String,
-        span: CoreTelemetryScanners.UrlSpan,
-        unclosedLimit: Int,
-        quote: Char
-    ): Boolean = span.totalEnd >= unclosedLimit && !(span.start > 0 && text[span.start - 1] == quote)
+        start: Int,
+        webhookProbe: String?,
+        state: CoreTelemetryScanners.ContScanState,
+        contLimits: IntArray
+    ): Pair<CoreTelemetryScanners.ContScanState, Int> {
+        val firstEnd = CoreTelemetryScanners.scanUrlContinuation(text, start, state)
+        val hitsQf = firstEnd > start && firstEnd < text.length && (text[firstEnd] == '?' || text[firstEnd] == '#')
+        val retryQuote = when {
+            state.quoteChar != '\u0000' && (state.quoteChar == state.outerQuote || (webhookProbe == null && !hitsQf)) ->
+                state.quoteChar
+            state.sawNestedOuterQuote && state.groupStack.isNotEmpty() -> state.outerQuote
+            else -> '\u0000'
+        }
+        if (retryQuote == '\u0000') return state to firstEnd
+        recordUnclosedQuote(retryQuote, firstEnd, contLimits)
+        val nextState = CoreTelemetryScanners.ContScanState(
+            if (retryQuote == '"') false else state.allowDoubleQuotes,
+            if (retryQuote == '\'') false else state.allowSingleQuotes,
+            state.outerQuote,
+            state.stopAtSchemes
+        )
+        return nextState to CoreTelemetryScanners.scanUrlContinuation(text, start, nextState)
+    }
 
     private fun probeWebhookPrefix(rawUrl: String): String? {
         val probeInput = "${rawUrl}x"
@@ -87,61 +129,99 @@ internal object CoreTelemetryUrlContinuation {
         return if (probe != probeInput && probe.endsWith("[redacted]")) probe else null
     }
 
+    private fun recordUnclosedQuote(quoteChar: Char, pathEnd: Int, contLimits: IntArray) {
+        if (quoteChar == '"' && pathEnd > contLimits[1]) contLimits[1] = pathEnd
+        if (quoteChar == '\'' && pathEnd > contLimits[2]) contLimits[2] = pathEnd
+    }
+
     private fun recordFailedContinuation(
         state: CoreTelemetryScanners.ContScanState,
         pathEnd: Int,
         contLimits: IntArray
     ) {
-        if (state.quoteChar == '"' && pathEnd > contLimits[1]) contLimits[1] = pathEnd
-        if (state.quoteChar == '\'' && pathEnd > contLimits[2]) contLimits[2] = pathEnd
+        recordUnclosedQuote(state.quoteChar, pathEnd, contLimits)
         if (!state.sawInnerQf && pathEnd > contLimits[0]) contLimits[0] = pathEnd
     }
 
     private fun extendUrlContinuationQuery(text: String, ctx: ContinuationContext): UrlContinuationResult? {
-        val hasNext = ctx.pathEnd > ctx.span.totalEnd && ctx.pathEnd < text.length
+        val span = ctx.input.span
+        val hasNext = ctx.pathEnd > span.totalEnd && ctx.pathEnd < text.length
         if (!hasNext || (text[ctx.pathEnd] != '?' && text[ctx.pathEnd] != '#')) return null
         val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, ctx.pathEnd)
-        val (cleanQf, qfTail) = trimQueryOrFragmentDelimiters(text.substring(ctx.pathEnd, qfEnd), text, ctx.span.start)
+        val (cleanQf, qfTail) = trimQueryOrFragmentDelimiters(
+            text.substring(ctx.pathEnd, qfEnd),
+            text,
+            span.start,
+            ctx.input.inSingleQuote
+        )
         val qfToken = "${cleanQf.first()}[redacted]"
         if (ctx.webhookProbe != null) {
             return UrlContinuationResult(true, "${ctx.webhookProbe}$qfToken", false, "", "", qfTail, qfEnd)
         }
-        val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(ctx.rawUrl)
-        val prefixRedacted = CoreTelemetryScanners.redactUrlPathSecrets(text.substring(ctx.span.start, ctx.pathEnd))
+        val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(ctx.input.rawUrl)
+        val prefixRedacted = redactOuterContinuationPrefix(text, span, ctx.pathEnd)
         val swallowed = prefixRedacted == baseRedacted || prefixRedacted == "$baseRedacted[redacted]"
         return if (swallowed) {
             UrlContinuationResult(true, "$prefixRedacted$qfToken", false, "", "", qfTail, qfEnd)
         } else {
-            val middle = extractContinuationMiddle(prefixRedacted, baseRedacted, text, ctx.span.totalEnd, ctx.pathEnd)
-            val keepTail = ctx.baseTail.isNotEmpty() && baseRedacted.endsWith(ctx.baseTail)
+            val middle = extractContinuationMiddle(prefixRedacted, baseRedacted, text, span.totalEnd, ctx.pathEnd)
+            val keepTail = ctx.input.baseTail.isNotEmpty() && baseRedacted.endsWith(ctx.input.baseTail)
             UrlContinuationResult(false, "", keepTail, middle, qfToken, qfTail, qfEnd)
         }
     }
 
     private fun extendUrlContinuationSecret(text: String, ctx: ContinuationContext): UrlContinuationResult? {
+        val span = ctx.input.span
         val end = CoreTelemetryScanners.trimWebhookContinuationEnd(
             text,
-            ctx.span.start,
-            ctx.span.totalEnd,
+            span.start,
+            span.totalEnd,
             ctx.pathEnd,
             ctx.quoteFlags
         )
-        if (end <= ctx.span.totalEnd) return null
+        if (end <= span.totalEnd) return null
         val extTail = text.substring(end, ctx.pathEnd)
         if (ctx.webhookProbe != null) {
             return UrlContinuationResult(true, ctx.webhookProbe, false, "", "", extTail, ctx.pathEnd)
         }
-        val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(ctx.rawUrl)
-        val extRedacted = CoreTelemetryScanners.redactUrlPathSecrets(text.substring(ctx.span.start, end))
-        if (extRedacted == "$baseRedacted${text.substring(ctx.span.totalEnd, end)}") return null
+        val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(ctx.input.rawUrl)
+        val extRedacted = redactOuterContinuationPrefix(text, span, end)
+        if (extRedacted == "$baseRedacted${text.substring(span.totalEnd, end)}") return null
         val swallowed = extRedacted == baseRedacted || extRedacted == "$baseRedacted[redacted]"
         return if (swallowed) {
             UrlContinuationResult(true, extRedacted, false, "", "", extTail, ctx.pathEnd)
         } else {
-            val middle = extractContinuationMiddle(extRedacted, baseRedacted, text, ctx.span.totalEnd, end)
-            val keepTail = ctx.baseTail.isNotEmpty() && baseRedacted.endsWith(ctx.baseTail)
+            val middle = extractContinuationMiddle(extRedacted, baseRedacted, text, span.totalEnd, end)
+            val keepTail = ctx.input.baseTail.isNotEmpty() && baseRedacted.endsWith(ctx.input.baseTail)
             UrlContinuationResult(false, "", keepTail, middle, "", extTail, ctx.pathEnd)
         }
+    }
+
+    private fun redactOuterContinuationPrefix(
+        text: String,
+        span: CoreTelemetryScanners.UrlSpan,
+        sliceEnd: Int
+    ): String {
+        val nestedStart = findFirstNestedUrlStart(text, span.totalEnd, sliceEnd)
+        if (nestedStart < 0) return CoreTelemetryScanners.redactUrlPathSecrets(text.substring(span.start, sliceEnd))
+        val prefix = text.substring(span.start, nestedStart)
+        val probe = CoreTelemetryScanners.redactUrlPathSecrets("${prefix}x")
+        if (probe != "${prefix}x" && probe.endsWith("[redacted]")) {
+            return CoreTelemetryScanners.redactUrlPathSecrets(text.substring(span.start, sliceEnd))
+        }
+        return CoreTelemetryScanners.redactUrlPathSecrets(prefix) + text.substring(nestedStart, sliceEnd)
+    }
+
+    private fun findFirstNestedUrlStart(text: String, from: Int, to: Int): Int {
+        var search = from
+        while (search < to) {
+            val sep = text.indexOf("://", search)
+            if (sep < 0 || sep >= to) return -1
+            val start = CoreTelemetryScanners.findNonFileSchemeStart(text, sep, from)
+            if (start != null) return start
+            search = sep + 3
+        }
+        return -1
     }
 
     private fun extractContinuationMiddle(
@@ -176,7 +256,7 @@ internal object CoreTelemetryUrlContinuation {
         return open
     }
 
-    private fun isContractionApostrophe(text: String, pos: Int): Boolean =
+    fun isContractionApostrophe(text: String, pos: Int): Boolean =
         pos > 0 && pos + 1 < text.length && text[pos - 1].isLetterOrDigit() && text[pos + 1].isLetterOrDigit()
 
     fun formatVaultedUrl(
