@@ -319,6 +319,27 @@ class CoreTelemetryServiceTest {
             "input'[redacted-path]",
             CoreTelemetryService.sanitizeLocalPaths("input'/tmp/O' Connor Private https://private.example/Acquisition.mov")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts internationalized emails and quoted parenthesized paths`() {
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("'relative/Artists' Private (https://private.example/Acquisition.mov)'")
+                .contains("private.example")
+        )
+        assertEquals("'([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'(/tmp/Client) Acquisition Plan'"))
+        assertEquals("' ([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("' (/tmp/Client) Acquisition Plan'"))
+        assertEquals("\" ([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("\" (/tmp/Client) Acquisition Plan\""))
+        assertEquals("\"My ([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("\"My (/tmp/Client) Acquisition Plan\""))
+        assertEquals("\"([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("\"(relative/Client) Acquisition Plan\""))
+        assertEquals(
+            "Failed for [redacted-email], [redacted-email], [redacted-email], 「[redacted-email]」, " +
+                "[redacted-email], [redacted-email], [redacted-email], [redacted-email], '[redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "Failed for 李@example.com, محمد@مثال.مصر, user@bücher.example, 「李·明@例え.jp」, " +
+                    "李@例え.xn--p1ai, 李!明@example.com, mary'ann@example.com, 李·明@example.com, 'o'brien@example.com"
+            )
+        )
         assertEquals(
             "status 'ready' (https://example.com/api)",
             CoreTelemetryService.sanitizeLocalPaths("status 'ready' (https://example.com/api)")

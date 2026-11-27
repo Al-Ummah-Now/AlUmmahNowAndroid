@@ -390,13 +390,15 @@ class CoreTelemetryService(
             """\b(?:$IO_KEYWORD_VERBS)\b(?:[ \t\p{Zs}]*[:=][ \t\p{Zs}]*|[ \t\p{Zs}]+)""",
             RegexOption.IGNORE_CASE
         )
-        private val preKeywordPathRules: List<Pair<Regex, String>> = listOf(
-            Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
+        private val parenPathRegexes: List<Regex> = listOf(
+            Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE),
             Regex(
                 """(\()(?![ \t]*(?:HTTP|TLS|SSL)/\d)(?![ \t]*\d+/\d+[.,;:!?\s]*\))""" +
                     """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^()\r\n\u001E]+(\))""",
                 RegexOption.IGNORE_CASE
-            ) to "$1[redacted-path]$2",
+            )
+        )
+        private val preKeywordPathRules: List<Pair<Regex, String>> = listOf(
             Regex(
                 """(?:[A-Za-z]:[\\/]|\\\\)[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]""" +
                     """(?:[^\r\n\u001E]*[^\r\n\u001E\s\p{Zs}])?""",
@@ -520,6 +522,9 @@ class CoreTelemetryService(
             val (escaped, hadSentinels) = escapeSentinels(text)
             val (vaulted, vaultedUrls) = vaultNonFileUrls(escaped, VAULT_PREFIX)
             var scrubbed = redactFileUris(vaulted, VAULT_PREFIX)
+            for (regex in parenPathRegexes) {
+                scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
+            }
             for ((regex, template) in preKeywordPathRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
@@ -711,6 +716,7 @@ class CoreTelemetryService(
             private fun handleClosingQuote(text: String, ch: Char): Boolean {
                 if (escapedBackslash || openQuote == '\u0000' || ch != openQuote) return false
                 if (isInnerApostrophe(text, cursor, ch)) return false
+                promoteTokenPath(text)
                 if (ch == '\'' && hasPathOnLine) {
                     // Single-quoted paths may contain unescaped apostrophes; fail closed on this line.
                     escapedBackslash = false

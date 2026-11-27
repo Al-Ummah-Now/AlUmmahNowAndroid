@@ -12,7 +12,15 @@ internal object CoreTelemetryScanners {
     private const val SCHEME_SEP_LEN = 3
     private const val ENCODED_AT_LEN = 3
     private const val MIN_TLD_LEN = 2
-    private const val EMAIL_LOCAL_PUNCT = "._+-"
+    private const val MIN_PUNYCODE_TLD_LEN = 6
+    private const val EMAIL_LOCAL_PUNCT = "._+-!#$&'*^`{|}~"
+    private const val NON_ASCII_EMAIL_STOPS = "\u3001\u3002\uFF0C\uFF1B\uFF1A\u060C\u061B"
+    private val NON_ASCII_EMAIL_STOP_CATEGORIES = setOf(
+        Character.START_PUNCTUATION,
+        Character.END_PUNCTUATION,
+        Character.INITIAL_QUOTE_PUNCTUATION,
+        Character.FINAL_QUOTE_PUNCTUATION
+    )
     private const val URL_HOST_PUNCT = "._~!$&'*+;=-"
     private const val URL_PATH_STOP = "\"<>\\{},?#\r\n"
     private const val URL_END_BOUNDARY = "\"'<>\\{},;()[]"
@@ -349,34 +357,120 @@ internal object CoreTelemetryScanners {
     private fun scanEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
         var localStart = atPos
         while (localStart > minPos && isEmailLocalChar(text, localStart - 1)) localStart--
+        while (localStart < atPos && text[localStart] in "'{}") localStart++
         return localStart
+    }
+
+    private fun isUnicodeCombiningMark(ch: Char): Boolean {
+        val type = Character.getType(ch)
+        return type == Character.NON_SPACING_MARK.toInt() ||
+            type == Character.COMBINING_SPACING_MARK.toInt() ||
+            type == Character.ENCLOSING_MARK.toInt()
+    }
+
+    private fun isNonAsciiEmailLocalChar(ch: Char): Boolean {
+        if (ch.code < 0x80) return false
+        if (ch.isSurrogate()) return true
+        val blocked = isSpace(ch) || Character.isISOControl(ch) || ch in NON_ASCII_EMAIL_STOPS
+        return !blocked && Character.getType(ch).toByte() !in NON_ASCII_EMAIL_STOP_CATEGORIES
     }
 
     private fun isEmailLocalChar(text: String, pos: Int): Boolean {
         val ch = text[pos]
-        if (isAsciiAlphaNum(ch) || ch in EMAIL_LOCAL_PUNCT) return true
-        return ch == '%' && !isEncodedAt(text, pos)
+        val isWordOrPunct = isAsciiAlphaNum(ch) || ch in EMAIL_LOCAL_PUNCT || isNonAsciiEmailLocalChar(ch)
+        return isWordOrPunct || (ch == '%' && !isEncodedAt(text, pos))
+    }
+
+    private fun isEmailDomainLetter(ch: Char): Boolean = ch.isLetter() || isUnicodeCombiningMark(ch) || ch.isSurrogate()
+
+    private fun isEmailBoundaryBlocked(ch: Char): Boolean = ch.isLetterOrDigit() || ch == '_' || isUnicodeCombiningMark(ch)
+
+    fun replaceUnquotedParenPaths(text: String, regex: Regex): String {
+        if (text.indexOf('(') < 0) return text
+        val state = QuoteCursorState()
+        return regex.replace(text) { match ->
+            state.advanceTo(text, match.range.first)
+            if (state.openQuote != '\u0000') match.value else "([redacted-path])"
+        }
+    }
+
+    private class QuoteCursorState {
+        var cursor = 0
+        var openQuote = '\u0000'
+        var escapedBackslash = false
+
+        fun advanceTo(text: String, target: Int) {
+            while (cursor < target) {
+                step(text, text[cursor])
+                cursor++
+            }
+        }
+
+        private fun step(text: String, ch: Char) {
+            when {
+                ch == '\r' || ch == '\n' -> {
+                    openQuote = '\u0000'
+                    escapedBackslash = false
+                    return
+                }
+                isClosingQuote(text, ch) -> openQuote = '\u0000'
+                isOpeningQuote(text, ch) -> openQuote = ch
+            }
+            escapedBackslash = ch == '\\' && !escapedBackslash
+        }
+
+        private fun isClosingQuote(text: String, ch: Char): Boolean {
+            if (escapedBackslash || openQuote == '\u0000' || ch != openQuote) return false
+            val hasNeighbors = ch == '\'' && cursor > 0 && cursor + 1 < text.length
+            val isInnerApos = hasNeighbors && text[cursor - 1].isLetterOrDigit() && text[cursor + 1].isLetter()
+            return !isInnerApos
+        }
+
+        private fun isOpeningQuote(text: String, ch: Char): Boolean {
+            if (escapedBackslash || openQuote != '\u0000') return false
+            return ch == '"' || (ch == '\'' && (cursor == 0 || !text[cursor - 1].isLetterOrDigit()))
+        }
+    }
+
+    private fun countsAsTldLetter(ch: Char): Boolean = !isUnicodeCombiningMark(ch) && !ch.isLowSurrogate()
+
+    private fun isPunycodeTld(text: String, tldStart: Int, tldEnd: Int, allAscii: Boolean): Boolean {
+        val validLen = allAscii && tldEnd - tldStart >= MIN_PUNYCODE_TLD_LEN
+        return validLen && text.regionMatches(tldStart, "xn--", 0, 4, ignoreCase = true) && isAsciiAlphaNum(text[tldEnd - 1])
+    }
+
+    private fun isValidTldEnd(text: String, domStart: Int, lastDot: Int, k: Int, lettersSinceDot: Int, allAscii: Boolean): Boolean {
+        if (lastDot <= domStart) return false
+        val tldOk = lettersSinceDot >= MIN_TLD_LEN || isPunycodeTld(text, lastDot + 1, k, allAscii)
+        return tldOk && (k == text.length || !isEmailBoundaryBlocked(text[k]))
     }
 
     private fun findEmailDomainEnd(text: String, domStart: Int): Int {
         var k = domStart
         var lastDot = -1
         var lettersSinceDot = 0
+        var tldAllAscii = true
         var bestEnd = -1
         while (k < text.length) {
             val ch = text[k]
             when {
-                isAsciiLetter(ch) -> lettersSinceDot = if (lastDot >= 0) lettersSinceDot + 1 else 0
+                isEmailDomainLetter(ch) -> {
+                    if (ch.code >= 0x80) tldAllAscii = false
+                    if (lastDot >= 0 && lettersSinceDot >= 0 && countsAsTldLetter(ch)) lettersSinceDot++
+                }
                 ch == '.' -> {
                     lastDot = if (k > domStart) k else -1
                     lettersSinceDot = 0
+                    tldAllAscii = true
                 }
-                ch in '0'..'9' || ch == '-' -> lettersSinceDot = -1
+                ch.isDigit() || ch == '-' -> {
+                    if (ch.code >= 0x80) tldAllAscii = false
+                    lettersSinceDot = -1
+                }
                 else -> break
             }
             k++
-            val atBoundary = k == text.length || !isAsciiWordChar(text[k])
-            if (lastDot > domStart && lettersSinceDot >= MIN_TLD_LEN && atBoundary) bestEnd = k
+            if (isValidTldEnd(text, domStart, lastDot, k, lettersSinceDot, tldAllAscii)) bestEnd = k
         }
         return bestEnd
     }
