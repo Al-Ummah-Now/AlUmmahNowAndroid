@@ -621,7 +621,8 @@ class CoreTelemetryService(
             }
 
             private fun processLineChar(text: String, ch: Char) {
-                if (pathQuote != '\u0000' && ch == pathQuote && !escapedBackslash) {
+                val closedQuote = !escapedBackslash && isClosingQuoteChar(text, ch)
+                if (closedQuote) {
                     resetLineState()
                     return
                 }
@@ -632,6 +633,11 @@ class CoreTelemetryService(
                 }
                 updateRunState(text, ch)
                 escapedBackslash = if (ch == '\\') !escapedBackslash else false
+            }
+
+            private fun isClosingQuoteChar(text: String, ch: Char): Boolean {
+                if (pathQuote != '\u0000' && ch == pathQuote) return true
+                return !inWrapperRun && tokenStart > 0 && (ch == '"' || ch == '\'') && text[tokenStart - 1] == ch
             }
 
             private fun captureOpeningQuote(text: String, pos: Int) {
@@ -688,15 +694,19 @@ class CoreTelemetryService(
             if (start < 0 || end <= start) return false
             val token = text.substring(start, end)
             val slashIdx = token.indexOf('/')
-            val singleSlash = slashIdx > 0 && slashIdx + 1 < token.length &&
-                !token.contains('\\') && token.indexOf('/', slashIdx + 1) < 0
-            if (!singleSlash) return false
+            if (slashIdx <= 0 || slashIdx + 1 >= token.length || token.contains('\\')) return false
+            if (token.indexOf('/', slashIdx + 1) >= 0) return false
             val before = token.substring(0, slashIdx)
             val after = token.substring(slashIdx + 1)
-            val isProto = after[0] in '0'..'9' && before.uppercase(Locale.ROOT).let {
-                it == "HTTP" || it == "TLS" || it == "SSL"
-            }
-            return isProto || (before.all { it in '0'..'9' } && after.all { it in '0'..'9' })
+            if (isProtocolPair(before, after)) return true
+            val quoted = start > 0 && (text[start - 1] == '"' || text[start - 1] == '\'')
+            return !quoted && before.all { it in '0'..'9' } && after.all { it in '0'..'9' }
+        }
+
+        private fun isProtocolPair(before: String, after: String): Boolean {
+            if (after[0] !in '0'..'9') return false
+            val upper = before.uppercase(Locale.ROOT)
+            return upper == "HTTP" || upper == "TLS" || upper == "SSL"
         }
 
         private fun isFileSchemeAt(text: String, pos: Int): Boolean {

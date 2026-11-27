@@ -271,6 +271,10 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("progress 1/2 (https://example.com/api)")
                 .contains("https://example.com/api")
         )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening \"1/2 (https://private.example/Acquisition.mov)\"")
+                .contains("private.example")
+        )
     }
 
     @Test
