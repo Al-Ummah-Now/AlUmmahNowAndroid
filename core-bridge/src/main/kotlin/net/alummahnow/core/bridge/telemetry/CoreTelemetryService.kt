@@ -890,7 +890,7 @@ class CoreTelemetryService(
             var sb: StringBuilder? = null
             var copied = 0
             var searchFrom = 0
-            var inSingleQuote = false
+            var quoteState = 0
             val contLimits = IntArray(3)
             while (searchFrom < text.length) {
                 val sep = text.indexOf("://", searchFrom)
@@ -904,11 +904,11 @@ class CoreTelemetryService(
                 if (span == null) {
                     searchFrom = sep + 3
                 } else {
-                    inSingleQuote = cont.advanceSingleQuoteState(text, copied, span.start, inSingleQuote)
-                    val (url, baseTail) = cont.formatVaultedUrl(span, text, inSingleQuote)
+                    quoteState = cont.advanceQuoteState(text, copied, span.start, quoteState)
+                    val (url, baseTail) = cont.formatVaultedUrl(span, text, (quoteState and 1) != 0)
                     val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
                     val rawUrl = text.substring(span.start, span.baseEnd)
-                    val contInput = CoreTelemetryUrlContinuation.ContinuationInput(span, rawUrl, baseTail, inSingleQuote)
+                    val contInput = CoreTelemetryUrlContinuation.ContinuationInput(span, rawUrl, baseTail, quoteState)
                     val extended = cont.extendUrlContinuation(text, contInput, contLimits)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, span.start)
@@ -926,7 +926,7 @@ class CoreTelemetryService(
                         finalTail = baseTail
                         span.totalEnd
                     }
-                    inSingleQuote = cont.advanceSingleQuoteState(finalTail, 0, finalTail.length, inSingleQuote)
+                    quoteState = cont.advanceQuoteState(finalTail, 0, finalTail.length, quoteState)
                     tracker.onVaultedUrl(endPos)
                     copied = endPos
                     searchFrom = endPos

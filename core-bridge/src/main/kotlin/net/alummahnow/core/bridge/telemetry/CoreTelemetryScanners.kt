@@ -246,6 +246,7 @@ internal object CoreTelemetryScanners {
 
     internal class ContScanState(
         val allowDoubleQuotes: Boolean,
+        val allowEscapedDoubleQuotes: Boolean,
         val allowSingleQuotes: Boolean,
         val outerQuote: Char,
         val stopAtSchemes: Boolean
@@ -271,10 +272,14 @@ internal object CoreTelemetryScanners {
 
     private fun stepQuotedContinuation(text: String, p: Int, state: ContScanState): Int {
         val ch = text[p]
-        if (ch == '\r' || ch == '\n') return -1
+        val stops = ch == '\r' || ch == '\n' || (ch == '"' && state.outerQuote == '"')
+        if (stops) return -1
         if (ch == '?' || ch == '#') state.sawInnerQf = true
-        val isEscape = ch == '\\' && p + 1 < text.length
-        if (isEscape && text[p + 1] !in "\r\n") return p + 2
+        val isEscape = ch == '\\' && p + 1 < text.length && text[p + 1] !in "\r\n"
+        if (isEscape) {
+            if (state.quoteChar == '\u0001' && text[p + 1] == '"') state.quoteChar = '\u0000'
+            return p + 2
+        }
         if (ch == state.quoteChar) state.quoteChar = '\u0000'
         return p + 1
     }
@@ -282,10 +287,26 @@ internal object CoreTelemetryScanners {
     private fun stepUnquotedContinuation(text: String, p: Int, start: Int, state: ContScanState): Int {
         val ch = text[p]
         val startsScheme = state.stopAtSchemes && p > start && !isBlockedBeforeScheme(text[p - 1]) && isUrlSchemeAt(text, p)
-        if (isContStopChar(text, p, ch) || startsScheme) return -1
-        if (ch == '"' || ch == '\'') return stepUnquotedQuoteChar(text, p, start, state)
-        updateContGroupStack(ch, state.groupStack)
-        return p + 1
+        return when {
+            startsScheme -> -1
+            ch == '\\' && state.outerQuote == '"' -> stepJsonEscapeContinuation(text, p, state)
+            isContStopChar(text, p, ch) -> -1
+            ch == '"' || ch == '\'' -> stepUnquotedQuoteChar(text, p, start, state)
+            else -> {
+                updateContGroupStack(ch, state.groupStack)
+                p + 1
+            }
+        }
+    }
+
+    private fun stepJsonEscapeContinuation(text: String, p: Int, state: ContScanState): Int {
+        if (p + 1 >= text.length) return -1
+        val esc = text[p + 1]
+        if (esc == '"') {
+            if (state.allowEscapedDoubleQuotes && state.groupStack.isNotEmpty()) state.quoteChar = '\u0001'
+            return p + 2
+        }
+        return if (!state.stopAtSchemes && (esc == '\\' || esc == '/')) p + 2 else -1
     }
 
     private fun stepUnquotedQuoteChar(text: String, p: Int, start: Int, state: ContScanState): Int {
@@ -350,11 +371,15 @@ internal object CoreTelemetryScanners {
             val ch = text[i]
             if (quoteChar != '\u0000') {
                 if (ch == '\\' && i + 1 < end) {
+                    if (quoteChar == '\u0001' && text[i + 1] == '"') quoteChar = '\u0000'
                     i += 2
                 } else {
                     if (ch == quoteChar) quoteChar = '\u0000'
                     i++
                 }
+            } else if (isCloserJsonEscape(text, i, end, quoteFlags)) {
+                if (excess[3] > 0 && (quoteFlags and 8) != 0 && text[i + 1] == '"') quoteChar = '\u0001'
+                i += 2
             } else {
                 if (canOpenCloserQuote(text, i, start, excess[3], quoteFlags)) quoteChar = ch else tallyGroupCloser(ch, excess)
                 i++
@@ -362,6 +387,9 @@ internal object CoreTelemetryScanners {
         }
         return excess
     }
+
+    private fun isCloserJsonEscape(text: String, i: Int, end: Int, quoteFlags: Int): Boolean =
+        (quoteFlags and 16) != 0 && text[i] == '\\' && i + 1 < end && text[i + 1] in "\"\\/"
 
     private fun canOpenCloserQuote(text: String, i: Int, start: Int, openGroups: Int, quoteFlags: Int): Boolean {
         if (openGroups <= 0) return false
@@ -429,11 +457,35 @@ internal object CoreTelemetryScanners {
 
     fun scanQueryOrFragment(text: String, start: Int): Int {
         var p = start + 1
-        while (p < text.length && !isQueryStopChar(text[p])) p++
+        var stopped = false
+        while (p < text.length && !stopped) {
+            val ch = text[p]
+            if (ch.isWhitespace() || ch == '<' || ch == '>') {
+                stopped = true
+            } else if (ch == '"') {
+                val adj = adjustEscapedQuoteQueryStop(text, start, p)
+                if (adj != null) {
+                    p = adj
+                    stopped = true
+                } else {
+                    p++
+                }
+            } else {
+                p++
+            }
+        }
         return p
     }
 
-    private fun isQueryStopChar(ch: Char): Boolean = ch.isWhitespace() || ch in QUERY_STOP
+    private fun adjustEscapedQuoteQueryStop(text: String, start: Int, quotePos: Int): Int? {
+        var bs = 0
+        while (quotePos - 1 - bs > start && text[quotePos - 1 - bs] == '\\') bs++
+        if ((bs and 1) == 0) return quotePos
+        val atBoundary = quotePos + 1 >= text.length ||
+            text[quotePos + 1].isWhitespace() ||
+            text[quotePos + 1] in "}]),;<>"
+        return if (atBoundary) quotePos - 1 else null
+    }
 
     private fun isUrlEndBoundary(text: String, pos: Int): Boolean {
         val ch = text[pos]

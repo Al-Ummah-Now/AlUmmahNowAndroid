@@ -19,8 +19,11 @@ internal object CoreTelemetryUrlContinuation {
         val span: CoreTelemetryScanners.UrlSpan,
         val rawUrl: String,
         val baseTail: String,
-        val inSingleQuote: Boolean
-    )
+        val quoteState: Int
+    ) {
+        val inSingleQuote: Boolean get() = (quoteState and 1) != 0
+        val inDoubleQuote: Boolean get() = (quoteState and 2) != 0
+    }
 
     private class ContinuationContext(
         val input: ContinuationInput,
@@ -64,12 +67,14 @@ internal object CoreTelemetryUrlContinuation {
         contLimits: IntArray
     ): UrlContinuationResult? {
         val span = input.span
-        if (span.hasQf || span.totalEnd >= text.length || text[span.totalEnd] !in ",([]){}") return null
+        if (span.hasQf || span.totalEnd >= text.length) return null
+        val outerQuote = resolveOuterQuote(text, span.start, input.inDoubleQuote)
+        if (!isContinuationStarter(text, span.totalEnd, outerQuote == '"')) return null
         val webhookProbe = probeWebhookPrefix(input.rawUrl)
         if (webhookProbe == null && span.totalEnd < contLimits[0]) return null
-        val outerQuote = resolveOuterQuote(text, span.start)
         val initial = CoreTelemetryScanners.ContScanState(
             span.totalEnd >= contLimits[1] && outerQuote != '"',
+            span.totalEnd >= contLimits[1] && outerQuote == '"',
             span.totalEnd >= contLimits[2],
             outerQuote,
             webhookProbe == null
@@ -82,14 +87,25 @@ internal object CoreTelemetryUrlContinuation {
         return result
     }
 
-    private fun resolveOuterQuote(text: String, spanStart: Int): Char =
-        if (spanStart > 0 && (text[spanStart - 1] == '\'' || text[spanStart - 1] == '"')) text[spanStart - 1] else '\u0000'
+    private fun isContinuationStarter(text: String, pos: Int, inDoubleQuote: Boolean): Boolean {
+        val ch = text[pos]
+        if (ch in ",([]){}") return true
+        return inDoubleQuote && ch == '\\' && pos + 1 < text.length && text[pos + 1] in "\"\\/"
+    }
+
+    private fun resolveOuterQuote(text: String, spanStart: Int, inDoubleQuote: Boolean): Char = when {
+        inDoubleQuote || (spanStart > 0 && text[spanStart - 1] == '"') -> '"'
+        spanStart > 0 && text[spanStart - 1] == '\'' -> '\''
+        else -> '\u0000'
+    }
 
     private fun buildQuoteFlags(state: CoreTelemetryScanners.ContScanState, inSingleQuote: Boolean): Int {
         var flags = 0
         if (state.allowDoubleQuotes && state.quoteChar != '"') flags = flags or 1
         if (state.allowSingleQuotes && state.quoteChar != '\'') flags = flags or 2
         if (inSingleQuote) flags = flags or 4
+        if (state.allowEscapedDoubleQuotes && state.quoteChar != '\u0001') flags = flags or 8
+        if (state.outerQuote == '"') flags = flags or 16
         return flags
     }
 
@@ -106,6 +122,7 @@ internal object CoreTelemetryUrlContinuation {
         recordUnclosedQuote(state.quoteChar, firstEnd, contLimits)
         val nextState = CoreTelemetryScanners.ContScanState(
             if (state.quoteChar == '"') false else state.allowDoubleQuotes,
+            if (state.quoteChar == '\u0001') false else state.allowEscapedDoubleQuotes,
             if (state.quoteChar == '\'') false else state.allowSingleQuotes,
             state.outerQuote,
             true
@@ -120,7 +137,7 @@ internal object CoreTelemetryUrlContinuation {
     }
 
     private fun recordUnclosedQuote(quoteChar: Char, pathEnd: Int, contLimits: IntArray) {
-        if (quoteChar == '"' && pathEnd > contLimits[1]) contLimits[1] = pathEnd
+        if ((quoteChar == '"' || quoteChar == '\u0001') && pathEnd > contLimits[1]) contLimits[1] = pathEnd
         if (quoteChar == '\'' && pathEnd > contLimits[2]) contLimits[2] = pathEnd
     }
 
@@ -226,24 +243,28 @@ internal object CoreTelemetryUrlContinuation {
         text.substring(start, end)
     }
 
-    fun advanceSingleQuoteState(text: String, from: Int, to: Int, inSingleQuote: Boolean): Boolean {
-        var open = inSingleQuote
+    fun advanceQuoteState(text: String, from: Int, to: Int, quoteState: Int): Int {
+        var inSingle = (quoteState and 1) != 0
+        var inDouble = (quoteState and 2) != 0
         var i = from
         while (i < to) {
             val ch = text[i]
-            val isEsc = ch == '\\' && open && i + 1 < to && text[i + 1] !in "\r\n"
+            val isEsc = ch == '\\' && (inSingle || inDouble) && i + 1 < to && text[i + 1] !in "\r\n"
             if (isEsc) {
                 i += 2
             } else {
-                if (ch == '\r' || ch == '\n') {
-                    open = false
-                } else if (ch == '\'' && !isContractionApostrophe(text, i)) {
-                    open = !open
+                when {
+                    ch == '\r' || ch == '\n' -> {
+                        inSingle = false
+                        inDouble = false
+                    }
+                    ch == '"' && !inSingle -> inDouble = !inDouble
+                    ch == '\'' && !inDouble && !isContractionApostrophe(text, i) -> inSingle = !inSingle
                 }
                 i++
             }
         }
-        return open
+        return (if (inSingle) 1 else 0) or (if (inDouble) 2 else 0)
     }
 
     fun isContractionApostrophe(text: String, pos: Int): Boolean =

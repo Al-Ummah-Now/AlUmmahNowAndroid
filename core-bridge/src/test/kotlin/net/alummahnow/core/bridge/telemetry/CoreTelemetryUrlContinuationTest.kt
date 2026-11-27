@@ -221,4 +221,33 @@ class CoreTelemetryUrlContinuationTest {
             )
         )
     }
+
+    @Test
+    fun `sanitizeLocalPaths enforces RFC 8259 quote precedence and JSON escapes`() {
+        val cases = listOf(
+            "[\"https://example.test/webhook/fakeToken('open\",123,\")public\"]" to
+                "[\"https://example.test/webhook/[redacted]\",123,\")public\"]",
+            "[\"https://example.test/webhook/fakeToken('a\",\")public-text\"]" to
+                "[\"https://example.test/webhook/[redacted]\",\")public-text\"]",
+            "[\"see https://example.test/webhook/fakeToken('open\",123,\")public\"]" to
+                "[\"see https://example.test/webhook/[redacted]\",123,\")public\"]",
+            "[\"see https://example.test/webhook/fakeToken('a)first opaqueSecret123')\"]" to
+                "[\"see https://example.test/webhook/[redacted]\"]",
+            "[\"https://example.test/webhook/fakeToken(\\\"opaqueSecret123)\"]" to
+                "[\"https://example.test/webhook/[redacted]\"]",
+            "[\"https://example.test/webhook/fakeToken(\\\"opaqueSecret123\\\")\"]" to
+                "[\"https://example.test/webhook/[redacted]\"]",
+            "[\"https://example.test/webhook/fakeToken(\\\"first opaqueSecret123\\\")\",\"public\"]" to
+                "[\"https://example.test/webhook/[redacted]\",\"public\"]",
+            "[\"https://example.test/webhook/fakeToken\\\"opaqueSecret123\"]" to
+                "[\"https://example.test/webhook/[redacted]\"]",
+            "[\"https://example.com/api{1:\\\"see https://other.com/x?token=opaqueSecret123\\\"}?outer=value\"]" to
+                "[\"https://example.com/api{1:\\\"see https://other.com/x?[redacted]\\\"}?[redacted]\"]",
+            "[\"https://example.com/api?token=opaqueSecret123\\\"moreSecret\"]" to
+                "[\"https://example.com/api?[redacted]\"]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+    }
 }
