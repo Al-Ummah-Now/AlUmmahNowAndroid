@@ -403,6 +403,7 @@ private fun StaffHome(
                         telemetryWarning = null
                     } else {
                         services.telemetry.setConsent(TelemetryConsent.OFF)
+                        services.prefs.setTelemetryEnabled(false)
                         telemetryEnabled = false
                         telemetryWarning = resources.getString(DesignR.string.aun_diagnostics_enable_error)
                     }

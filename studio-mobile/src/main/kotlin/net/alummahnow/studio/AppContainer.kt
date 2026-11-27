@@ -102,6 +102,7 @@ class AppContainer(context: Context) : StudioContainer {
             }
             if (!telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, true).commit()) {
                 telemetry.setConsent(TelemetryConsent.OFF)
+                telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
                 return false
             }
             return true

@@ -359,32 +359,29 @@ class CoreTelemetryService(
         @Volatile
         private var activeCrashService: TelemetryService? = null
 
+        private val stackFrameLineRegex = Regex("""^[ \t]*(?:at[ \t]+|#?\d+[ \t]+)""")
         private val stackSuffixLookahead =
-            """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\(\))(?=\r|\n|$)|[\r\n"]|$)"""
-        private val winStackSuffixLookahead =
-            """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\(\))(?=\r|\n|$)|[\r\n"<>|]|$)"""
-        private val doubleQuotedPathRegex = Regex(
-            """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/(?=[^\s/"]))[^"\r\n]*${'"'}""",
-            RegexOption.IGNORE_CASE
-        )
+            """(?=(?::line[ \t]+\d+|:\d+(?::\d+)?)(?:[)\]]*|[ \t]+in[ \t]+[\p{L}_][\p{L}\p{N}_.$<>]*\(\))(?=\r|\n|$)|\r|\n|$)"""
         private val doubleQuotedStackPathRegex = Regex(
-            """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/(?=[^\s/"]))[^"\r\n]*?""" +
-                """((?::line\s+\d+|:\d+(?::\d+)?)?)${'"'}""",
+            """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/+(?=[^\s/"]))[^"\r\n]*?""" +
+                """((?::line[ \t]+\d+|:\d+(?::\d+)?)?)${'"'}(?=[ \t]*(\r|\n|$))""",
             RegexOption.IGNORE_CASE
         )
-        private val fileUriRegex = Regex("""file://[^\r\n"]+""", RegexOption.IGNORE_CASE)
+        private val fileUriRegex = Regex("""file://[^\r\n]+""", RegexOption.IGNORE_CASE)
         private val fileUriStackRegex = Regex(
-            """file://[^\r\n"]+?""" + stackSuffixLookahead,
+            """file://[^\r\n]+?""" + stackSuffixLookahead,
             RegexOption.IGNORE_CASE
         )
-        private val windowsPathRegex = Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+""", RegexOption.IGNORE_CASE)
+        private val windowsPathRegex = Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+""", RegexOption.IGNORE_CASE)
         private val windowsStackPathRegex = Regex(
-            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+?""" + winStackSuffixLookahead,
+            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+?""" + stackSuffixLookahead,
             RegexOption.IGNORE_CASE
         )
-        private val unixPathRegex = Regex("""(?<![\p{L}\p{M}\p{N}._/-])(?:~/|/(?=[^\s/"]))[^\r\n"]+""")
+        private val unixPathRegex = Regex(
+            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<!:)//+(?=[^\s/])|/(?=[^\s/]))[^\r\n]+"""
+        )
         private val unixStackPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|/(?=[^\s/"]))[^\r\n"]+?""" + stackSuffixLookahead
+            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<!:)//+(?=[^\s/])|/(?=[^\s/]))[^\r\n]+?""" + stackSuffixLookahead
         )
 
         /**
@@ -469,22 +466,28 @@ class CoreTelemetryService(
 
         /**
          * Scrubs local filesystem paths and `file://` URIs before crash or breadcrumb text enters telemetry.
-         * Line numbers are preserved only when [preserveStackLocations] is `true` (stack traces) and the
-         * location terminates the frame line.
+         * Line numbers are preserved only when [preserveStackLocations] is `true` and the line is an actual
+         * stack frame (never exception message/cause lines).
          */
         fun sanitizeLocalPaths(text: String, preserveStackLocations: Boolean = false): String {
             if (text.isEmpty()) return text
-            return if (preserveStackLocations) {
-                var scrubbed = doubleQuotedStackPathRegex.replace(text, "[redacted-path]\$1")
-                scrubbed = fileUriStackRegex.replace(scrubbed, "[redacted-path]")
-                scrubbed = windowsStackPathRegex.replace(scrubbed, "[redacted-path]")
-                unixStackPathRegex.replace(scrubbed, "[redacted-path]")
-            } else {
-                var scrubbed = doubleQuotedPathRegex.replace(text, "[redacted-path]")
-                scrubbed = fileUriRegex.replace(scrubbed, "[redacted-path]")
-                scrubbed = windowsPathRegex.replace(scrubbed, "[redacted-path]")
-                unixPathRegex.replace(scrubbed, "[redacted-path]")
+            if (!preserveStackLocations) return sanitizeMessageLine(text)
+            return text.split('\n').joinToString("\n") { line ->
+                if (stackFrameLineRegex.containsMatchIn(line)) sanitizeStackFrameLine(line) else sanitizeMessageLine(line)
             }
+        }
+
+        private fun sanitizeMessageLine(text: String): String {
+            var scrubbed = fileUriRegex.replace(text, "[redacted-path]")
+            scrubbed = windowsPathRegex.replace(scrubbed, "[redacted-path]")
+            return unixPathRegex.replace(scrubbed, "[redacted-path]")
+        }
+
+        private fun sanitizeStackFrameLine(line: String): String {
+            var scrubbed = doubleQuotedStackPathRegex.replace(line, "[redacted-path]\$1")
+            scrubbed = fileUriStackRegex.replace(scrubbed, "[redacted-path]")
+            scrubbed = windowsStackPathRegex.replace(scrubbed, "[redacted-path]")
+            return unixStackPathRegex.replace(scrubbed, "[redacted-path]")
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {
