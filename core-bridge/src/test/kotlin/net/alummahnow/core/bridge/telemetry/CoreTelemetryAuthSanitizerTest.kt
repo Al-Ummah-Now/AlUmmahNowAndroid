@@ -124,6 +124,26 @@ class CoreTelemetryAuthSanitizerTest {
         val scrubbedPadded = CoreTelemetryService.sanitizeLocalPaths(paddedUnmatched)
         assertEquals(false, scrubbedPadded.contains("opaqueSecret123"))
         assertEquals(true, scrubbedPadded.endsWith("{\"Authorization\":\"[redacted]\",\"status\":\"safe\"}"))
+    }
+
+    @Test
+    fun `sanitizeLocalPaths handles quote prefixes truncated JSON objects and non-JSON commas`() {
+        assertEquals(
+            "note \" {\"Authorization\":\"[redacted]\",\"status\":\"safe\"}",
+            CoreTelemetryService.sanitizeLocalPaths("note \" {\"Authorization\":{\"token\":\n\"opaqueSecret123\"\n},\"status\":\"safe\"}")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\"",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":{\n\"token\":\"opaqueSecret123\"\n")
+        )
+        assertEquals(
+            "prefix, \"Authorization\": \"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("prefix, \"Authorization\": \"firstValue\" }opaqueSecret123")
+        )
+        assertEquals(
+            "{\"status\":401,\"Authorization\":\"[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"status\":401,\"Authorization\":\"opaqueSecret123\"}")
+        )
         assertEquals(
             "Authorization: [[redacted]]\r\nNextHeader: safe",
             CoreTelemetryService.sanitizeLocalPaths("Authorization: [firstValue]\r\nNextHeader: safe")
