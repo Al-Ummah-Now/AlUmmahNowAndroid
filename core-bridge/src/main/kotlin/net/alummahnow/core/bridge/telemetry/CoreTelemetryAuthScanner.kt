@@ -189,11 +189,24 @@ internal object CoreTelemetryAuthScanner {
         val ch = text[valStart]
         if (ch == '"' || ch == '\'') return redactQuotedAuthString(text, valStart, ch, builder)
         if (ch == '[') return redactAuthArrayValue(text, valStart + 1, allowNewlines, builder)
-        var lineEnd = valStart
-        while (lineEnd < text.length && !isNewline(text[lineEnd])) lineEnd++
+        val lineEnd = scanPlainAuthValueEnd(text, valStart)
         val redacted = redactAuthValueBody(text, valStart, lineEnd)
         if (redacted != null) builder.appendRedacted(valStart, lineEnd, redacted)
         return lineEnd
+    }
+
+    private fun scanPlainAuthValueEnd(text: String, start: Int): Int {
+        var end = start
+        var done = false
+        while (end < text.length && !done) {
+            if (isNewline(text[end])) {
+                val fold = advanceObsFold(text, end)
+                if (fold > end) end = fold else done = true
+            } else {
+                end++
+            }
+        }
+        return end
     }
 
     private fun redactAuthArrayValue(
@@ -202,23 +215,48 @@ internal object CoreTelemetryAuthScanner {
         allowNewlines: Boolean,
         builder: HeaderBuilder
     ): Int {
+        var depth = 1
         var k = start
-        var done = false
-        while (k < text.length && !done) {
+        var stopped = false
+        while (k < text.length && depth > 0 && !stopped) {
             val ch = text[k]
-            if (ch == ']') {
-                k++
-                done = true
-            } else if (!allowNewlines && isNewline(ch)) {
-                done = true
-            } else if (ch == '"' || ch == '\'') {
-                k = redactQuotedAuthString(text, k, ch, builder)
-            } else {
-                k++
+            when {
+                ch == '[' -> {
+                    depth++
+                    k++
+                }
+                ch == ']' -> {
+                    depth--
+                    k++
+                }
+                ch == '"' || ch == '\'' -> k = redactQuotedAuthString(text, k, ch, builder)
+                isHorizSpace(ch) || ch == ',' -> k++
+                isNewline(ch) -> {
+                    val next = if (allowNewlines) k + 1 else advanceObsFold(text, k)
+                    if (next > k) k = next else stopped = true
+                }
+                else -> k = redactUnquotedArrayElement(text, k, builder)
             }
         }
         return k
     }
+
+    private fun redactUnquotedArrayElement(text: String, start: Int, builder: HeaderBuilder): Int {
+        var elemEnd = start
+        while (elemEnd < text.length && !isArrayElemStop(text[elemEnd])) elemEnd++
+        var trimEnd = elemEnd
+        while (trimEnd > start && isHorizSpace(text[trimEnd - 1])) trimEnd--
+        val isNull = trimEnd - start == BASE64_CHUNK_LEN && text.regionMatches(start, "null", 0, BASE64_CHUNK_LEN)
+        if (trimEnd > start && !isNull) {
+            val redacted = redactAuthValueBody(text, start, trimEnd)
+            if (redacted != null) {
+                builder.appendRedacted(start, elemEnd, redacted + text.substring(trimEnd, elemEnd))
+            }
+        }
+        return elemEnd
+    }
+
+    private fun isArrayElemStop(ch: Char): Boolean = ch == ',' || ch == '[' || ch == ']' || isNewline(ch)
 
     private fun redactQuotedAuthString(text: String, quotePos: Int, quote: Char, builder: HeaderBuilder): Int {
         var j = quotePos + 1
@@ -344,7 +382,30 @@ internal object CoreTelemetryAuthScanner {
 
     private fun skipAuthWhitespace(text: String, pos: Int, allowNewlines: Boolean): Int {
         var p = pos
-        while (p < text.length && isAuthWhitespace(text[p], allowNewlines)) p++
+        var done = false
+        while (p < text.length && !done) {
+            val ch = text[p]
+            if (isAuthWhitespace(ch, allowNewlines)) {
+                p++
+            } else if (!allowNewlines && isNewline(ch)) {
+                val fold = advanceObsFold(text, p)
+                if (fold > p) p = fold else done = true
+            } else {
+                done = true
+            }
+        }
+        return p
+    }
+
+    private fun advanceObsFold(text: String, nlPos: Int): Int {
+        val afterNl = if (text[nlPos] == '\r' && nlPos + 1 < text.length && text[nlPos + 1] == '\n') {
+            nlPos + 2
+        } else {
+            nlPos + 1
+        }
+        if (afterNl >= text.length || !isHorizSpace(text[afterNl])) return -1
+        var p = afterNl
+        while (p < text.length && isHorizSpace(text[p])) p++
         return p
     }
 

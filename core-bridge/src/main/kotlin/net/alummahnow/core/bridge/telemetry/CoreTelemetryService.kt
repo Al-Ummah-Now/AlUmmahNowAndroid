@@ -203,16 +203,17 @@ class CoreTelemetryService(
             TelemetryBreadcrumbSeverity.WARNING -> TelemetryBreadcrumbLevel.WARNING
             TelemetryBreadcrumbSeverity.ERROR -> TelemetryBreadcrumbLevel.ERROR
         }
+        val safeCategory = sanitizeLocalPaths(category)
         val safeMessage = sanitizeLocalPaths(message)
         synchronized(gate) {
             if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
-            client.addBreadcrumb(category, safeMessage, mapped)
+            client.addBreadcrumb(safeCategory, safeMessage, mapped)
         }
     }
 
     override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
         if (consent == TelemetryConsent.OFF) return
-        val safeKind = kind.ifBlank { "UnhandledException" }
+        val safeKind = if (kind.isBlank()) "UnhandledException" else sanitizeLocalPaths(kind)
         val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message)
         val safeStack = stack?.let(::sanitizeLocalPaths)
         val report = TelemetryCrashReport(

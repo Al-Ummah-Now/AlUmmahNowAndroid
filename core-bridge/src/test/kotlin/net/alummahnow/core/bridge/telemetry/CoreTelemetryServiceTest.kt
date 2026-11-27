@@ -434,6 +434,24 @@ class CoreTelemetryServiceTest {
             "{\"Authorization\":[\"Bearer [redacted]\"],\"status\":401}",
             CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":[\"Bearer testSecret\"],\"status\":401}")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts nested folded and escaped Authorization headers`() {
+        assertEquals(
+            "{\"Authorization\":[[\"[redacted]\"],\"[redacted]\"]}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":[[\"firstValue\"],\"opaqueSecret123\"]}")
+        )
+        assertEquals("Authorization: [[redacted]]", CoreTelemetryService.sanitizeLocalPaths("Authorization: [opaqueSecret123]"))
+        assertEquals("Authorization:\r\n\t[redacted]", CoreTelemetryService.sanitizeLocalPaths("Authorization:\r\n\topaqueSecret123"))
+        assertEquals(
+            "Authorization: Digest [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Authorization: Digest username=\"alice\",\r\n response=\"deadbeef\"")
+        )
+        assertEquals(
+            "Authorization:\r\nNextHeader: safe",
+            CoreTelemetryService.sanitizeLocalPaths("Authorization:\r\nNextHeader: safe")
+        )
         assertEquals(
             "{\"Authorization\":\"[redacted]\",\"status\":401}",
             CoreTelemetryService.sanitizeLocalPaths("{\"\\u0041uthorization\":\"opaqueSecret123\",\"status\":401}")
