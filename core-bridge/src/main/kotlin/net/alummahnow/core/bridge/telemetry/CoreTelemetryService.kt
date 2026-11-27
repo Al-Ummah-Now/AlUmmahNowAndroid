@@ -911,7 +911,7 @@ class CoreTelemetryService(
             var searchFrom = 0
             var quoteCursor = 0
             var quoteState = 0
-            val contLimits = IntArray(4)
+            val contLimits = IntArray(5)
             while (searchFrom < text.length) {
                 val sep = text.indexOf("://", searchFrom)
                 if (sep < 0) break
@@ -929,27 +929,9 @@ class CoreTelemetryService(
                 if (span == null) {
                     searchFrom = sep + 3
                 } else {
-                    val (url, baseTail) = cont.formatVaultedUrl(span, text, (quoteState and 1) != 0)
-                    val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
-                    val rawUrl = text.substring(span.start, span.baseEnd)
-                    val contInput = CoreTelemetryUrlContinuation.ContinuationInput(span, rawUrl, baseTail, quoteState)
-                    val extended = cont.extendUrlContinuation(text, contInput, contLimits)
-                        ?: cont.extendSpacedQuotedUrlQuery(text, contInput, contLimits)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, span.start)
-                    val finalTail: String
-                    val endPos = if (extended != null) {
-                        cont.emitUrlContinuation(out, prefix, vaultedUrls, baseRedacted, baseTail, extended) { inner ->
-                            vaultNonFileUrlsInto(inner, prefix, vaultedUrls)
-                        }
-                        finalTail = extended.tail
-                        extended.endPos
-                    } else {
-                        val urls = Triple(rawUrl, baseRedacted, baseTail)
-                        val (end, emitTail) = emitSimpleVaultedUrl(out, text, span, quoteState, urls, prefix, vaultedUrls)
-                        finalTail = emitTail
-                        end
-                    }
+                    val (endPos, finalTail) = emitVaultedUrlMatch(out, text, span, quoteState, prefix, vaultedUrls, contLimits)
                     quoteState = cont.advanceQuoteState(finalTail, 0, finalTail.length, quoteState)
                     tracker.onVaultedUrl(endPos, activeQuoteFromState(quoteState))
                     copied = endPos
@@ -962,6 +944,33 @@ class CoreTelemetryService(
         }
 
         @Suppress("LongParameterList")
+        private fun emitVaultedUrlMatch(
+            out: StringBuilder,
+            text: String,
+            span: CoreTelemetryScanners.UrlSpan,
+            quoteState: Int,
+            prefix: String,
+            vaultedUrls: MutableList<String>,
+            contLimits: IntArray
+        ): Pair<Int, String> {
+            val cont = CoreTelemetryUrlContinuation
+            val (url, baseTail) = cont.formatVaultedUrl(span, text, (quoteState and 1) != 0)
+            val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
+            val rawUrl = text.substring(span.start, span.baseEnd)
+            val contInput = CoreTelemetryUrlContinuation.ContinuationInput(span, rawUrl, baseTail, quoteState)
+            val extended = cont.extendUrlContinuation(text, contInput, contLimits)
+                ?: cont.extendSpacedQuotedUrlQuery(text, contInput, contLimits)
+            if (extended != null) {
+                cont.emitUrlContinuation(out, prefix, vaultedUrls, baseRedacted, baseTail, extended) { inner ->
+                    vaultNonFileUrlsInto(inner, prefix, vaultedUrls)
+                }
+                return extended.endPos to extended.tail
+            }
+            val urls = Triple(rawUrl, baseRedacted, baseTail)
+            return emitSimpleVaultedUrl(out, text, span, quoteState, urls, prefix, vaultedUrls, contLimits)
+        }
+
+        @Suppress("LongParameterList")
         private fun emitSimpleVaultedUrl(
             out: StringBuilder,
             text: String,
@@ -969,14 +978,16 @@ class CoreTelemetryService(
             quoteState: Int,
             urls: Triple<String, String, String>,
             prefix: String,
-            vaultedUrls: MutableList<String>
+            vaultedUrls: MutableList<String>,
+            contLimits: IntArray
         ): Pair<Int, String> {
             val quotedSecret = CoreTelemetryScanners.resolveQuotedSecretUrlTail(
                 text,
                 span,
                 (quoteState and 2) != 0,
                 urls.first,
-                urls.second
+                urls.second,
+                contLimits
             )
             val idx = vaultedUrls.size
             vaultedUrls += quotedSecret?.first ?: urls.second
@@ -1016,23 +1027,40 @@ class CoreTelemetryService(
             return sb.toString()
         }
 
+        private fun isAuthHeaderPropertyKey(key: String): Boolean {
+            val trimmed = key.trim()
+            return trimmed.equals("authorization", ignoreCase = true) ||
+                trimmed.equals("proxy-authorization", ignoreCase = true)
+        }
+
         internal fun serializeProperties(properties: Map<String, Any?>): String? {
             if (properties.isEmpty()) return null
             val obj = buildJsonObject {
                 for ((key, value) in properties) {
-                    if (key.isBlank() || value == null) continue
-                    when (value) {
-                        is String -> put(key, JsonPrimitive(value))
-                        is Boolean -> put(key, JsonPrimitive(value))
-                        is Int -> put(key, JsonPrimitive(value))
-                        is Long -> put(key, JsonPrimitive(value))
-                        is Double -> if (value.isFinite()) put(key, JsonPrimitive(value))
-                        is Float -> if (value.isFinite()) put(key, JsonPrimitive(value.toDouble()))
-                        else -> put(key, JsonPrimitive(value.toString()))
+                    if (key.isNotBlank() && value != null) {
+                        putSanitizedProperty(key, value)
                     }
                 }
             }
             return if (obj.isEmpty()) null else obj.toString()
+        }
+
+        private fun kotlinx.serialization.json.JsonObjectBuilder.putSanitizedProperty(key: String, value: Any) {
+            if (isAuthHeaderPropertyKey(key)) {
+                put(key, JsonPrimitive("[redacted]"))
+                return
+            }
+            val safeKey = sanitizeLocalPaths(key)
+            if (safeKey.isBlank()) return
+            when (value) {
+                is String -> put(safeKey, JsonPrimitive(sanitizeLocalPaths(value)))
+                is Boolean -> put(safeKey, JsonPrimitive(value))
+                is Int -> put(safeKey, JsonPrimitive(value))
+                is Long -> put(safeKey, JsonPrimitive(value))
+                is Double -> if (value.isFinite()) put(safeKey, JsonPrimitive(value))
+                is Float -> if (value.isFinite()) put(safeKey, JsonPrimitive(value.toDouble()))
+                else -> put(safeKey, JsonPrimitive(sanitizeLocalPaths(value.toString())))
+            }
         }
     }
 }

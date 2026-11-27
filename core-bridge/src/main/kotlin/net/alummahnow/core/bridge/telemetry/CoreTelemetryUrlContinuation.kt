@@ -399,20 +399,29 @@ internal object CoreTelemetryUrlContinuation {
         return cur
     }
 
+    @Suppress("LongParameterList")
     fun resolveQuotedSecretUrlTail(
         text: String,
         span: CoreTelemetryScanners.UrlSpan,
         inDoubleQuote: Boolean,
         rawUrl: String,
-        redactedUrl: String
+        redactedUrl: String,
+        contLimits: IntArray
     ): Pair<String, Int>? {
         val wrappedInAngle = isAngleWrappedBefore(text, span.start)
-        val inContext = inDoubleQuote || wrappedInAngle
-        if (span.hasQf || !inContext || span.totalEnd >= text.length) return null
-        if (isQuotedUrlTailBoundary(text, span.totalEnd, inDoubleQuote, wrappedInAngle)) return null
-        val secretUrl = resolveSecretUrlPrefix(rawUrl, redactedUrl) ?: return null
+        val canTry = !span.hasQf &&
+            (inDoubleQuote || wrappedInAngle) &&
+            span.totalEnd < text.length &&
+            (inDoubleQuote || span.totalEnd >= contLimits[4]) &&
+            !isQuotedUrlTailBoundary(text, span.totalEnd, inDoubleQuote, wrappedInAngle)
+        val secretUrl = if (canTry) resolveSecretUrlPrefix(rawUrl, redactedUrl) else null
+        if (secretUrl == null) return null
         val (endPos, stoppedAtAngle) = scanQuotedUrlTailEnd(text, span.totalEnd, inDoubleQuote, wrappedInAngle)
-        return if (inDoubleQuote || stoppedAtAngle) secretUrl to endPos else null
+        if (!inDoubleQuote && !stoppedAtAngle) {
+            if (endPos > contLimits[4]) contLimits[4] = endPos
+            return null
+        }
+        return secretUrl to endPos
     }
 
     private fun isQuotedUrlTailBoundary(text: String, pos: Int, inDoubleQuote: Boolean, wrappedInAngle: Boolean): Boolean {
@@ -476,9 +485,10 @@ internal object CoreTelemetryUrlContinuation {
             span.totalEnd >= contLimits[3] &&
             !isQuotedUrlTailBoundary(text, span.totalEnd, inDoubleQuote, wrappedInAngle)
         if (!eligible) return null
+        val urlStartsSpan = wrappedInAngle || isUrlAtDoubleQuoteStart(text, span.start)
         var p = span.totalEnd
         while (p < text.length) {
-            val next = stepSpacedQuotedUrlPos(text, p, span, inDoubleQuote, wrappedInAngle)
+            val next = stepSpacedQuotedUrlPos(text, p, span, inDoubleQuote, wrappedInAngle, urlStartsSpan)
             if (next == -1) break
             if (next == -2) return buildSpacedUrlQueryResult(text, input, p)
             p = next
@@ -487,12 +497,14 @@ internal object CoreTelemetryUrlContinuation {
         return null
     }
 
+    @Suppress("LongParameterList")
     private fun stepSpacedQuotedUrlPos(
         text: String,
         p: Int,
         span: CoreTelemetryScanners.UrlSpan,
         inDoubleQuote: Boolean,
-        wrappedInAngle: Boolean
+        wrappedInAngle: Boolean,
+        urlStartsSpan: Boolean
     ): Int {
         val ch = text[p]
         val stops = isQuotedUrlTailBoundary(text, p, inDoubleQuote, wrappedInAngle) ||
@@ -504,7 +516,7 @@ internal object CoreTelemetryUrlContinuation {
             return stepSpacedQuotedEscape(text, p, wrappedInAngle)
         }
         val isValidQf = (ch == '?' || ch == '#') &&
-            isValidSpacedUrlQueryStart(text, p, span.start, span.totalEnd, inDoubleQuote, wrappedInAngle)
+            isValidSpacedUrlQueryStart(text, p, span.totalEnd, inDoubleQuote, wrappedInAngle, urlStartsSpan)
         return if (isValidQf) -2 else p + 1
     }
 
@@ -540,16 +552,15 @@ internal object CoreTelemetryUrlContinuation {
     private fun isValidSpacedUrlQueryStart(
         text: String,
         qfPos: Int,
-        urlStart: Int,
         minPos: Int,
         inDoubleQuote: Boolean,
-        wrappedInAngle: Boolean
+        wrappedInAngle: Boolean,
+        urlStartsSpan: Boolean
     ): Boolean {
         val nextPos = qfPos + 1
         if (nextPos >= text.length || isQuotedUrlTailBoundary(text, nextPos, inDoubleQuote, wrappedInAngle)) {
             return false
         }
-        val urlStartsSpan = wrappedInAngle || isUrlAtDoubleQuoteStart(text, urlStart)
         val nextIsWs = CoreTelemetryScanners.isSpace(text[nextPos]) ||
             (inDoubleQuote && isJsonWhitespaceEscapeAt(text, nextPos))
         if (text[qfPos] == '?') return !nextIsWs || urlStartsSpan

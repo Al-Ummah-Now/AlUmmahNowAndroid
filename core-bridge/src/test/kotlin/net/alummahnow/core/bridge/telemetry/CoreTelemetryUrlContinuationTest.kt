@@ -1,6 +1,7 @@
 package net.alummahnow.core.bridge.telemetry
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoreTelemetryUrlContinuationTest {
@@ -489,10 +490,47 @@ class CoreTelemetryUrlContinuationTest {
             "{\"message\":\"see https://example.com/public Why did it fail?\"}" to
                 "{\"message\":\"see https://example.com/public Why did it fail?\"}",
             "{\"message\":\"see https://example.com/public issue #123\"}" to
-                "{\"message\":\"see https://example.com/public issue #123\"}"
+                "{\"message\":\"see https://example.com/public issue #123\"}",
+            "\"Authorization\\u003a secret\"" to "\"Authorization\\u003a [redacted]\"",
+            "\"Authorization\\u003dsecret\"" to "\"Authorization\\u003d[redacted]\"",
+            "headers=\"Authorization\\u003a opaqueSecret123\"" to "headers=\"Authorization\\u003a [redacted]\"",
+            "headers=\"Authorization\\u003d opaqueSecret123\" status=ok" to
+                "headers=\"Authorization\\u003d [redacted]\" status=ok"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scales linearly on repeated unclosed angles and serializeProperties redacts secrets`() {
+        val repeatedAngles = "<https://example.test/webhooks/token ".repeat(500)
+        val expectedAngles = "<https://example.test/webhooks/[redacted] ".repeat(500)
+        assertEquals(expectedAngles, CoreTelemetryService.sanitizeLocalPaths(repeatedAngles))
+        val spacedHashes = "\"" + " ".repeat(2000) + "https://example.test/path " + "# ".repeat(2000) + "\""
+        assertEquals(spacedHashes, CoreTelemetryService.sanitizeLocalPaths(spacedHashes))
+
+        val props = CoreTelemetryService.serializeProperties(
+            mapOf(
+                "detail" to "Authorization: Bearer secret",
+                "path" to "/Users/Alice/Secret.mov",
+                "/Users/Alice/Acquisition.mov" to 1,
+                "Authorization" to "opaqueSecret123",
+                "uri" to java.net.URI("https://example.com/api?token=secret"),
+                "count" to 2,
+                "ok" to true
+            )
+        )
+        assertTrue(props != null)
+        assertTrue(!props!!.contains("secret", ignoreCase = true))
+        assertTrue(!props.contains("Alice"))
+        assertTrue(!props.contains("Acquisition"))
+        assertTrue(props.contains("\"[redacted-path]\":1"))
+        assertTrue(props.contains("\"detail\":\"Authorization: Bearer [redacted]\""))
+        assertTrue(props.contains("\"path\":\"[redacted-path]\""))
+        assertTrue(props.contains("\"Authorization\":\"[redacted]\""))
+        assertTrue(props.contains("\"uri\":\"https://example.com/api?[redacted]\""))
+        assertTrue(props.contains("\"count\":2"))
+        assertTrue(props.contains("\"ok\":true"))
     }
 }

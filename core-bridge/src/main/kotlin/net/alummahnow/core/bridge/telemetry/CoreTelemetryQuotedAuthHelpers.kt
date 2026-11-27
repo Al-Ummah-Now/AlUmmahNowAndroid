@@ -9,20 +9,25 @@ internal object CoreTelemetryQuotedAuthHelpers {
 
     fun findBalancedJsonStringEnd(text: String, open: Int): Int {
         val prev = skipJsonWhitespaceBackward(text, open - 1)
-        if (prev >= 0 && text[prev] !in ":[,{") return -1
+        if (prev >= 0 && text[prev] !in ":=[,{") return -1
         var pos = open + 1
         var escaped = false
         while (pos < text.length) {
             val ch = text[pos]
             if (ch == '\r' || ch == '\n') return -1
             if (ch == '"' && !escaped) {
-                val after = CoreTelemetryAuthJsonHelpers.skipJsonWhitespace(text, pos + 1)
-                return if (after >= text.length || text[after] in ",}]:") pos else -1
+                return if (isQuotedSpanEndBoundary(text, pos + 1)) pos else -1
             }
             escaped = ch == '\\' && !escaped
             pos++
         }
         return -1
+    }
+
+    private fun isQuotedSpanEndBoundary(text: String, afterPos: Int): Boolean {
+        if (afterPos >= text.length || CoreTelemetryScanners.isSpace(text[afterPos])) return true
+        val after = CoreTelemetryAuthJsonHelpers.skipJsonWhitespace(text, afterPos)
+        return after >= text.length || text[after] in ",}]:;)"
     }
 
     private fun skipJsonWhitespaceBackward(text: String, start: Int): Int {

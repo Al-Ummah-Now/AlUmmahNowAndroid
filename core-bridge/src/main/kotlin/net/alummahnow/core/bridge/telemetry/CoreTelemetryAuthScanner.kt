@@ -95,8 +95,13 @@ internal object CoreTelemetryAuthScanner {
         val normalizedKey: String?
     )
 
+    private fun mayContainAuthHeader(text: String, maxDepth: Int): Boolean {
+        if (text.indexOf(':') >= 0 || text.indexOf('=') >= 0) return true
+        return maxDepth > 0 && text.indexOf('"') >= 0 && text.contains("\\u")
+    }
+
     private fun redactAuthHeaders(text: String, maxDepth: Int = 4): String {
-        if (text.indexOf(':') < 0 && text.indexOf('=') < 0) return text
+        if (!mayContainAuthHeader(text, maxDepth)) return text
         val builder = HeaderBuilder(text)
         scanAuthHeaders(text, maxDepth, builder)
         return builder.finish()

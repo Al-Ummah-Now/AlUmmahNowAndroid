@@ -39,14 +39,23 @@ internal object CoreTelemetryScanners {
         return if (validPrefix && !prevBlocked && !isFile) start else null
     }
 
+    @Suppress("LongParameterList")
     fun resolveQuotedSecretUrlTail(
         text: String,
         span: UrlSpan,
         inDoubleQuote: Boolean,
         rawUrl: String,
-        redactedUrl: String
+        redactedUrl: String,
+        contLimits: IntArray
     ): Pair<String, Int>? =
-        CoreTelemetryUrlContinuation.resolveQuotedSecretUrlTail(text, span, inDoubleQuote, rawUrl, redactedUrl)
+        CoreTelemetryUrlContinuation.resolveQuotedSecretUrlTail(
+            text,
+            span,
+            inDoubleQuote,
+            rawUrl,
+            redactedUrl,
+            contLimits
+        )
 
     fun computeQueryAngleStopMask(text: String, urlStart: Int, inDoubleQuote: Boolean): Int {
         val wrappedInAngle = CoreTelemetryUrlContinuation.isAngleWrappedBefore(text, urlStart)
