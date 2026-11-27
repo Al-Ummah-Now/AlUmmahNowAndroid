@@ -7,6 +7,7 @@ import java.net.URI
  */
 internal object CoreTelemetryEmailScanner {
     private const val ENCODED_AT_LEN = 3
+    private const val UNICODE_AT_LEN = 6
     private const val EMAIL_LOCAL_PUNCT = "._+-/!#$&'*=?^`{|}~"
     private const val IPV6_FORBIDDEN = "[\"'<>\\{}\r\n"
     private val LEADING_UNICODE_WRAPPER_CATEGORIES = setOf(
@@ -32,7 +33,8 @@ internal object CoreTelemetryEmailScanner {
         HYPHEN
     }
 
-    fun hasEmailAt(text: String): Boolean = text.indexOf('@') >= 0 || text.indexOf("%40") >= 0
+    fun hasEmailAt(text: String): Boolean =
+        text.indexOf('@') >= 0 || text.indexOf("%40") >= 0 || text.indexOf("\\u0040") >= 0
 
     fun containsWhitespace(text: String, start: Int, end: Int): Boolean {
         for (i in start until end) {
@@ -44,8 +46,12 @@ internal object CoreTelemetryEmailScanner {
     fun emailAtLength(text: String, pos: Int): Int = when {
         text[pos] == '@' -> 1
         isEncodedAt(text, pos) -> ENCODED_AT_LEN
+        isUnicodeEscapedAt(text, pos) -> UNICODE_AT_LEN
         else -> 0
     }
+
+    private fun isUnicodeEscapedAt(text: String, pos: Int): Boolean =
+        text.regionMatches(pos, "\\u0040", 0, UNICODE_AT_LEN) && !isPrecededByOddBackslashes(text, pos, 0)
 
     fun findEmailTailEnd(text: String, pos: Int): Int {
         var p = pos
@@ -239,6 +245,10 @@ internal object CoreTelemetryEmailScanner {
 
     private fun classifyDomainCharAt(text: String, pos: Int): Pair<DomainCharKind, Int> {
         val ch = text[pos]
+        if (ch == '\\' && pos + 5 < text.length && text[pos + 1] == 'u') {
+            val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2)
+            if (code >= 0) return classifyDecodedDomainChar(code.toChar()) to UNICODE_AT_LEN
+        }
         if (ch.code < 0x80) return classifyAsciiDomainChar(ch) to 1
         if (isEmailDomainDot(ch)) return DomainCharKind.DOT to 1
         val cp = Character.codePointAt(text, pos)
@@ -249,6 +259,14 @@ internal object CoreTelemetryEmailScanner {
             else -> DomainCharKind.OTHER
         }
         return kind to step
+    }
+
+    private fun classifyDecodedDomainChar(ch: Char): DomainCharKind = when {
+        ch.code < 0x80 -> classifyAsciiDomainChar(ch)
+        isEmailDomainDot(ch) -> DomainCharKind.DOT
+        ch.isLetter() -> DomainCharKind.LETTER
+        ch.isDigit() -> DomainCharKind.DIGIT
+        else -> DomainCharKind.OTHER
     }
 
     private fun classifyAsciiDomainChar(ch: Char): DomainCharKind = when {

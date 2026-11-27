@@ -52,8 +52,11 @@ internal object CoreTelemetryScanners {
             text[span.totalEnd] !in "\"\r\n"
         if (!canExtend) return null
         val secretUrl = when {
-            redactedUrl.endsWith("[redacted]") -> redactedUrl
-            else -> redactUrlPathSecrets(rawUrl + "x").takeIf { it.endsWith("[redacted]") }
+            redactedUrl != rawUrl && redactedUrl.endsWith("[redacted]") -> redactedUrl
+            else -> {
+                val probeInput = rawUrl + "x"
+                redactUrlPathSecrets(probeInput).takeIf { it != probeInput && it.endsWith("[redacted]") }
+            }
         } ?: return null
         return secretUrl to scanToClosingDoubleQuote(text, span.totalEnd)
     }
@@ -75,8 +78,7 @@ internal object CoreTelemetryScanners {
         val wrappedInAngle = urlStart > 0 && text[urlStart - 1] == '<'
         val stopOnLess = !inDoubleQuote && !wrappedInAngle
         val stopOnGreater = !inDoubleQuote || wrappedInAngle
-        val allowInlineSpace = inDoubleQuote && !wrappedInAngle
-        return (if (stopOnLess) 1 else 0) or (if (stopOnGreater) 2 else 0) or (if (allowInlineSpace) 4 else 0)
+        return (if (stopOnLess) 1 else 0) or (if (stopOnGreater) 2 else 0) or (if (inDoubleQuote) 4 else 0)
     }
 
     fun scanUrlAfterScheme(
