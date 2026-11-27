@@ -196,26 +196,33 @@ internal object CoreTelemetryScanners {
         return when {
             isPathStopChar(text, p, ch) -> -1
             ch == ',' && stopsAtPathComma(text, p, allowCommas, openChars.isEmpty()) -> -1
-            ch == '(' || ch == '[' -> pushGroupOpener(text, p, ch, openPositions, openChars)
+            ch == '(' || ch == '[' -> pushGroupOpener(text, p, allowCommas, openPositions, openChars)
             ch == ')' || ch == ']' -> popGroupCloser(p, ch, openPositions, openChars)
             !allowCommas && openChars.isNotEmpty() && ch == ':' -> -1
             else -> p + 1
         }
     }
 
-    private fun stopsAtPathComma(text: String, pos: Int, allowCommas: Boolean, openEmpty: Boolean): Boolean =
-        !allowCommas || (openEmpty && shouldStopAtUrlComma(text, pos))
+    private fun stopsAtPathComma(text: String, pos: Int, allowCommas: Boolean, openEmpty: Boolean): Boolean {
+        val nextIsQf = pos + 1 < text.length && (text[pos + 1] == '?' || text[pos + 1] == '#')
+        return !nextIsQf && (!allowCommas || (openEmpty && shouldStopAtUrlComma(text, pos)))
+    }
 
     private fun pushGroupOpener(
         text: String,
         p: Int,
-        ch: Char,
+        allowCommas: Boolean,
         openPositions: ArrayList<Int>,
         openChars: ArrayList<Char>
     ): Int {
-        if (startsEmbeddedPathInsideGroup(text, p + 1)) return -1
+        val blocked = if (allowCommas) {
+            startsEmbeddedFilesystemPath(text, p + 1)
+        } else {
+            startsEmbeddedPathInsideGroup(text, p + 1)
+        }
+        if (blocked) return -1
         openPositions.add(p)
-        openChars.add(ch)
+        openChars.add(text[p])
         return p + 1
     }
 
@@ -241,18 +248,23 @@ internal object CoreTelemetryScanners {
         val nextPos = commaPos + 1
         if (nextPos >= text.length) return true
         val next = text[nextPos]
-        if (next == '(' || next == '[') return false
-        val stopsAfterComma = next != ',' && (next.isWhitespace() || next in URL_PATH_STOP || next in URL_END_BOUNDARY)
-        return stopsAfterComma || startsEmbeddedPathInsideGroup(text, nextPos)
+        if (next in "([,;?#") return false
+        val stopsAfterComma = next.isWhitespace() || next in URL_PATH_STOP || next in URL_END_BOUNDARY
+        return stopsAfterComma || startsEmbeddedFilesystemPath(text, nextPos)
+    }
+
+    fun startsEmbeddedFilesystemPath(text: String, nextPos: Int): Boolean {
+        if (nextPos >= text.length) return true
+        val ch = text[nextPos]
+        val directPath = ch == '/' || ch == '\\'
+        val homePath = ch == '~' && nextPos + 1 < text.length && text[nextPos + 1] == '/'
+        val schemeOrDrive = isFileSchemeAt(text, nextPos) || isWindowsDriveAt(text, nextPos)
+        return directPath || homePath || schemeOrDrive
     }
 
     fun startsEmbeddedPathInsideGroup(text: String, nextPos: Int): Boolean {
         if (nextPos >= text.length) return true
-        val ch = text[nextPos]
-        val directPath = ch == '/' || ch == '\\' || ch == ':'
-        val homePath = ch == '~' && nextPos + 1 < text.length && text[nextPos + 1] == '/'
-        val schemeOrDrive = isFileSchemeAt(text, nextPos) || isWindowsDriveAt(text, nextPos)
-        return directPath || homePath || schemeOrDrive
+        return text[nextPos] == ':' || startsEmbeddedFilesystemPath(text, nextPos)
     }
 
     fun scanQueryOrFragment(text: String, start: Int): Int {

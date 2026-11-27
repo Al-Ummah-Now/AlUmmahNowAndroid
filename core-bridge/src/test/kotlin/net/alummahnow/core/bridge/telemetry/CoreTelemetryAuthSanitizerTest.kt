@@ -375,6 +375,30 @@ class CoreTelemetryAuthSanitizerTest {
             "https://example.test/webhook/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,(tag:opaqueSecret123")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scrubs webhook comma-query semicolon and leading-colon groups`() {
+        assertEquals(
+            "https://example.test/webhook/[redacted]?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/api,?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken;,(tag:opaqueSecret123)")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken(:opaqueSecret123)")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,;opaqueSecret123")
+        )
         assertEquals(
             "{\"\\q\":\"hi\",\"Authorization\":[\"[redacted]\",\n\"[redacted]\"",
             CoreTelemetryService.sanitizeLocalPaths("{\"\\q\":\"hi\",\"Authorization\":[\"firstValue\",\n\"opaqueSecret123\"")

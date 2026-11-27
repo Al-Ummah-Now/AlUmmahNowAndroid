@@ -900,7 +900,8 @@ class CoreTelemetryService(
                     val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
                     var endPos = span.totalEnd
                     var tail = baseTail
-                    val commaProbe = probeWebhookCommaExtension(span, baseTail, url, text)
+                    val rawUrl = text.substring(span.start, span.baseEnd)
+                    val commaProbe = probeWebhookCommaExtension(span, baseTail, rawUrl, text)
                     val redactedUrl = if (commaProbe != null) {
                         val (extUrl, extEnd, extTail) = extendRedactedWebhookComma(text, commaProbe, span.start, endPos)
                         endPos = extEnd
@@ -951,19 +952,20 @@ class CoreTelemetryService(
         private fun probeWebhookCommaExtension(
             span: CoreTelemetryScanners.UrlSpan,
             tail: String,
-            url: String,
+            rawUrl: String,
             text: String
         ): String? {
-            val canCheck = !span.hasQf && tail.isEmpty() && span.totalEnd < text.length
+            val tailOk = tail.isEmpty() || tail == ";"
+            val canCheck = !span.hasQf && tailOk && span.totalEnd < text.length
             if (!canCheck) return null
             val nextCh = text[span.totalEnd]
             val canContinue = when (nextCh) {
                 ',' -> !CoreTelemetryScanners.shouldStopAtUrlComma(text, span.totalEnd)
-                '(', '[' -> !CoreTelemetryScanners.startsEmbeddedPathInsideGroup(text, span.totalEnd + 1)
+                '(', '[' -> !CoreTelemetryScanners.startsEmbeddedFilesystemPath(text, span.totalEnd + 1)
                 else -> false
             }
             if (!canContinue) return null
-            val withNext = "$url$nextCh"
+            val withNext = "$rawUrl$nextCh"
             val probe = CoreTelemetryScanners.redactUrlPathSecrets(withNext)
             return if (probe != withNext && probe.endsWith("[redacted]")) probe else null
         }
