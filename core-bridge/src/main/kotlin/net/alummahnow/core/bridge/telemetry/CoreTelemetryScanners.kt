@@ -190,7 +190,7 @@ internal object CoreTelemetryScanners {
             ch in "([{" -> pushGroupOpener(text, p, openPositions, openChars, openBraces)
             ch in ")]}" -> popGroupCloser(p, ch, openPositions, openChars, openBraces)
             openBraces[0] > 0 && !isBraceTemplateChar(ch) -> -1
-            openChars.isNotEmpty() && ch == ':' -> -1
+            openChars.isNotEmpty() && (ch == ':' || ch == '\'') -> -1
             else -> p + 1
         }
     }
@@ -248,7 +248,7 @@ internal object CoreTelemetryScanners {
     ) {
         val groupStack = ArrayList<Char>()
         var quoteChar: Char = '\u0000'
-        var sawInnerScheme = false
+        var sawInnerQf = false
     }
 
     fun scanUrlContinuation(text: String, start: Int, state: ContScanState): Int {
@@ -268,7 +268,7 @@ internal object CoreTelemetryScanners {
     private fun stepQuotedContinuation(text: String, p: Int, state: ContScanState): Int {
         val ch = text[p]
         if (ch == '\r' || ch == '\n') return -1
-        if (ch == ':' && text.startsWith("://", p)) state.sawInnerScheme = true
+        if (ch == '?' || ch == '#') state.sawInnerQf = true
         val isEscape = ch == '\\' && p + 1 < text.length
         if (isEscape && text[p + 1] !in "\r\n") return p + 2
         if (ch == state.quoteChar) state.quoteChar = '\u0000'
@@ -277,7 +277,7 @@ internal object CoreTelemetryScanners {
 
     private fun stepUnquotedContinuation(text: String, p: Int, start: Int, state: ContScanState): Int {
         val ch = text[p]
-        val startsScheme = state.stopAtSchemes && p > start && text[p - 1] in ",;()[]{}'" && isUrlSchemeAt(text, p)
+        val startsScheme = state.stopAtSchemes && p > start && !isBlockedBeforeScheme(text[p - 1]) && isUrlSchemeAt(text, p)
         if (isContStopChar(text, p, ch) || startsScheme) return -1
         if (ch == '"' || ch == '\'') {
             val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
