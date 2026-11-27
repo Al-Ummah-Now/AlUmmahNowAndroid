@@ -233,6 +233,11 @@ class CoreTelemetryServiceTest {
                 "[redacted-path] https://example.com/ [redacted-path]",
             "/private/My Folder/(https://Secret/Acquisition.mov)" to "[redacted-path]",
             "/private/foo(https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "/private/Client Files (https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "/private/Secret\u001EAcquisition" to "[redacted-path]",
+            "/private/Secret^Acquisition" to "[redacted-path]",
+            "TLS/1.3(https://example.com/api)" to "TLS/1.3(https://example.com/api)",
+            "HTTP/2(https://example.com/api)" to "HTTP/2(https://example.com/api)",
             "(relative/Secret.mov and https://example.com/api)" to "([redacted-path] https://example.com/api)",
             "Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and Bearer abcdefg" to
                 "Failed for [redacted-email] with Bearer [redacted] and Bearer [redacted]"
@@ -242,6 +247,8 @@ class CoreTelemetryServiceTest {
         }
         val repeated = "(https://example.com)".repeat(500)
         assertEquals(repeated, CoreTelemetryService.sanitizeLocalPaths(repeated))
+        val manyXs = "\u001EAUNURL" + "X".repeat(5000)
+        assertEquals(manyXs, CoreTelemetryService.sanitizeLocalPaths(manyXs))
     }
 
     @Test

@@ -375,6 +375,10 @@ class CoreTelemetryService(
             RegexOption.IGNORE_CASE
         )
         private const val FILE_SCHEME_PREFIX = "file://"
+        private const val VAULT_PREFIX = "\u001EAUNURL"
+        private val pathConnectors = setOf(
+            "and", "or", "from", "to", "via", "with", "at", "in", "for", "on", "of", "by", "see", "as"
+        )
         private const val IO_KEYWORD_VERBS =
             "open|opening|read|reading|write|writing|delete|deleting|remove|removing|rename|stat|" +
                 "create|creating|load|loading|save|saving|access|accessing|unlink|" +
@@ -516,38 +520,82 @@ class CoreTelemetryService(
         /** Scrubs local paths, relative paths, bare filenames, and `file://` URIs while preserving non-`file` URLs. */
         fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
-            var prefix = "\u001EAUNURL"
-            while (text.contains(prefix)) {
-                prefix += "X"
-            }
-            val (vaulted, vaultedUrls) = vaultNonFileUrls(text, prefix)
-            var scrubbed = redactFileUris(vaulted, prefix)
+            val (escaped, hadSentinels) = escapeSentinels(text)
+            val (vaulted, vaultedUrls) = vaultNonFileUrls(escaped, VAULT_PREFIX)
+            var scrubbed = redactFileUris(vaulted, VAULT_PREFIX)
             for ((regex, template) in pathRedactionRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
-            scrubbed = restoreVaultedUrls(scrubbed, prefix, vaultedUrls)
+            scrubbed = restoreVaultedUrls(scrubbed, VAULT_PREFIX, vaultedUrls)
             for ((regex, template) in postRestoreRedactionRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
-            return scrubbed
+            return if (hadSentinels) unescapeSentinels(scrubbed) else scrubbed
+        }
+
+        private fun escapeSentinels(text: String): Pair<String, Boolean> {
+            val first = text.indexOfFirst { it == '\u001D' || it == '\u001E' || it == '\u001F' }
+            if (first < 0) return text to false
+            val sb = StringBuilder(text.length + 8)
+            sb.append(text, 0, first)
+            for (i in first until text.length) {
+                when (text[i]) {
+                    '\u001D' -> sb.append("\u001D\u001D")
+                    '\u001E' -> sb.append("\u001D\u001C")
+                    '\u001F' -> sb.append("\u001D\u001B")
+                    else -> sb.append(text[i])
+                }
+            }
+            return sb.toString() to true
+        }
+
+        private fun unescapeSentinels(text: String): String {
+            val first = text.indexOf('\u001D')
+            if (first < 0) return text
+            val sb = StringBuilder(text.length)
+            sb.append(text, 0, first)
+            var i = first
+            while (i < text.length) {
+                val decoded = if (text[i] == '\u001D' && i + 1 < text.length) {
+                    decodeSentinel(text[i + 1])
+                } else {
+                    null
+                }
+                if (decoded != null) {
+                    sb.append(decoded)
+                    i += 2
+                } else {
+                    sb.append(text[i++])
+                }
+            }
+            return sb.toString()
+        }
+
+        private fun decodeSentinel(next: Char): Char? = when (next) {
+            '\u001D' -> '\u001D'
+            '\u001C' -> '\u001E'
+            '\u001B' -> '\u001F'
+            else -> null
         }
 
         private class VaultLineTracker {
             private var cursor = 0
-            private var hasFileUriOnLine = false
-            private var fileUriQuote = '\u0000'
-            private var lastNonWsOrWrapperChar = '\u0000'
+            private var hasPathOnLine = false
+            private var pathQuote = '\u0000'
+            private var tokenStart = -1
+            private var tokenEnd = -1
+            private var prevTokenStart = -1
+            private var prevTokenEnd = -1
             private var tokenHasPathSep = false
             private var inWrapperRun = false
             private var wsBeforeRun = false
 
             fun isEmbeddedInPath(text: String, matchStart: Int): Boolean {
                 advanceTo(text, matchStart)
-                val afterPathSep = isPathSep(lastNonWsOrWrapperChar)
-                return fileUriQuote != '\u0000' ||
-                    tokenHasPathSep ||
-                    (!wsBeforeRun && hasFileUriOnLine) ||
-                    (hasFileUriOnLine && inWrapperRun && afterPathSep)
+                val curTokenIsPath = tokenHasPathSep && !isProtocolToken(text, tokenStart, tokenEnd)
+                val wrappedUnderPath =
+                    hasPathOnLine && inWrapperRun && !isPathConnectorOrSep(text, prevTokenStart, prevTokenEnd)
+                return pathQuote != '\u0000' || curTokenIsPath || (!wsBeforeRun && hasPathOnLine) || wrappedUnderPath
             }
 
             fun onVaultedUrl(matchEnd: Int) {
@@ -556,9 +604,12 @@ class CoreTelemetryService(
             }
 
             private fun resetLineState() {
-                hasFileUriOnLine = false
-                fileUriQuote = '\u0000'
-                lastNonWsOrWrapperChar = '\u0000'
+                hasPathOnLine = false
+                pathQuote = '\u0000'
+                tokenStart = -1
+                tokenEnd = -1
+                prevTokenStart = -1
+                prevTokenEnd = -1
                 tokenHasPathSep = false
                 inWrapperRun = false
                 wsBeforeRun = false
@@ -577,38 +628,100 @@ class CoreTelemetryService(
             }
 
             private fun processLineChar(text: String, ch: Char) {
-                val closedQuote = fileUriQuote != '\u0000' && ch == fileUriQuote
-                if (closedQuote) {
-                    fileUriQuote = '\u0000'
-                } else if (isFileSchemeAt(text, cursor)) {
-                    hasFileUriOnLine = true
+                if (pathQuote != '\u0000' && ch == pathQuote) {
+                    closeQuotedPath()
+                    return
+                }
+                val atTokenStart = tokenStart < 0 || inWrapperRun
+                if (isFileSchemeAt(text, cursor) || startsLocalPathAt(text, cursor, atTokenStart)) {
+                    hasPathOnLine = true
                     if (cursor > 0 && (text[cursor - 1] == '"' || text[cursor - 1] == '\'')) {
-                        fileUriQuote = text[cursor - 1]
+                        pathQuote = text[cursor - 1]
                     }
                 }
-                updateRunState(ch, closedQuote)
+                updateRunState(ch)
             }
 
-            private fun updateRunState(ch: Char, closedQuote: Boolean) {
+            private fun closeQuotedPath() {
+                pathQuote = '\u0000'
+                hasPathOnLine = false
+                commitToken()
+                tokenHasPathSep = false
+                inWrapperRun = false
+                wsBeforeRun = false
+            }
+
+            private fun commitToken() {
+                if (tokenStart >= 0) {
+                    prevTokenStart = tokenStart
+                    prevTokenEnd = tokenEnd
+                    tokenStart = -1
+                    tokenEnd = -1
+                }
+            }
+
+            private fun updateRunState(ch: Char) {
                 when {
-                    closedQuote -> {
-                        lastNonWsOrWrapperChar = ch
-                        inWrapperRun = false
-                        wsBeforeRun = false
-                    }
                     ch.isWhitespace() -> if (!inWrapperRun) {
+                        commitToken()
                         wsBeforeRun = true
                         tokenHasPathSep = false
                     }
-                    isOpeningWrapper(ch) -> inWrapperRun = true
+                    isOpeningWrapper(ch) -> {
+                        if (!inWrapperRun && tokenStart >= 0) {
+                            prevTokenStart = tokenStart
+                            prevTokenEnd = tokenEnd
+                        }
+                        inWrapperRun = true
+                    }
                     else -> {
-                        lastNonWsOrWrapperChar = ch
+                        if (tokenStart < 0 || inWrapperRun) {
+                            tokenStart = cursor
+                            tokenHasPathSep = false
+                        }
+                        tokenEnd = cursor + 1
                         if (isPathSep(ch)) tokenHasPathSep = true
                         inWrapperRun = false
                         wsBeforeRun = false
                     }
                 }
             }
+        }
+
+        private fun startsLocalPathAt(text: String, pos: Int, atTokenStart: Boolean): Boolean {
+            if (!atTokenStart) return false
+            return when (text[pos]) {
+                '/' -> true
+                '~' -> pos + 1 < text.length && text[pos + 1] == '/'
+                '\\' -> pos + 1 < text.length && text[pos + 1] == '\\'
+                else -> isWindowsDriveAt(text, pos)
+            }
+        }
+
+        private fun isWindowsDriveAt(text: String, pos: Int): Boolean {
+            if (pos + 2 >= text.length) return false
+            val ch = text[pos]
+            val isLetter = ch in 'A'..'Z' || ch in 'a'..'z'
+            return isLetter && text[pos + 1] == ':' && isPathSep(text[pos + 2])
+        }
+
+        private fun isProtocolToken(text: String, start: Int, end: Int): Boolean {
+            if (start < 0 || end <= start) return false
+            val token = text.substring(start, end)
+            val slashIdx = token.indexOf('/')
+            val validSlash = slashIdx > 0 && slashIdx + 1 < token.length &&
+                !token.contains('\\') && token.indexOf('/', slashIdx + 1) < 0 &&
+                token[slashIdx + 1] in '0'..'9'
+            if (!validSlash) return false
+            val proto = token.substring(0, slashIdx).uppercase(Locale.ROOT)
+            return proto == "HTTP" || proto == "TLS" || proto == "SSL"
+        }
+
+        private fun isPathConnectorOrSep(text: String, start: Int, end: Int): Boolean {
+            if (start < 0 || end <= start) return false
+            val last = text[end - 1]
+            if (last == ';' || last == ',' || last == ':') return true
+            return text.substring(start, end).lowercase(Locale.ROOT) in pathConnectors
         }
 
         private fun isFileSchemeAt(text: String, pos: Int): Boolean {
