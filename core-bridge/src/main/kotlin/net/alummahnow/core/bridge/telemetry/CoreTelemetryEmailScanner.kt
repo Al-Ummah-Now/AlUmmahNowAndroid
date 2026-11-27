@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets
  */
 internal object CoreTelemetryEmailScanner {
     private const val ENCODED_AT_LEN = 3
-    private const val MIN_BASIC_TOKEN_FALLBACK_LEN = 8
     private const val BASE64_CHUNK_LEN = 4
     private const val BASE64_PAD_TWO = 2
     private const val BASE64_PAD_THREE = 3
@@ -29,12 +28,15 @@ internal object CoreTelemetryEmailScanner {
         RegexOption.IGNORE_CASE
     )
     private val authHeaderPlainRegex = Regex(
-        """(\b(?:Proxy-)?Authorization\s*[:=]\s*(?!['"])(?:(?:$KNOWN_AUTH_SCHEMES)\s+)?)[^\r\n]+""",
+        """(["']?\b(?:Proxy-)?Authorization["']?[ \t]*[:=](?![ \t]*['"])[ \t]*(?:(?:$KNOWN_AUTH_SCHEMES)[ \t]+)?)[^\r\n]+""",
         RegexOption.IGNORE_CASE
     )
-    private val bearerTokenRegex = Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE)
+    private val bearerTokenRegex = Regex(
+        """\b(Bearer)\s+(?!\[redacted\](?=$|[\s"',;)\]}]))[^\s"',;)\]}]+""",
+        RegexOption.IGNORE_CASE
+    )
     private val basicTokenRegex = Regex(
-        """\b(Basic)\s+([A-Za-z0-9+/_-]{4,}={0,2})(?=$|[\s"',;)\]}])""",
+        """\b(Basic)\s+([A-Za-z0-9+/_-]{2,}={0,2})(?![A-Za-z0-9+/_=-])""",
         RegexOption.IGNORE_CASE
     )
     private val LEADING_UNICODE_WRAPPER_CATEGORIES = setOf(
@@ -64,7 +66,7 @@ internal object CoreTelemetryEmailScanner {
         var result = authHeaderDoubleQuotedRegex.replace(text, "$1[redacted]")
         result = authHeaderSingleQuotedRegex.replace(result, "$1[redacted]")
         result = authHeaderPlainRegex.replace(result, "$1[redacted]")
-        result = bearerTokenRegex.replace(result, "Bearer [redacted]")
+        result = bearerTokenRegex.replace(result, "$1 [redacted]")
         return basicTokenRegex.replace(result) { match ->
             if (isBasicCredentialToken(match.groupValues[2])) {
                 "${match.groupValues[1]} [redacted]"
@@ -74,13 +76,11 @@ internal object CoreTelemetryEmailScanner {
         }
     }
 
-    private fun hasBase64Symbol(token: String): Boolean = token.any { it == '+' || it == '/' || it == '=' }
-
     private fun isBasicCredentialToken(token: String): Boolean {
-        if (token.length >= MIN_BASIC_TOKEN_FALLBACK_LEN && hasBase64Symbol(token)) return true
+        if (token.endsWith('=') && (token.length and 3) != 0) return false
         val bytes = decodeBase64Strict(token)
         val decoded = if (bytes != null && bytes.any { it == ':'.code.toByte() }) decodeUtf8Strict(bytes) else null
-        return decoded != null && decoded.none { (it.code < ASCII_SPACE && it != '\t') || it.code == ASCII_DEL }
+        return decoded != null && decoded.none { it.code < ASCII_SPACE || it.code == ASCII_DEL }
     }
 
     private fun decodeUtf8Strict(bytes: ByteArray): String? = runCatching {

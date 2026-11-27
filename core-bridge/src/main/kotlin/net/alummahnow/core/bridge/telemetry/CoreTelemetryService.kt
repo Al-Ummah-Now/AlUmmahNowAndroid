@@ -518,8 +518,8 @@ class CoreTelemetryService(
         fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
             val (escaped, hadSentinels) = escapeSentinels(text)
-            val preQuoted = CoreTelemetryEmailScanner.redactQuotedEmails(escaped)
-            val (vaulted, vaultedUrls) = vaultNonFileUrls(preQuoted, VAULT_PREFIX)
+            val preAuth = CoreTelemetryEmailScanner.redactAuthCredentials(CoreTelemetryEmailScanner.redactQuotedEmails(escaped))
+            val (vaulted, vaultedUrls) = vaultNonFileUrls(preAuth, VAULT_PREFIX)
             var scrubbed = redactFileUris(vaulted, VAULT_PREFIX)
             for (regex in parenPathRegexes) {
                 scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
@@ -539,7 +539,6 @@ class CoreTelemetryService(
             if (vaultedUrls.isNotEmpty()) {
                 scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)
             }
-            scrubbed = CoreTelemetryEmailScanner.redactAuthCredentials(scrubbed)
             return if (hadSentinels) unescapeSentinels(scrubbed) else scrubbed
         }
 
