@@ -221,21 +221,23 @@ internal object CoreTelemetryScanners {
         return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
-    private val webUrlSchemes = listOf("https://", "http://", "wss://", "ws://", "ftp://")
-
     fun scanUrlContinuation(text: String, start: Int): Int {
         var p = start
         while (p < text.length) {
             val ch = text[p]
-            val startsWebScheme = p > start && text[p - 1] in ",;()[]'" && isWebUrlSchemeAt(text, p)
-            if (isPathStopChar(text, p, ch) || startsWebScheme) break
+            val startsScheme = p > start && text[p - 1] in ",;()[]'" && isUrlSchemeAt(text, p)
+            if (isPathStopChar(text, p, ch) || startsScheme) break
             p++
         }
         return p
     }
 
-    private fun isWebUrlSchemeAt(text: String, pos: Int): Boolean =
-        webUrlSchemes.any { text.regionMatches(pos, it, 0, it.length, ignoreCase = true) }
+    private fun isUrlSchemeAt(text: String, pos: Int): Boolean {
+        if (pos >= text.length || !isAsciiLetter(text[pos])) return false
+        var i = pos + 1
+        while (i < text.length && isUrlSchemeChar(text[i])) i++
+        return i - pos >= 2 && text.startsWith("://", i)
+    }
 
     fun trimWebhookContinuationEnd(text: String, urlStart: Int, minEnd: Int, scanEnd: Int): Int {
         val excess = countExcessGroupClosers(text, urlStart, scanEnd)

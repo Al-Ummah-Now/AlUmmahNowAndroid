@@ -407,7 +407,7 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>()\[{:,;=\u001E\u001F]+\\""" +
+                """(^|[\s(\[{"'=,:;<>)\u001F])[^\s\\/"'<>()\[{:,;=\u001E\u001F]+\\""" +
                     """[^\r\n\u001E\u001F\s\p{Zs}]""" +
                     """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?"""
             ) to "$1[redacted-path]",
@@ -418,7 +418,7 @@ class CoreTelemetryService(
                     """(?:[^\r\n\u001E]*[^\r\n\u001E\s\p{Zs}])?"""
             ) to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
+                """(^|[\s(\[{)\]}<>"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
                     """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s\p{Zs}]""" +
                     """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?""",

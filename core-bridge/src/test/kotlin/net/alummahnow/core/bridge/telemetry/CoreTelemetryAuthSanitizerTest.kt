@@ -502,6 +502,22 @@ class CoreTelemetryAuthSanitizerTest {
             "https://example.com/api,https://other.com/x?[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,https://other.com/x?token=opaqueSecret123")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths handles RFC 3986 schemes and closing delimiters in URL continuations`() {
+        assertEquals(
+            "https://example.com/api,ssh://other.com/x?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,ssh://other.com/x?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/api)[redacted-path]?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api)private/Secret?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/api][redacted-path]?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api]private/Secret?token=opaqueSecret123")
+        )
         assertEquals(
             "https://api.telegram.org/bot123:[redacted]/sendMessage",
             CoreTelemetryService.sanitizeLocalPaths("https://api.telegram." + "org/bot123:%2FopaqueSecret123/sendMessage")
