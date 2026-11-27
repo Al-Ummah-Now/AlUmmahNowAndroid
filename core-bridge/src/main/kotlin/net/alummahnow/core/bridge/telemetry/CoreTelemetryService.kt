@@ -421,7 +421,7 @@ class CoreTelemetryService(
             Regex(
                 """(^|[\s(\[{)\]}<>"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
-                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s\p{Zs}]""" +
+                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s\p{Zs}"]""" +
                     """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]"

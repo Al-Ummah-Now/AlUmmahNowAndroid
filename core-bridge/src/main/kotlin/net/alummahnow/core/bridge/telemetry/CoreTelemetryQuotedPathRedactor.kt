@@ -7,6 +7,12 @@ internal object CoreTelemetryQuotedPathRedactor {
         val stopPos: Int
     )
 
+    private data class QuotedScanStep(
+        val found: Int,
+        val nextPos: Int,
+        val nextTokenStart: Int
+    )
+
     fun redactDoubleQuotedLocalPaths(text: String): String {
         if (text.indexOf('"') < 0) return text
         var sb: StringBuilder? = null
@@ -21,7 +27,7 @@ internal object CoreTelemetryQuotedPathRedactor {
                     idx = span.stopPos + 1
                 } else {
                     val sliceStart = if (span.lastVaultEnd > idx + 1) span.lastVaultEnd else idx + 1
-                    val pathPos = if (sliceStart < span.close) findLocalPathStartInQuoted(text, sliceStart, span.close) else -1
+                    val pathPos = findAdjustedPathPos(text, sliceStart, span.close)
                     if (pathPos >= 0) {
                         val out = sb ?: StringBuilder(text.length).also { sb = it }
                         out.append(text, copied, pathPos).append("[redacted-path]")
@@ -33,6 +39,12 @@ internal object CoreTelemetryQuotedPathRedactor {
         }
         val out = sb ?: return text
         return out.append(text, copied, text.length).toString()
+    }
+
+    private fun findAdjustedPathPos(text: String, sliceStart: Int, close: Int): Int {
+        if (sliceStart >= close) return -1
+        val pos = findLocalPathStartInQuoted(text, sliceStart, close)
+        return if (pos > sliceStart && isOddBackslashesBefore(text, pos, sliceStart)) pos - 1 else pos
     }
 
     private fun isOddBackslashesBefore(text: String, pos: Int, minPos: Int): Boolean {
@@ -70,62 +82,82 @@ internal object CoreTelemetryQuotedPathRedactor {
         var pos = start
         var found = -1
         while (pos < end && found < 0) {
-            val ch = text[pos]
-            when {
-                isEscapedDoubleQuote(text, pos, end) -> {
-                    tokenStart = -1
-                    pos += 2
-                }
-                isWindowsDrivePath(text, pos, end) -> found = pos
-                tokenStart < 0 && isQuotedLocalPathStart(text, pos, end) -> found = pos
-                ch.isWhitespace() || isQuotedPathDelimiter(ch) -> {
-                    tokenStart = -1
-                    pos++
-                }
-                ch == '/' || ch == '\\' -> {
-                    if (tokenStart >= 0 && hasNonWhitespaceAfter(text, pos + 1, end)) {
-                        found = tokenStart
-                    } else {
-                        tokenStart = -1
-                        pos++
-                    }
-                }
-                else -> {
-                    if (tokenStart < 0) tokenStart = pos
-                    pos++
-                }
-            }
+            val step = stepQuotedPathScanner(text, pos, end, tokenStart)
+            found = step.found
+            pos = step.nextPos
+            tokenStart = step.nextTokenStart
         }
         return found
+    }
+
+    private fun stepQuotedPathScanner(text: String, pos: Int, end: Int, tokenStart: Int): QuotedScanStep {
+        val ch = text[pos]
+        return when {
+            isEscapedDoubleQuote(text, pos, end) -> QuotedScanStep(-1, pos + 2, -1)
+            CoreTelemetryScanners.isWindowsDriveAt(text, pos) -> checkTrailingNonWs(text, pos, pos + 3, end)
+            ch == '/' || isEscapedSlash(text, pos, end) -> {
+                val step = if (ch == '\\') 2 else 1
+                checkSlashRun(text, pos, pos + step, end, tokenStart)
+            }
+            tokenStart < 0 && isQuotedHomeOrUncPrefix(text, pos, end) -> checkTrailingNonWs(text, pos, pos + 2, end)
+            else -> stepPlainQuotedChar(text, pos, end, tokenStart)
+        }
+    }
+
+    private fun stepPlainQuotedChar(text: String, pos: Int, end: Int, tokenStart: Int): QuotedScanStep {
+        val ch = text[pos]
+        return when {
+            ch.isWhitespace() || isQuotedPathDelimiter(ch) -> QuotedScanStep(-1, pos + 1, -1)
+            ch == '\\' && tokenStart >= 0 -> checkTrailingNonWs(text, tokenStart, pos + 1, end)
+            ch == '\\' -> QuotedScanStep(-1, pos + 1, tokenStart)
+            else -> QuotedScanStep(-1, pos + 1, if (tokenStart < 0) pos else tokenStart)
+        }
+    }
+
+    private fun checkSlashRun(text: String, pos: Int, afterPos: Int, end: Int, tokenStart: Int): QuotedScanStep {
+        if (tokenStart >= 0) return checkTrailingNonWs(text, tokenStart, afterPos, end)
+        val nextRoot = scanSlashRunEnd(text, afterPos, end)
+        val found = if (nextRoot < end && !text[nextRoot].isWhitespace()) pos else -1
+        return QuotedScanStep(found, nextRoot, -1)
+    }
+
+    private fun checkTrailingNonWs(text: String, matchPos: Int, afterPos: Int, end: Int): QuotedScanStep {
+        val next = nextNonHorizontalSpace(text, afterPos, end)
+        val found = if (next < end && !text[next].isWhitespace()) matchPos else -1
+        return QuotedScanStep(found, next, -1)
     }
 
     private fun isEscapedDoubleQuote(text: String, pos: Int, end: Int): Boolean =
         text[pos] == '\\' && pos + 1 < end && text[pos + 1] == '"'
 
-    private fun isWindowsDrivePath(text: String, pos: Int, end: Int): Boolean =
-        CoreTelemetryScanners.isWindowsDriveAt(text, pos) && hasNonWhitespaceAfter(text, pos + 3, end)
+    private fun isEscapedSlash(text: String, pos: Int, end: Int): Boolean =
+        text[pos] == '\\' && pos + 1 < end && text[pos + 1] == '/'
 
-    private fun isQuotedLocalPathStart(text: String, pos: Int, end: Int): Boolean {
+    private fun isQuotedHomeOrUncPrefix(text: String, pos: Int, end: Int): Boolean {
+        if (pos + 1 >= end) return false
         val ch = text[pos]
-        return when {
-            ch == '/' -> hasRootedPathContent(text, pos, end)
-            ch == '~' && pos + 1 < end && text[pos + 1] == '/' -> hasNonWhitespaceAfter(text, pos + 2, end)
-            ch == '\\' && pos + 1 < end && text[pos + 1] == '\\' -> hasNonWhitespaceAfter(text, pos + 2, end)
-            else -> false
+        val next = text[pos + 1]
+        return (ch == '~' && next == '/') || (ch == '\\' && next == '\\')
+    }
+
+    private fun scanSlashRunEnd(text: String, pos: Int, end: Int): Int {
+        var next = pos
+        var done = false
+        while (next < end && !done) {
+            val ch = text[next]
+            when {
+                ch == '/' || isHorizontalSpace(ch) -> next++
+                isEscapedSlash(text, next, end) -> next += 2
+                else -> done = true
+            }
         }
+        return next
     }
 
-    private fun hasRootedPathContent(text: String, pos: Int, end: Int): Boolean {
-        var next = pos + 1
-        while (next < end && text[next] == '/') next++
-        while (next < end && isHorizontalSpace(text[next])) next++
-        return next < end && !text[next].isWhitespace() && text[next] != '/'
-    }
-
-    private fun hasNonWhitespaceAfter(text: String, pos: Int, end: Int): Boolean {
+    private fun nextNonHorizontalSpace(text: String, pos: Int, end: Int): Int {
         var idx = pos
         while (idx < end && isHorizontalSpace(text[idx])) idx++
-        return idx < end && !text[idx].isWhitespace()
+        return idx
     }
 
     private fun isHorizontalSpace(ch: Char): Boolean = ch == ' ' || ch == '\t'

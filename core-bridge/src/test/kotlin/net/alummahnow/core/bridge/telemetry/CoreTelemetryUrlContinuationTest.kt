@@ -291,10 +291,15 @@ class CoreTelemetryUrlContinuationTest {
             "[\"https://example.com/api?token=opaqueSecret123\",\"C://Secret/Acquisition.mov\",\"public\"]" to
                 "[\"https://example.com/api?[redacted]\",\"[redacted-path]\",\"public\"]",
             "[\"hello \\\"world\\\"\",\"public\"]" to "[\"hello \\\"world\\\"\",\"public\"]",
-            "[\"/\",\"public\"]" to "[\"/\",\"public\"]"
+            "[\"/\",\"public\"]" to "[\"/\",\"public\"]",
+            "[\"\\/private/secret\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"\\/\",\"public\"]" to "[\"\\/\",\"public\"]",
+            "[\"relative/\",\"public\"]" to "[\"relative/\",\"public\"]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
+        val manySlashes = "[\"${"/".repeat(10_000)}\",\"public\"]"
+        assertEquals(manySlashes, CoreTelemetryService.sanitizeLocalPaths(manySlashes))
     }
 }
