@@ -21,7 +21,6 @@ internal object CoreTelemetryAuthScanner {
     private const val C1_END = 0x9F
     private const val MASK_LOW_FOUR = 0x0F
     private const val MASK_LOW_TWO = 0x03
-    private const val MIN_OBJ_SCAN_BUDGET = 4096
 
     private val knownAuthSchemes = listOf(
         "Bearer", "Basic", "Digest", "Token", "Api-Key", "ApiKey",
@@ -40,7 +39,7 @@ internal object CoreTelemetryAuthScanner {
     private class HeaderBuilder(private val text: String) {
         var sb: StringBuilder? = null
         var copied = 0
-        var objScanBudget = maxOf(text.length * 2, MIN_OBJ_SCAN_BUDGET)
+        var braceMap: Map<Int, Int>? = null
 
         fun appendRedacted(start: Int, end: Int, replacement: String) {
             val out = sb ?: StringBuilder(text.length).also { sb = it }
@@ -510,38 +509,47 @@ internal object CoreTelemetryAuthScanner {
     }
 
     private fun scanBalancedJsonObjectEnd(text: String, bracePos: Int, builder: HeaderBuilder): Int {
-        if (builder.objScanBudget <= 0 || bracePos >= text.length || text[bracePos] != '{') return -1
-        var depth = 0
-        var inString = false
-        var escaped = false
-        var idx = bracePos
-        var failed = false
-        while (idx < text.length && !failed) {
+        if (bracePos >= text.length || text[bracePos] != '{') return -1
+        val map = builder.braceMap ?: buildJsonBraceMatchMap(text).also { builder.braceMap = it }
+        return map[bracePos] ?: -1
+    }
+
+    private fun buildJsonBraceMatchMap(text: String): Map<Int, Int> {
+        val map = HashMap<Int, Int>()
+        val stack = ArrayDeque<Int>()
+        var noCloseQuoteBefore = -1
+        var idx = 0
+        while (idx < text.length) {
             val ch = text[idx]
-            if (inString) {
-                if (isNewline(ch)) {
-                    failed = true
-                } else if (escaped) {
-                    escaped = false
-                } else if (ch == '\\') {
-                    escaped = true
-                } else if (ch == '"') {
-                    inString = false
+            if (ch == '"' && idx >= noCloseQuoteBefore) {
+                val strEnd = scanJsonStringEnd(text, idx + 1)
+                if (strEnd > 0) {
+                    idx = strEnd
+                } else {
+                    noCloseQuoteBefore = -strEnd - 1
+                    idx++
                 }
             } else {
-                when (ch) {
-                    '"' -> inString = true
-                    '{' -> depth++
-                    '}' -> {
-                        depth--
-                        if (depth == 0) return idx + 1
-                    }
+                if (ch == '{') {
+                    stack.addLast(idx)
+                } else if (ch == '}' && stack.isNotEmpty()) {
+                    map[stack.removeLast()] = idx + 1
                 }
+                idx++
             }
-            if (!failed) idx++
         }
-        builder.objScanBudget -= maxOf(1, idx - bracePos)
-        return -1
+        return map
+    }
+
+    private fun scanJsonStringEnd(text: String, start: Int): Int {
+        var escaped = false
+        for (i in start until text.length) {
+            val ch = text[i]
+            if (isNewline(ch)) return -(i + 1)
+            if (ch == '"' && !escaped) return i + 1
+            escaped = ch == '\\' && !escaped
+        }
+        return -(text.length + 1)
     }
     private fun isAuthKeyWordChar(ch: Char): Boolean = CoreTelemetryScanners.isAsciiWordChar(ch) || ch == '-'
 }

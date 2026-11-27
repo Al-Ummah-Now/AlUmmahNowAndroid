@@ -117,6 +117,13 @@ class CoreTelemetryAuthSanitizerTest {
             "{\"Authorization\":[\"[redacted]\"],\"status\":\"safe\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":[{\"token\":\"start],opaqueSecret123\"}],\"status\":\"safe\"}")
         )
+        val paddedUnmatched =
+            "Authorization: {\nAuthorization: {\nAuthorization: {\nAuthorization: {\n" +
+                "x".repeat(5_000) +
+                "\n{\"Authorization\":{\n\"token\":\"opaqueSecret123\"\n},\"status\":\"safe\"}"
+        val scrubbedPadded = CoreTelemetryService.sanitizeLocalPaths(paddedUnmatched)
+        assertEquals(false, scrubbedPadded.contains("opaqueSecret123"))
+        assertEquals(true, scrubbedPadded.endsWith("{\"Authorization\":\"[redacted]\",\"status\":\"safe\"}"))
         assertEquals(
             "Authorization: [[redacted]]\r\nNextHeader: safe",
             CoreTelemetryService.sanitizeLocalPaths("Authorization: [firstValue]\r\nNextHeader: safe")
