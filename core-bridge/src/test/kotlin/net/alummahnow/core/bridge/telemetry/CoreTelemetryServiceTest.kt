@@ -44,7 +44,7 @@ class CoreTelemetryServiceTest {
 
     @Test
     fun `sanitizeLocalPaths redacts unix unicode windows unc file uri and spaced filenames`() {
-        val raw = buildString {
+        val rawMessage = buildString {
             appendLine("Opened /workspace/E\u0301lodie/Very Secret Client Project Name.mov")
             appendLine("Failed to open '/data/user/0/O'Brien.mov'")
             appendLine("""Read "/Users/O'Brien/Final.mov"""")
@@ -53,18 +53,25 @@ class CoreTelemetryServiceTest {
             appendLine("Key /private-key")
             appendLine("Path /workspace/alice/Project;Acquisition.mov")
             appendLine("Colon '/workspace/alice/Project:2026;Acquisition.mov'")
+            appendLine("FakeStack /Users/alice/Draft:77 in open() Acquisition.mov")
             appendLine("Pipe /workspace/alice/Project|Acquisition.mov")
             appendLine("Angle /Users/alice/Secret<Project>.mov")
             appendLine("Bang /!Acquisition.mov")
             appendLine("""Quoted "/!Acquisition.mov"""")
             appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4""")
-            appendLine("file:///Users/alice/Player.swift:42")
-            appendLine("at /Users/alice/Player.swift:77 in open()")
-            appendLine("at Foo.open() in /data/user/0/net.alummahnow.viewer/files/Final Cut.kt:42")
+            appendLine("ColonPrefixed error 42:/home/alice/private.mov")
             appendLine("""\\fileserver\share\secret.mp4""")
             appendLine("~/private/key.pem")
         }
-        val scrubbed = CoreTelemetryService.sanitizeLocalPaths(raw)
+        val rawStack = buildString {
+            appendLine("""QuotedStack "/home/alice/source.kt:88"""")
+            appendLine("file:///Users/alice/Player.swift:42")
+            appendLine("at /Users/alice/Player.swift:77 in open()")
+            appendLine("at Foo.open() in /data/user/0/net.alummahnow.viewer/files/Final Cut.kt:42")
+        }
+        val scrubbedMessage = CoreTelemetryService.sanitizeLocalPaths(rawMessage, preserveStackLocations = false)
+        val scrubbedStack = CoreTelemetryService.sanitizeLocalPaths(rawStack, preserveStackLocations = true)
+        val scrubbed = scrubbedMessage + "\n" + scrubbedStack
         assertFalse(scrubbed.contains("alice", ignoreCase = true))
         assertFalse(scrubbed.contains("smith", ignoreCase = true))
         assertFalse(scrubbed.contains("lodie", ignoreCase = true))
@@ -79,8 +86,11 @@ class CoreTelemetryServiceTest {
         assertFalse(scrubbed.contains("workspace", ignoreCase = true))
         assertFalse(scrubbed.contains("fileserver", ignoreCase = true))
         assertFalse(scrubbed.contains("key.pem", ignoreCase = true))
-        assertTrue(scrubbed.contains("[redacted-path]:42"))
-        assertTrue(scrubbed.contains("[redacted-path]:77 in open()"))
+        assertFalse(scrubbed.contains("source.kt", ignoreCase = true))
+        assertFalse(scrubbedMessage.contains("in open()"))
+        assertTrue(scrubbedStack.contains("[redacted-path]:42"))
+        assertTrue(scrubbedStack.contains("[redacted-path]:77 in open()"))
+        assertTrue(scrubbedStack.contains("[redacted-path]:88"))
         assertTrue(scrubbed.contains("[redacted-path]"))
     }
 

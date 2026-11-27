@@ -32,8 +32,12 @@ class AdminPrefs(context: Context) {
     var telemetryEnabled: Boolean
         get() = prefs.getBoolean(KEY_TELEMETRY, false)
         set(value) {
-            prefs.edit().putBoolean(KEY_TELEMETRY, value).commit()
+            setTelemetryEnabled(value)
         }
+
+    /** Persists telemetry preference synchronously and returns whether the write committed. */
+    fun setTelemetryEnabled(enabled: Boolean): Boolean =
+        prefs.edit().putBoolean(KEY_TELEMETRY, enabled).commit()
 
     companion object {
         private const val NAME = "aun_admin_prefs"

@@ -70,7 +70,11 @@ class MainActivity : ComponentActivity() {
                         if (saved) {
                             telemetryEnabled = false
                         }
-                        telemetryWarning = if (purged && saved) null else getString(DesignR.string.aun_diagnostics_purge_warning)
+                        telemetryWarning = when {
+                            !saved -> getString(DesignR.string.aun_diagnostics_disable_error)
+                            !purged -> getString(DesignR.string.aun_diagnostics_purge_warning)
+                            else -> null
+                        }
                     }
                 }
             )

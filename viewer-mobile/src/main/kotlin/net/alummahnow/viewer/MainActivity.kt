@@ -369,7 +369,11 @@ internal fun ViewerNavHost(
                 } else {
                     val purged = container.telemetry.setConsent(TelemetryConsent.OFF)
                     val saved = container.displayPrefs.setTelemetryEnabled(false)
-                    telemetryWarning = if (purged && saved) null else context.getString(DesignR.string.aun_diagnostics_purge_warning)
+                    telemetryWarning = when {
+                        !saved -> context.getString(DesignR.string.aun_diagnostics_disable_error)
+                        !purged -> context.getString(DesignR.string.aun_diagnostics_purge_warning)
+                        else -> null
+                    }
                 }
             },
             onOpenBlockedList = {

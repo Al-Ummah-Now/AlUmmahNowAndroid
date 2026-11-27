@@ -447,7 +447,8 @@ fun StudioApp(
                 telemetryEnabled = if (ok) enabled else container.isTelemetryEnabled()
                 telemetryWarning = when {
                     enabled && !ok -> resources.getString(DesignR.string.aun_diagnostics_enable_error)
-                    !enabled && (!ok || container.telemetry.lastPurgeFailed) ->
+                    !enabled && !ok -> resources.getString(DesignR.string.aun_diagnostics_disable_error)
+                    !enabled && container.telemetry.lastPurgeFailed ->
                         resources.getString(DesignR.string.aun_diagnostics_purge_warning)
                     else -> null
                 }

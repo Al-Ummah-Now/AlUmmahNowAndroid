@@ -396,21 +396,25 @@ private fun StaffHome(
             telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
                 if (enabled) {
-                    if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
-                        services.prefs.telemetryEnabled = true
+                    if (services.telemetry.setConsent(TelemetryConsent.FULL) &&
+                        services.prefs.setTelemetryEnabled(true)
+                    ) {
                         telemetryEnabled = true
                         telemetryWarning = null
                     } else {
                         services.telemetry.setConsent(TelemetryConsent.OFF)
-                        services.prefs.telemetryEnabled = false
                         telemetryEnabled = false
                         telemetryWarning = resources.getString(DesignR.string.aun_diagnostics_enable_error)
                     }
                 } else {
                     val purged = services.telemetry.setConsent(TelemetryConsent.OFF)
-                    services.prefs.telemetryEnabled = false
-                    telemetryEnabled = false
-                    telemetryWarning = if (purged) null else resources.getString(DesignR.string.aun_diagnostics_purge_warning)
+                    if (!services.prefs.setTelemetryEnabled(false)) {
+                        telemetryEnabled = true
+                        telemetryWarning = resources.getString(DesignR.string.aun_diagnostics_disable_error)
+                    } else {
+                        telemetryEnabled = false
+                        telemetryWarning = if (purged) null else resources.getString(DesignR.string.aun_diagnostics_purge_warning)
+                    }
                 }
             }
         )

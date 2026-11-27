@@ -67,4 +67,5 @@
     <string name="aun_diagnostics_off">Off</string>
     <string name="aun_diagnostics_purge_warning">Diagnostics turned off, but cached diagnostic files could not be removed from disk.</string>
     <string name="aun_diagnostics_enable_error">Couldn\'t enable diagnostics on this device.</string>
+    <string name="aun_diagnostics_disable_error">Couldn\'t save your opt-out preference on this device. Diagnostics are paused now, but may re-enable on restart.</string>
 </resources>

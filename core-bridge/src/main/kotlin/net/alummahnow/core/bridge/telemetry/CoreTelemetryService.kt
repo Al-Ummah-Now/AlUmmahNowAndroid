@@ -61,6 +61,8 @@ class CoreTelemetryService(
     private var closed: Boolean = false
     private var _lastPurgeFailed: Boolean = false
     private var inFlightFlushes: Int = 0
+    private var consentEpoch: Long = 0L
+    private var revokedFlushesRemaining: Int = 0
     private var clientClosed: Boolean = false
     private val flushJobs = mutableSetOf<Job>()
 
@@ -114,7 +116,7 @@ class CoreTelemetryService(
                 return false
             } else {
                 var cancelOnFail: List<Job> = emptyList()
-                succeeded = if (_lastPurgeFailed && !tryDeleteBufferFallback()) {
+                succeeded = if (revokedFlushesRemaining > 0 || (_lastPurgeFailed && !tryDeleteBufferFallback())) {
                     false
                 } else {
                     try {
@@ -143,6 +145,8 @@ class CoreTelemetryService(
     private fun revokeLocked(failureMessage: String): Pair<Boolean, List<Job>> {
         _consent = TelemetryConsent.OFF
         revoked = true
+        consentEpoch++
+        revokedFlushesRemaining = inFlightFlushes
         val jobsToCancel = flushJobs.toList()
         flushJobs.clear()
         if (clientClosed) {
@@ -202,8 +206,8 @@ class CoreTelemetryService(
 
     override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
         val safeKind = kind.ifBlank { "UnhandledException" }
-        val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message)
-        val safeStack = stack?.let(::sanitizeLocalPaths)
+        val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message, preserveStackLocations = false)
+        val safeStack = stack?.let { sanitizeLocalPaths(it, preserveStackLocations = true) }
         val report = TelemetryCrashReport(
             kind = safeKind,
             message = safeMessage,
@@ -239,6 +243,7 @@ class CoreTelemetryService(
         synchronized(gate) {
             if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
             inFlightFlushes++
+            val flushEpoch = consentEpoch
             job = flushScope.launch(start = CoroutineStart.LAZY) {
                 try {
                     client.flush()
@@ -252,7 +257,7 @@ class CoreTelemetryService(
                 }
             }
             // Register completion cleanup before start so even a pre-dispatch cancel releases inFlightFlushes.
-            job.invokeOnCompletion { releaseInFlightFlush(job) }
+            job.invokeOnCompletion { releaseInFlightFlush(job, flushEpoch) }
             flushJobs += job
         }
         job.start()
@@ -275,15 +280,18 @@ class CoreTelemetryService(
         jobsToCancel.forEach { it.cancel() }
     }
 
-    private fun releaseInFlightFlush(job: Job) {
+    private fun releaseInFlightFlush(job: Job, flushEpoch: Long) {
         synchronized(gate) {
             flushJobs.remove(job)
             inFlightFlushes = (inFlightFlushes - 1).coerceAtLeast(0)
-            if (revoked && !bufferPath.isNullOrBlank()) {
-                // Clean up any remnant if a flush already in flight before revocation completed
-                // its final persist rename after setConsent(DENIED) deleted the buffer file.
-                // Ordinary close() without revocation leaves revoked == false, keeping retryable buffers.
-                _lastPurgeFailed = !tryDeleteBufferFallback()
+            if (flushEpoch < consentEpoch) {
+                revokedFlushesRemaining = (revokedFlushesRemaining - 1).coerceAtLeast(0)
+                if (!bufferPath.isNullOrBlank()) {
+                    // Clean up any remnant if a flush already in flight before revocation completed
+                    // its final persist rename after setConsent(DENIED) deleted the buffer file.
+                    // Ordinary close() without revocation does not advance consentEpoch, keeping retryable buffers.
+                    _lastPurgeFailed = !tryDeleteBufferFallback()
+                }
             }
             if (closed && inFlightFlushes == 0 && !clientClosed) {
                 clientClosed = true
@@ -351,23 +359,32 @@ class CoreTelemetryService(
         @Volatile
         private var activeCrashService: TelemetryService? = null
 
+        private val stackSuffixLookahead =
+            """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\(\))(?=\r|\n|$)|[\r\n"]|$)"""
+        private val winStackSuffixLookahead =
+            """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\(\))(?=\r|\n|$)|[\r\n"<>|]|$)"""
         private val doubleQuotedPathRegex = Regex(
             """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/(?=[^\s/"]))[^"\r\n]*${'"'}""",
             RegexOption.IGNORE_CASE
         )
-        private val stackSuffixLookahead =
-            """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*(?=\r|\n|$)|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\()|[\r\n"]|$)"""
-        private val fileUriRegex = Regex(
+        private val doubleQuotedStackPathRegex = Regex(
+            """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/(?=[^\s/"]))[^"\r\n]*?""" +
+                """((?::line\s+\d+|:\d+(?::\d+)?)?)${'"'}""",
+            RegexOption.IGNORE_CASE
+        )
+        private val fileUriRegex = Regex("""file://[^\r\n"]+""", RegexOption.IGNORE_CASE)
+        private val fileUriStackRegex = Regex(
             """file://[^\r\n"]+?""" + stackSuffixLookahead,
             RegexOption.IGNORE_CASE
         )
-        private val windowsPathRegex = Regex(
-            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+?""" +
-                """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*(?=\r|\n|$)|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\()|[\r\n"<>|]|$)""",
+        private val windowsPathRegex = Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+""", RegexOption.IGNORE_CASE)
+        private val windowsStackPathRegex = Regex(
+            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+?""" + winStackSuffixLookahead,
             RegexOption.IGNORE_CASE
         )
-        private val unixPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._:/-])(?:~/|/(?=[^\s/"]))[^\r\n"]+?""" + stackSuffixLookahead
+        private val unixPathRegex = Regex("""(?<![\p{L}\p{M}\p{N}._/-])(?:~/|/(?=[^\s/"]))[^\r\n"]+""")
+        private val unixStackPathRegex = Regex(
+            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|/(?=[^\s/"]))[^\r\n"]+?""" + stackSuffixLookahead
         )
 
         /**
@@ -450,14 +467,24 @@ class CoreTelemetryService(
             return "https://$formattedHost$portSegment/api/v1/telemetry/batches"
         }
 
-        /** Scrubs local filesystem paths and `file://` URIs before crash or breadcrumb text enters telemetry. */
-        fun sanitizeLocalPaths(text: String): String {
+        /**
+         * Scrubs local filesystem paths and `file://` URIs before crash or breadcrumb text enters telemetry.
+         * Line numbers are preserved only when [preserveStackLocations] is `true` (stack traces) and the
+         * location terminates the frame line.
+         */
+        fun sanitizeLocalPaths(text: String, preserveStackLocations: Boolean = false): String {
             if (text.isEmpty()) return text
-            var scrubbed = doubleQuotedPathRegex.replace(text, "[redacted-path]")
-            scrubbed = fileUriRegex.replace(scrubbed, "[redacted-path]")
-            scrubbed = windowsPathRegex.replace(scrubbed, "[redacted-path]")
-            scrubbed = unixPathRegex.replace(scrubbed, "[redacted-path]")
-            return scrubbed
+            return if (preserveStackLocations) {
+                var scrubbed = doubleQuotedStackPathRegex.replace(text, "[redacted-path]\$1")
+                scrubbed = fileUriStackRegex.replace(scrubbed, "[redacted-path]")
+                scrubbed = windowsStackPathRegex.replace(scrubbed, "[redacted-path]")
+                unixStackPathRegex.replace(scrubbed, "[redacted-path]")
+            } else {
+                var scrubbed = doubleQuotedPathRegex.replace(text, "[redacted-path]")
+                scrubbed = fileUriRegex.replace(scrubbed, "[redacted-path]")
+                scrubbed = windowsPathRegex.replace(scrubbed, "[redacted-path]")
+                unixPathRegex.replace(scrubbed, "[redacted-path]")
+            }
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {
