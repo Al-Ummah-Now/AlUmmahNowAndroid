@@ -90,7 +90,7 @@ class CoreStudioRepositoryTermsTest {
     fun `acceptCreatorTerms surfaces 404 as CoreError NotFound`() = runTest {
         val repo = CoreStudioRepository(
             client = { error("unused") },
-            executePath = { throw AunException.NotFound("Not Found") }
+            executePath = { throw AunException.NotFound(null, "Not Found") }
         )
         val result = runCatching { repo.acceptCreatorTerms("2026-11-24") }
         assertTrue(result.exceptionOrNull() is CoreError.NotFound)
@@ -102,7 +102,7 @@ class CoreStudioRepositoryTermsTest {
             runCatching {
                 CoreStudioRepository(client = { error("unused") }, executePath = { throw e }).acceptCreatorTerms("v")
             }.exceptionOrNull()
-        assertTrue(failure(AunException.Conflict("The Terms of Service were updated")) is StudioError.TermsChanged)
+        assertTrue(failure(AunException.Conflict(null, "The Terms of Service were updated")) is StudioError.TermsChanged)
         assertEquals(503, (failure(AunException.Http(503u, null, "x")) as CoreError.Http).code)
     }
 }

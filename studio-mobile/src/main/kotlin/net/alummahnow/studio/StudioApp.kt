@@ -140,6 +140,10 @@ fun StudioApp(
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { signIn.browserClosed() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { deletion.settle() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        container.appScope.launch(Dispatchers.IO) { container.telemetry.flush() }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { container.telemetry.persist() }
     // An App Link waits here until the person is signed in and the link's channel is loaded.
     var pendingLink by remember { mutableStateOf<AppLink.Studio?>(null) }
     LaunchedEffect(Unit) { links.collect { pendingLink = it } }
@@ -193,6 +197,7 @@ fun StudioApp(
     val snackbar = remember { SnackbarHostState() }
     val resources = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
+    var telemetryEnabled by remember { mutableStateOf(container.isTelemetryEnabled()) }
     val termsModel: CreatorTermsViewModel = viewModel(key = "terms-${current.userId}") {
         // Pinned to this account: an acceptance can never be recorded for another one after a switch.
         CreatorTermsViewModel(container.repositoryFor(current.userId))
@@ -432,7 +437,12 @@ fun StudioApp(
                 sheetOpen = false
                 deletion.open(current, ownedChannels)
             },
-            deletionStarted = openDeletions.map { it.userId }.toSet()
+            deletionStarted = openDeletions.map { it.userId }.toSet(),
+            telemetryEnabled = telemetryEnabled,
+            onTelemetryChanged = { enabled ->
+                val ok = container.setTelemetryEnabled(enabled)
+                telemetryEnabled = if (ok) enabled else container.isTelemetryEnabled()
+            }
         )
     }
     if (deletionState.target != null) {

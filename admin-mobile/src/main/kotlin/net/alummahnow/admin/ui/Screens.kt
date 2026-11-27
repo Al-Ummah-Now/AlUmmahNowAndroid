@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import net.alummahnow.admin.R
 import net.alummahnow.admin.push.PushState
 import net.alummahnow.admin.security.AppLock
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.theme.FanousTokens
 import net.alummahnow.feature.passkey.PasskeySignInOptions
@@ -203,10 +206,12 @@ fun SettingsSheet(
     onLanguage: (String) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit,
-    onAddPasskey: (() -> Unit)? = null
+    onAddPasskey: (() -> Unit)? = null,
+    telemetryEnabled: Boolean = false,
+    onTelemetryChanged: ((Boolean) -> Unit)? = null
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        SettingsContent(name, dark, language, push, onDark, onLanguage, onSignOut, onAddPasskey)
+        SettingsContent(name, dark, language, push, onDark, onLanguage, onSignOut, onAddPasskey, telemetryEnabled, onTelemetryChanged)
     }
 }
 
@@ -219,7 +224,9 @@ fun SettingsContent(
     onDark: (Boolean) -> Unit,
     onLanguage: (String) -> Unit,
     onSignOut: () -> Unit,
-    onAddPasskey: (() -> Unit)? = null
+    onAddPasskey: (() -> Unit)? = null,
+    telemetryEnabled: Boolean = false,
+    onTelemetryChanged: ((Boolean) -> Unit)? = null
 ) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(
@@ -270,6 +277,30 @@ fun SettingsContent(
             ),
             modifier = Modifier.testTag("alerts-status")
         )
+        if (onTelemetryChanged != null) {
+            HorizontalDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Switch) { onTelemetryChanged(!telemetryEnabled) }
+                    .padding(vertical = FanousTokens.Spacing.xs)
+                    .testTag("admin-diagnostics"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f).padding(end = FanousTokens.Spacing.md)) {
+                    Text(
+                        stringResource(DesignR.string.aun_diagnostics_toggle),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        stringResource(DesignR.string.aun_diagnostics_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged)
+            }
+        }
         HorizontalDivider()
         if (onAddPasskey != null) {
             Text(stringResource(PasskeyR.string.passkey_explainer), style = MaterialTheme.typography.bodyMedium)

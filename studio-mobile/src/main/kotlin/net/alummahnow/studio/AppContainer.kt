@@ -26,6 +26,9 @@ import net.alummahnow.core.bridge.studio.deletion.DeletionDevice
 import net.alummahnow.core.bridge.studio.deletion.DeletionRecords
 import net.alummahnow.core.bridge.studio.deletion.HttpDeletionApi
 import net.alummahnow.core.bridge.studio.deletion.SecureDeletionRecords
+import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
+import net.alummahnow.core.bridge.telemetry.TelemetryConsent
+import net.alummahnow.core.bridge.telemetry.TelemetryService
 import net.alummahnow.feature.editor.editorExportDir
 import net.alummahnow.feature.upload.UploadScheduler
 import net.alummahnow.integrity.PlayIntegrityTokenSource
@@ -76,6 +79,37 @@ class AppContainer(context: Context) : StudioContainer {
 
     override val exports = PendingExports(editorExportDir(context), File(context.filesDir, "pending-exports.json"))
 
+    private val telemetryPrefs = context.applicationContext.getSharedPreferences("aun_studio_telemetry", Context.MODE_PRIVATE)
+
+    override val telemetry: TelemetryService = CoreTelemetryService.createOrNull(
+        appVersion = BuildConfig.VERSION_NAME,
+        deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
+        videosApiBaseUrl = BuildConfig.API_BASE_URL,
+        userAgent = "AlUmmahNow-Studio-Android/${BuildConfig.VERSION_NAME}",
+        clientHeader = AunClient.value("studio", BuildConfig.VERSION_NAME),
+        bufferPath = File(context.applicationContext.noBackupFilesDir, "studio-telemetry-buffer.json").absolutePath,
+        initialEnabled = telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false)
+    )
+
+    override fun isTelemetryEnabled(): Boolean = telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false)
+
+    override fun setTelemetryEnabled(enabled: Boolean): Boolean {
+        if (enabled) {
+            if (!telemetry.setConsent(TelemetryConsent.FULL)) {
+                telemetry.setConsent(TelemetryConsent.OFF)
+                telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+                return false
+            }
+            if (!telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, true).commit()) {
+                telemetry.setConsent(TelemetryConsent.OFF)
+                return false
+            }
+            return true
+        }
+        telemetry.setConsent(TelemetryConsent.OFF)
+        return telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+    }
+
     override val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -123,5 +157,6 @@ class AppContainer(context: Context) : StudioContainer {
 
     companion object {
         const val REDIRECT_URI = "alummahnow-studio://auth/callback"
+        private const val KEY_TELEMETRY_ENABLED = "telemetry_enabled"
     }
 }

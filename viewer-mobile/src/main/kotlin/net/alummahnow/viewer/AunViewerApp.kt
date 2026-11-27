@@ -6,6 +6,7 @@ import androidx.media3.cast.Cast
 import androidx.media3.common.util.UnstableApi
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.catalog.CatalogRepository
+import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.player.PlayerDependencies
 
 class AunViewerApp : Application(), PlayerDependencies {
@@ -20,6 +21,7 @@ class AunViewerApp : Application(), PlayerDependencies {
         super.onCreate()
         AunLog.enabled = BuildConfig.DEBUG || BuildConfig.ENV_NAME == "qa"
         container = AppContainer(this)
+        CoreTelemetryService.installUncaughtExceptionHandler(container.telemetry)
         // Chromecast is optional: devices without Google Play services simply don't show the cast button.
         runCatching { Cast.getSingletonInstance(this).initialize() }
             .onFailure { AunLog.w("app", "cast init failed", "error" to it.message) }
