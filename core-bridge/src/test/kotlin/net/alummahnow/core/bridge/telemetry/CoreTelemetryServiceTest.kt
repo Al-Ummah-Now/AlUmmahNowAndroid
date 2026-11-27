@@ -275,6 +275,26 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("opening \"1/2 (https://private.example/Acquisition.mov)\"")
                 .contains("private.example")
         )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening \"/tmp/Project 'draft' (https://private.example/Acquisition.mov)\"")
+                .contains("private.example")
+        )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening /tmp/Project 'draft' (https://private.example/Acquisition.mov)")
+                .contains("private.example")
+        )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening \"relative/My's (https://private.example/Acquisition.mov)\"")
+                .contains("private.example")
+        )
+        assertTrue(
+            CoreTelemetryService.sanitizeLocalPaths("opening \"relative/My's Clip.mov\" (https://example.com/api)")
+                .contains("https://example.com/api")
+        )
+        assertFalse(
+            CoreTelemetryService.sanitizeLocalPaths("opening relative/My(1) (https://private.example/Acquisition.mov)")
+                .contains("private.example")
+        )
     }
 
     @Test

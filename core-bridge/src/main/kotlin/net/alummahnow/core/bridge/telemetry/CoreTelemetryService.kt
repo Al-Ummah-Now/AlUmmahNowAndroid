@@ -637,7 +637,7 @@ class CoreTelemetryService(
 
             private fun isClosingQuoteChar(text: String, ch: Char): Boolean {
                 if (pathQuote != '\u0000' && ch == pathQuote) return true
-                return !inWrapperRun && tokenStart > 0 && (ch == '"' || ch == '\'') && text[tokenStart - 1] == ch
+                return !hasPathOnLine && !inWrapperRun && tokenStart > 0 && (ch == '"' || ch == '\'') && text[tokenStart - 1] == ch
             }
 
             private fun captureOpeningQuote(text: String, pos: Int) {
@@ -646,19 +646,26 @@ class CoreTelemetryService(
                 }
             }
 
+            private fun promoteTokenPath(text: String) {
+                if (tokenHasPathSep && !isNonPathSlashToken(text, tokenStart, tokenEnd)) {
+                    hasPathOnLine = true
+                    captureOpeningQuote(text, tokenStart)
+                }
+            }
+
             private fun updateRunState(text: String, ch: Char) {
                 when {
                     ch.isWhitespace() -> if (!inWrapperRun) {
-                        if (tokenHasPathSep && !isNonPathSlashToken(text, tokenStart, tokenEnd)) {
-                            hasPathOnLine = true
-                            captureOpeningQuote(text, tokenStart)
-                        }
+                        promoteTokenPath(text)
                         tokenStart = -1
                         tokenEnd = -1
                         wsBeforeRun = true
                         tokenHasPathSep = false
                     }
-                    isOpeningWrapper(ch) -> inWrapperRun = true
+                    isOpeningWrapper(ch) -> {
+                        if (!inWrapperRun) promoteTokenPath(text)
+                        inWrapperRun = true
+                    }
                     else -> {
                         if (tokenStart < 0 || inWrapperRun) {
                             tokenStart = cursor
