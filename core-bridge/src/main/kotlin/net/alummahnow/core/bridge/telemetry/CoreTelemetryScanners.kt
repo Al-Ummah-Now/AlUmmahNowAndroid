@@ -118,9 +118,9 @@ internal object CoreTelemetryScanners {
         for (match in matches) {
             val g1 = match.groups[1] ?: continue
             val secretStart = origOffsets[g1.range.last + 1]
-            val rawEnd = origOffsets[match.range.last + 1]
-            val secretEnd = if (stopAtLiteralSlash) extendToLiteralSlashStop(url, rawEnd) else rawEnd
             if (secretStart >= copied) {
+                val rawEnd = origOffsets[match.range.last + 1]
+                val secretEnd = if (stopAtLiteralSlash) extendToLiteralSlashStop(url, rawEnd) else rawEnd
                 sb.append(url, copied, secretStart).append("[redacted]")
                 copied = secretEnd
             }
@@ -173,54 +173,45 @@ internal object CoreTelemetryScanners {
         return if (p > pos + 1) p else null
     }
 
-    fun scanUrlPath(text: String, start: Int, allowCommas: Boolean = false): Pair<Int, Boolean> {
+    fun scanUrlPath(text: String, start: Int): Pair<Int, Boolean> {
         val openPositions = ArrayList<Int>()
         val openChars = ArrayList<Char>()
         var p = start
         while (p < text.length) {
-            val next = stepUrlPathChar(text, p, openPositions, openChars, allowCommas)
+            val next = stepUrlPathChar(text, p, openPositions, openChars)
             if (next < 0) break
             p = next
         }
-        return if (!allowCommas && openPositions.isNotEmpty()) openPositions[0] to true else p to false
+        return if (openPositions.isNotEmpty()) openPositions[0] to true else p to false
     }
 
     private fun stepUrlPathChar(
         text: String,
         p: Int,
         openPositions: ArrayList<Int>,
-        openChars: ArrayList<Char>,
-        allowCommas: Boolean
+        openChars: ArrayList<Char>
     ): Int {
         val ch = text[p]
         return when {
             isPathStopChar(text, p, ch) -> -1
-            ch == ',' && stopsAtPathComma(text, p, allowCommas, openChars.isEmpty()) -> -1
-            ch == '(' || ch == '[' -> pushGroupOpener(text, p, allowCommas, openPositions, openChars)
+            ch == ',' && !isCommaBeforeQueryOrFragment(text, p) -> -1
+            ch == '(' || ch == '[' -> pushGroupOpener(text, p, openPositions, openChars)
             ch == ')' || ch == ']' -> popGroupCloser(p, ch, openPositions, openChars)
-            !allowCommas && openChars.isNotEmpty() && ch == ':' -> -1
+            openChars.isNotEmpty() && ch == ':' -> -1
             else -> p + 1
         }
     }
 
-    private fun stopsAtPathComma(text: String, pos: Int, allowCommas: Boolean, openEmpty: Boolean): Boolean {
-        val nextIsQf = pos + 1 < text.length && (text[pos + 1] == '?' || text[pos + 1] == '#')
-        return !nextIsQf && (!allowCommas || (openEmpty && shouldStopAtUrlComma(text, pos)))
-    }
+    private fun isCommaBeforeQueryOrFragment(text: String, pos: Int): Boolean =
+        pos + 1 < text.length && (text[pos + 1] == '?' || text[pos + 1] == '#')
 
     private fun pushGroupOpener(
         text: String,
         p: Int,
-        allowCommas: Boolean,
         openPositions: ArrayList<Int>,
         openChars: ArrayList<Char>
     ): Int {
-        val blocked = if (allowCommas) {
-            startsEmbeddedFilesystemPath(text, p + 1)
-        } else {
-            startsEmbeddedPathInsideGroup(text, p + 1)
-        }
-        if (blocked) return -1
+        if (startsEmbeddedPathInsideGroup(text, p + 1)) return -1
         openPositions.add(p)
         openChars.add(text[p])
         return p + 1
@@ -244,13 +235,52 @@ internal object CoreTelemetryScanners {
         return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
-    fun shouldStopAtUrlComma(text: String, commaPos: Int): Boolean {
-        val nextPos = commaPos + 1
-        if (nextPos >= text.length) return true
-        val next = text[nextPos]
-        if (next in "([,;?#\'") return false
-        val stopsAfterComma = next.isWhitespace() || next in URL_PATH_STOP || next in URL_END_BOUNDARY
-        return stopsAfterComma || startsEmbeddedFilesystemPath(text, nextPos)
+    fun scanWebhookContinuation(text: String, start: Int): Int {
+        var p = start
+        while (p < text.length) {
+            val ch = text[p]
+            val embedsPath = ch in "(,[" && startsEmbeddedFilesystemPath(text, p + 1)
+            if (isPathStopChar(text, p, ch) || embedsPath) break
+            p++
+        }
+        return p
+    }
+
+    fun trimWebhookContinuationEnd(text: String, urlStart: Int, minEnd: Int, scanEnd: Int): Int {
+        val excess = countExcessGroupClosers(text, urlStart, scanEnd)
+        val precededByQuote = urlStart > 0 && text[urlStart - 1] == '\''
+        var end = scanEnd
+        while (end > minEnd && consumeTrailingWebhookCloser(text[end - 1], precededByQuote, excess)) {
+            end--
+        }
+        return end
+    }
+
+    private fun countExcessGroupClosers(text: String, start: Int, end: Int): IntArray {
+        val excess = IntArray(2)
+        for (i in start until end) {
+            when (text[i]) {
+                '(' -> excess[0]--
+                ')' -> excess[0]++
+                '[' -> excess[1]--
+                ']' -> excess[1]++
+            }
+        }
+        return excess
+    }
+
+    private fun consumeTrailingWebhookCloser(ch: Char, precededByQuote: Boolean, excess: IntArray): Boolean = when {
+        ch == ',' || ch == ';' -> true
+        ch == '\'' && precededByQuote -> true
+        ch == ')' && excess[0] > 0 -> {
+            excess[0]--
+            true
+        }
+        ch == ']' && excess[1] > 0 -> {
+            excess[1]--
+            true
+        }
+        else -> false
     }
 
     fun startsEmbeddedFilesystemPath(text: String, nextPos: Int): Boolean {

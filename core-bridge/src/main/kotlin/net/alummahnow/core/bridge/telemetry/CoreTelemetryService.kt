@@ -901,12 +901,16 @@ class CoreTelemetryService(
                     var endPos = span.totalEnd
                     var tail = baseTail
                     val rawUrl = text.substring(span.start, span.baseEnd)
-                    val commaProbe = probeWebhookCommaExtension(span, baseTail, rawUrl, text)
-                    val redactedUrl = if (commaProbe != null) {
-                        val (extUrl, extEnd, extTail) = extendRedactedWebhookComma(text, commaProbe, span.start, endPos)
-                        endPos = extEnd
-                        tail = extTail
-                        extUrl
+                    val probe = probeWebhookContinuation(span, baseTail, rawUrl, text)
+                    val extended = if (probe != null) {
+                        extendRedactedWebhookContinuation(text, probe, span.start, endPos)
+                    } else {
+                        null
+                    }
+                    val redactedUrl = if (extended != null) {
+                        endPos = extended.second
+                        tail = extended.third
+                        extended.first
                     } else {
                         baseRedacted
                     }
@@ -949,7 +953,7 @@ class CoreTelemetryService(
             return sb.toString()
         }
 
-        private fun probeWebhookCommaExtension(
+        private fun probeWebhookContinuation(
             span: CoreTelemetryScanners.UrlSpan,
             tail: String,
             rawUrl: String,
@@ -959,36 +963,28 @@ class CoreTelemetryService(
             val canCheck = !span.hasQf && tailOk && span.totalEnd < text.length
             if (!canCheck) return null
             val nextCh = text[span.totalEnd]
-            val canContinue = when (nextCh) {
-                ',' -> !CoreTelemetryScanners.shouldStopAtUrlComma(text, span.totalEnd)
-                '(', '[' -> !CoreTelemetryScanners.startsEmbeddedFilesystemPath(text, span.totalEnd + 1)
-                else -> false
-            }
-            if (!canContinue) return null
+            if (nextCh !in ",([])") return null
             val withNext = "$rawUrl$nextCh"
             val probe = CoreTelemetryScanners.redactUrlPathSecrets(withNext)
             return if (probe != withNext && probe.endsWith("[redacted]")) probe else null
         }
 
-        private fun extendRedactedWebhookComma(
+        private fun extendRedactedWebhookContinuation(
             text: String,
-            redactedUrl: String,
+            probeUrl: String,
             urlStart: Int,
             totalEnd: Int
-        ): Triple<String, Int, String> {
-            val (pathEnd, truncated) = CoreTelemetryScanners.scanUrlPath(text, totalEnd, allowCommas = true)
-            val hasNext = !truncated && pathEnd < text.length
+        ): Triple<String, Int, String>? {
+            val pathEnd = CoreTelemetryScanners.scanWebhookContinuation(text, totalEnd)
+            val hasNext = pathEnd > totalEnd && pathEnd < text.length
             val hasQfAfter = hasNext && (text[pathEnd] == '?' || text[pathEnd] == '#')
             if (hasQfAfter) {
                 val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, pathEnd)
                 val (cleanQf, tail) = trimQueryOrFragmentDelimiters(text.substring(pathEnd, qfEnd), text, urlStart)
-                return Triple("$redactedUrl${cleanQf.first()}[redacted]", qfEnd, tail)
+                return Triple("$probeUrl${cleanQf.first()}[redacted]", qfEnd, tail)
             }
-            var end = pathEnd
-            while (end > totalEnd && (text[end - 1] == ',' || text[end - 1] == ';')) end--
-            val hasOpenQuote = urlStart > 0 && text[urlStart - 1] == '\''
-            if (hasOpenQuote && end > totalEnd && text[end - 1] == '\'') end--
-            return Triple(redactedUrl, pathEnd, text.substring(end, pathEnd))
+            val end = CoreTelemetryScanners.trimWebhookContinuationEnd(text, urlStart, totalEnd, pathEnd)
+            return if (end > totalEnd) Triple(probeUrl, pathEnd, text.substring(end, pathEnd)) else null
         }
 
         private fun formatVaultedUrl(span: CoreTelemetryScanners.UrlSpan, text: String): Pair<String, String> {

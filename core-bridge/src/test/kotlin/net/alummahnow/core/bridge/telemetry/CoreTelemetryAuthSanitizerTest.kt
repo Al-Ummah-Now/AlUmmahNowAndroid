@@ -404,6 +404,20 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,'opaqueSecret123")
         )
         assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,)opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken)opaqueSecret123")
+        )
+        assertEquals(
+            "(https://example.test/webhook/[redacted])",
+            CoreTelemetryService.sanitizeLocalPaths("(https://example.test/webhook/fakeToken)")
+        )
+        val repeatedBot = "https://api.telegram." + "org/bot1:a" + "%2Fbot2:b".repeat(500)
+        assertEquals("https://api.telegram.org/bot1:[redacted]", CoreTelemetryService.sanitizeLocalPaths(repeatedBot))
+        assertEquals(
             "{\"\\q\":\"hi\",\"Authorization\":[\"[redacted]\",\n\"[redacted]\"",
             CoreTelemetryService.sanitizeLocalPaths("{\"\\q\":\"hi\",\"Authorization\":[\"firstValue\",\n\"opaqueSecret123\"")
         )
