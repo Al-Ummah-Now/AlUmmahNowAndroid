@@ -568,6 +568,26 @@ class CoreTelemetryAuthSanitizerTest {
         )
         assertEquals(
             "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken{tag:'first opaqueSecret123'}")
+        )
+        assertEquals(
+            "https://example.com/api{tag:'value)'}?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api{tag:'value)'}?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/api{url:\"see https://other.com/x?[redacted]\"}?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "https://example.com/api{url:\"see https://other.com/x?token=opaqueSecret123\"}?outer=value"
+            )
+        )
+        assertEquals(
+            "https://example.com/api{url:\"see https://other.com/x?[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "https://example.com/api{url:\"see https://other.com/x?token=opaqueSecret123\"}"
+            )
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken{tag:\"a)opaqueSecret123\"}suffixSecret")
         )
         assertEquals(

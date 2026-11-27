@@ -241,16 +241,20 @@ internal object CoreTelemetryScanners {
         return stopChar || isFileSchemeAt(text, pos) || isDrive
     }
 
-    private class ContScanState(val allowGroupQuotes: Boolean, val stopAtSchemes: Boolean) {
+    internal class ContScanState(
+        val allowDoubleQuotes: Boolean,
+        val allowSingleQuotes: Boolean,
+        val stopAtSchemes: Boolean
+    ) {
         val groupStack = ArrayList<Char>()
-        var inQuote = false
+        var quoteChar: Char = '\u0000'
+        var sawInnerScheme = false
     }
 
-    fun scanUrlContinuation(text: String, start: Int, allowGroupQuotes: Boolean, stopAtSchemes: Boolean): Int {
+    fun scanUrlContinuation(text: String, start: Int, state: ContScanState): Int {
         var p = start
-        val state = ContScanState(allowGroupQuotes, stopAtSchemes)
         while (p < text.length) {
-            val next = if (state.inQuote) {
+            val next = if (state.quoteChar != '\u0000') {
                 stepQuotedContinuation(text, p, state)
             } else {
                 stepUnquotedContinuation(text, p, start, state)
@@ -264,10 +268,10 @@ internal object CoreTelemetryScanners {
     private fun stepQuotedContinuation(text: String, p: Int, state: ContScanState): Int {
         val ch = text[p]
         if (ch == '\r' || ch == '\n') return -1
-        if (state.stopAtSchemes && text[p - 1] in "\",;()[]{}'" && isUrlSchemeAt(text, p)) return -1
+        if (ch == ':' && text.startsWith("://", p)) state.sawInnerScheme = true
         val isEscape = ch == '\\' && p + 1 < text.length
         if (isEscape && text[p + 1] !in "\r\n") return p + 2
-        if (ch == '"') state.inQuote = false
+        if (ch == state.quoteChar) state.quoteChar = '\u0000'
         return p + 1
     }
 
@@ -275,10 +279,13 @@ internal object CoreTelemetryScanners {
         val ch = text[p]
         val startsScheme = state.stopAtSchemes && p > start && text[p - 1] in ",;()[]{}'" && isUrlSchemeAt(text, p)
         if (isContStopChar(text, p, ch) || startsScheme) return -1
-        if (ch == '"') {
-            if (!state.allowGroupQuotes || state.groupStack.isEmpty()) return -1
-            state.inQuote = true
-            return p + 1
+        if (ch == '"' || ch == '\'') {
+            val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
+            if (allowed && state.groupStack.isNotEmpty()) {
+                state.quoteChar = ch
+                return p + 1
+            }
+            return if (ch == '"') -1 else p + 1
         }
         updateContGroupStack(ch, state.groupStack)
         return p + 1
@@ -309,9 +316,9 @@ internal object CoreTelemetryScanners {
         urlStart: Int,
         minEnd: Int,
         scanEnd: Int,
-        allowGroupQuotes: Boolean
+        quoteFlags: Int
     ): Int {
-        val excess = countExcessGroupClosers(text, urlStart, scanEnd, allowGroupQuotes)
+        val excess = countExcessGroupClosers(text, urlStart, scanEnd, quoteFlags)
         val precededByQuote = urlStart > 0 && text[urlStart - 1] == '\''
         var end = scanEnd
         while (end > minEnd && consumeTrailingWebhookCloser(text[end - 1], precededByQuote, excess)) {
@@ -320,21 +327,24 @@ internal object CoreTelemetryScanners {
         return end
     }
 
-    private fun countExcessGroupClosers(text: String, start: Int, end: Int, allowGroupQuotes: Boolean): IntArray {
+    private fun countExcessGroupClosers(text: String, start: Int, end: Int, quoteFlags: Int): IntArray {
         val excess = IntArray(4)
-        var inQuote = false
+        val allowDouble = (quoteFlags and 1) != 0
+        val allowSingle = (quoteFlags and 2) != 0
+        var quoteChar = '\u0000'
         var i = start
         while (i < end) {
             val ch = text[i]
-            if (inQuote) {
+            if (quoteChar != '\u0000') {
                 if (ch == '\\' && i + 1 < end) {
                     i += 2
                 } else {
-                    if (ch == '"') inQuote = false
+                    if (ch == quoteChar) quoteChar = '\u0000'
                     i++
                 }
             } else {
-                if (ch == '"' && allowGroupQuotes && excess[3] > 0) inQuote = true else tallyGroupCloser(ch, excess)
+                val openQuote = excess[3] > 0 && ((ch == '"' && allowDouble) || (ch == '\'' && allowSingle))
+                if (openQuote) quoteChar = ch else tallyGroupCloser(ch, excess)
                 i++
             }
         }
