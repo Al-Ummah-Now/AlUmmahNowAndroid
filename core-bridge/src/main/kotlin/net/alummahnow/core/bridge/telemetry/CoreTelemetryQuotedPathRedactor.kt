@@ -357,15 +357,167 @@ internal object CoreTelemetryQuotedPathRedactor {
 
     private fun stepQuotedPathScanner(text: String, pos: Int, end: Int, tokenStart: Int): QuotedScanStep {
         val dec0 = decodeJsonCharAt(text, pos, end)
-        val driveAfter = matchDecodedWindowsDrive(text, pos, end, dec0)
+        val driveAfter = if (tokenStart < 0) matchDecodedWindowsDrive(text, pos, end, dec0) else -1
+        val isFileScheme = tokenStart < 0 &&
+            (dec0.ch == 'f' || dec0.ch == 'F') &&
+            matchDecodedFileScheme(text, pos, end)
         val homeAfter = if (tokenStart < 0) matchDecodedHome(text, pos, end, dec0) else -1
         val isBackslashSep = dec0.ch == '\\' && (tokenStart >= 0 || dec0.len > 1)
         return when {
             driveAfter >= 0 -> checkTrailingNonWs(text, pos, driveAfter, end)
+            isFileScheme -> QuotedScanStep(pos, pos + dec0.len, tokenStart)
             dec0.ch == '/' || isBackslashSep -> checkSepRun(text, pos, pos + dec0.len, end, dec0.ch, tokenStart)
             homeAfter >= 0 -> checkTrailingNonWs(text, pos, homeAfter, end)
             else -> stepPlainQuotedChar(pos, dec0, tokenStart)
         }
+    }
+
+    private fun matchDecodedFileScheme(text: String, pos: Int, end: Int): Boolean {
+        val target = "file://"
+        var cursor = pos
+        for (expected in target) {
+            if (cursor >= end) return false
+            val dec = decodeJsonCharAt(text, cursor, end)
+            if (dec.ch.lowercaseChar() != expected) return false
+            cursor += dec.len
+        }
+        return true
+    }
+
+    private const val ESC_VAULT_PREFIX = "\u001EAUNESC"
+
+    fun vaultJsonEscapedUrlsInBalancedQuotes(
+        text: String,
+        prefix: String,
+        vaultedUrls: MutableList<String>,
+        vaultRunner: (String, String, MutableList<String>) -> String
+    ): String {
+        val hasEsc = text.contains("\\/") || text.contains("\\u")
+        if (text.indexOf('"') < 0 || !hasEsc) return text
+        val spans = collectBalancedDoubleQuoteSpans(text)
+        if (spans.isEmpty()) return text
+        var sb: StringBuilder? = null
+        var copied = 0
+        for (span in spans) {
+            val innerStart = span.open + 1
+            if (innerStart < span.close && containsSlashOrUnicodeEscape(text, innerStart, span.close)) {
+                val (nextSb, nextCopied) = vaultEscapedSpan(text, span, prefix, vaultedUrls, vaultRunner, sb, copied)
+                sb = nextSb
+                copied = nextCopied
+            }
+        }
+        val out = sb ?: return text
+        return out.append(text, copied, text.length).toString()
+    }
+
+    @Suppress("LongParameterList")
+    private fun vaultEscapedSpan(
+        text: String,
+        span: QuotedPathSpan,
+        prefix: String,
+        vaultedUrls: MutableList<String>,
+        vaultRunner: (String, String, MutableList<String>) -> String,
+        initialSb: StringBuilder?,
+        initialCopied: Int
+    ): Pair<StringBuilder?, Int> {
+        val innerStart = span.open + 1
+        val norm = decodeUrlEscapesForVault(text, innerStart, span.close)
+        if (norm.indexOf("://") < 0) return initialSb to initialCopied
+        val innerVaulted = mutableListOf<String>()
+        val innerResult = vaultRunner("\"$norm\"", ESC_VAULT_PREFIX, innerVaulted)
+        if (innerVaulted.isEmpty()) return initialSb to initialCopied
+        val out = initialSb ?: StringBuilder(text.length)
+        out.append(text, initialCopied, innerStart)
+        val isVerbatimSingle = innerVaulted.size == 1 &&
+            innerResult == "\"${ESC_VAULT_PREFIX}0\u001F\"" &&
+            innerVaulted[0] == norm
+        if (isVerbatimSingle) {
+            val idx = vaultedUrls.size
+            vaultedUrls += text.substring(innerStart, span.close)
+            out.append(prefix).append(idx).append('\u001F')
+        } else {
+            appendRemappedEscapedVault(out, innerResult, 1, innerResult.length - 1, prefix, vaultedUrls, innerVaulted)
+        }
+        return out to span.close
+    }
+
+    @Suppress("LongParameterList")
+    private fun appendRemappedEscapedVault(
+        out: StringBuilder,
+        text: String,
+        start: Int,
+        end: Int,
+        prefix: String,
+        vaultedUrls: MutableList<String>,
+        innerVaulted: List<String>
+    ) {
+        var pos = start
+        while (pos < end) {
+            val found = text.indexOf(ESC_VAULT_PREFIX, pos)
+            if (found < 0 || found >= end) {
+                out.append(text, pos, end)
+                break
+            }
+            out.append(text, pos, found)
+            val numStart = found + ESC_VAULT_PREFIX.length
+            val numEnd = text.indexOf('\u001F', numStart)
+            val innerIdx = if (numEnd in (numStart + 1) until end) {
+                text.substring(numStart, numEnd).toIntOrNull()
+            } else {
+                null
+            }
+            if (innerIdx != null && innerIdx in innerVaulted.indices) {
+                val globalIdx = vaultedUrls.size
+                vaultedUrls += innerVaulted[innerIdx]
+                out.append(prefix).append(globalIdx).append('\u001F')
+                pos = numEnd + 1
+            } else {
+                out.append(ESC_VAULT_PREFIX)
+                pos = numStart
+            }
+        }
+    }
+
+    private fun containsSlashOrUnicodeEscape(text: String, start: Int, end: Int): Boolean {
+        var i = start
+        while (i < end) {
+            if (text[i] == '\\' && i + 1 < end) {
+                val next = text[i + 1]
+                if (next == '/' || (next == 'u' && i + 5 < end)) return true
+                i += 2
+            } else {
+                i++
+            }
+        }
+        return false
+    }
+
+    private fun isUrlStructuralEscape(ch: Char): Boolean = ch in ' '..'~' && ch != '"' && ch != '\\'
+
+    private fun decodeUrlEscapesForVault(text: String, start: Int, end: Int): String {
+        val sb = StringBuilder(end - start)
+        var pos = start
+        while (pos < end) {
+            val ch = text[pos]
+            if (ch == '\\' && pos + 1 < end) {
+                val next = text[pos + 1]
+                val uCode = if (next == 'u' && pos + 5 < end) parseHex4(text, pos + 2) else -1
+                if (next == '/') {
+                    sb.append('/')
+                    pos += 2
+                } else if (uCode >= 0 && isUrlStructuralEscape(uCode.toChar())) {
+                    sb.append(uCode.toChar())
+                    pos += 6
+                } else {
+                    sb.append(ch).append(next)
+                    pos += 2
+                }
+            } else {
+                sb.append(ch)
+                pos++
+            }
+        }
+        return sb.toString()
     }
 
     private fun matchDecodedWindowsDrive(text: String, pos: Int, end: Int, dec0: DecodedJsonChar): Int {

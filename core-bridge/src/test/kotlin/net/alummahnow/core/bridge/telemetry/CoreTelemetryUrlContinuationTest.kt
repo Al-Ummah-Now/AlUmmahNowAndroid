@@ -343,6 +343,20 @@ class CoreTelemetryUrlContinuationTest {
             "[\"secret\\u002epdf pending\"]" to "[\"[redacted-path] pending\"]",
             "[\"secret\\u002epdf\"]" to "[\"[redacted-path]\"]",
             "[\"read Private\\\"Merger.custom pending\"]" to "[\"read [redacted-path] pending\"]",
+            "Failed reading /Users/alice/My \"Secret\" Folder/file.mov" to "Failed reading [redacted-path]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+        val manyPublic = "[${List(2000) { "\"public\"" }.joinToString(",")}]"
+        assertEquals(manyPublic, CoreTelemetryService.sanitizeLocalPaths(manyPublic))
+        val manyNewlines = "[${List(2000) { "\"hello\\nworld\"" }.joinToString(",")}]"
+        assertEquals(manyNewlines, CoreTelemetryService.sanitizeLocalPaths(manyNewlines))
+    }
+
+    @Test
+    fun `sanitizeLocalPaths bounds quoted file URIs and decodes quote and URL escapes`() {
+        val cases = listOf(
             "[\"file \\u0027Acquisition\\u0027\"]" to "[\"file [redacted-path]\"]",
             "[\"file \\\"Acquisition\\\"\"]" to "[\"file [redacted-path]\"]",
             "[\"file \\u0022Acquisition\\u0022\"]" to "[\"file [redacted-path]\"]",
@@ -353,14 +367,30 @@ class CoreTelemetryUrlContinuationTest {
             "[\"\\\"Secret.custom\\\" pending\"]" to "[\"\\\"[redacted-path]\\\" pending\"]",
             "[\"\\u0022Secret.custom\\u0022 pending\"]" to "[\"\\u0022[redacted-path]\\u0022 pending\"]",
             "[\"Secret\\\"file.custom\"]" to "[\"[redacted-path]\"]",
-            "Failed reading /Users/alice/My \"Secret\" Folder/file.mov" to "Failed reading [redacted-path]"
+            "[\"file \\\"O'Brien Acquisition\\\"\"]" to "[\"file [redacted-path]\"]",
+            "[\"file \\\"Acquisition's Plan\\\"\"]" to "[\"file [redacted-path]\"]",
+            "[\"file 'Acquisition\\u0027s Plan'\"]" to "[\"file [redacted-path]\"]",
+            "{\"message\":\"open file:///Users/Alice/Secret.mov\",\"status\":\"public\"}" to
+                "{\"message\":\"open [redacted-path]\",\"status\":\"public\"}",
+            "{\"message\":\"open file:\\/\\/\\/Users\\/Alice\\/Secret.mov\",\"status\":\"public\"}" to
+                "{\"message\":\"open [redacted-path]\",\"status\":\"public\"}",
+            "[\"https:\\/\\/example.com\\/public\"]" to "[\"https:\\/\\/example.com\\/public\"]",
+            "[\"https:\\/\\/example.com\\/api?token=opaqueSecret123\",\"public\"]" to
+                "[\"https://example.com/api?[redacted]\",\"public\"]",
+            "[\"https:\\/\\/example.com\\/api\\u003ftoken=opaqueSecret123\",\"public\"]" to
+                "[\"https://example.com/api?[redacted]\",\"public\"]",
+            "[\"https://example.com/api\\u0023opaqueSecret123\"]" to
+                "[\"https://example.com/api#[redacted]\"]",
+            "[\"https://example.com/api\\u003ftoken=opaqueSecret123\"]" to
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.test/webhook/fake\\u0054oken\"]" to
+                "[\"https://example.test/webhook/[redacted]\"]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
-        val manyPublic = "[${List(2000) { "\"public\"" }.joinToString(",")}]"
-        assertEquals(manyPublic, CoreTelemetryService.sanitizeLocalPaths(manyPublic))
-        val manyNewlines = "[${List(2000) { "\"hello\\nworld\"" }.joinToString(",")}]"
-        assertEquals(manyNewlines, CoreTelemetryService.sanitizeLocalPaths(manyNewlines))
+        val manyFileUris = List(2000) { "open file:///Users/Alice/Secret.mov" }.joinToString("\n")
+        val expectedFileUris = List(2000) { "open [redacted-path]" }.joinToString("\n")
+        assertEquals(expectedFileUris, CoreTelemetryService.sanitizeLocalPaths(manyFileUris))
     }
 }

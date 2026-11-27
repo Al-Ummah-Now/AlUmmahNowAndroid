@@ -385,7 +385,9 @@ class CoreTelemetryService(
             "kt", "java", "swift", "cs", "cpp", "cc", "c", "h", "hpp", "rs", "py", "js", "ts", "go", "rb", "m", "mm"
         )
         private val keywordQuotedPathRegex = Regex(
-            """(\b(?:file|path|directory|folder|document)[ \t\p{Zs}]+)(['"])(?!\u001E)[^'"\r\n]+\2""",
+            """(\b(?:file|path|directory|folder|document)[ \t\p{Zs}]+)""" +
+                """(?:"(?!\u001E)[^"\r\n\u001E\u001F]+"|""" +
+                """'(?!\u001E)[^'\r\n\u001E\u001F]+(?:(?<=[\p{L}\p{N}])'(?=[\p{L}])[^'\r\n\u001E\u001F]+)*')""",
             RegexOption.IGNORE_CASE
         )
         private val keywordFilenamePrefixRegex = Regex(
@@ -841,12 +843,21 @@ class CoreTelemetryService(
         private fun redactFileUris(text: String, vaultPrefix: String): String {
             val schemeLen = 7
             if (text.length < schemeLen) return text
+            var checkedQuotes = false
+            var quoteSpans: List<CoreTelemetryQuotedPathRedactor.QuotedPathSpan>? = null
+            val spanCursor = IntArray(1)
             var sb: StringBuilder? = null
             var copyStart = 0
             var pos = 0
             while (pos < text.length) {
                 if (CoreTelemetryScanners.isFileSchemeAt(text, pos)) {
-                    val isDoubleQuoted = pos > 0 && text[pos - 1] == '"'
+                    if (!checkedQuotes) {
+                        checkedQuotes = true
+                        if (text.indexOf('"') >= 0) {
+                            quoteSpans = CoreTelemetryQuotedPathRedactor.collectBalancedDoubleQuoteSpans(text)
+                        }
+                    }
+                    val isDoubleQuoted = isDoubleQuotedFileUri(text, pos, quoteSpans, spanCursor)
                     val (rawEnd, trimmedEnd) = CoreTelemetryScanners.fileUriSpanEnd(text, pos + schemeLen, isDoubleQuoted, vaultPrefix)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copyStart, pos).append("[redacted-path]").append(text, trimmedEnd, rawEnd)
@@ -860,9 +871,28 @@ class CoreTelemetryService(
             return out.append(text, copyStart, text.length).toString()
         }
 
+        private fun isDoubleQuotedFileUri(
+            text: String,
+            pos: Int,
+            spans: List<CoreTelemetryQuotedPathRedactor.QuotedPathSpan>?,
+            spanCursor: IntArray
+        ): Boolean {
+            if (pos > 0 && text[pos - 1] == '"') return true
+            if (spans == null) return false
+            var idx = spanCursor[0]
+            while (idx < spans.size && spans[idx].close <= pos) idx++
+            spanCursor[0] = idx
+            return idx < spans.size && spans[idx].open < pos && pos < spans[idx].close
+        }
+
         private fun vaultNonFileUrls(text: String, prefix: String): Pair<String, List<String>> {
             val vaultedUrls = mutableListOf<String>()
-            val scrubbed = vaultNonFileUrlsInto(text, prefix, vaultedUrls)
+            val withEscaped = CoreTelemetryQuotedPathRedactor.vaultJsonEscapedUrlsInBalancedQuotes(
+                text,
+                prefix,
+                vaultedUrls
+            ) { inner, innerPrefix, innerVaulted -> vaultNonFileUrlsInto(inner, innerPrefix, innerVaulted) }
+            val scrubbed = vaultNonFileUrlsInto(withEscaped, prefix, vaultedUrls)
             return scrubbed to vaultedUrls
         }
 
