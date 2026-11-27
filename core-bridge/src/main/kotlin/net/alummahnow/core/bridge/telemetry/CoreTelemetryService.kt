@@ -171,11 +171,13 @@ class CoreTelemetryService(
 
     override fun track(name: String, properties: Map<String, Any?>) {
         if (name.isBlank()) return
+        val safeName = sanitizeLocalPaths(name)
+        if (safeName.isBlank()) return
         val json = serializeProperties(properties)
         synchronized(gate) {
             if (closed || clientClosed || _consent != TelemetryConsent.FULL) return
             try {
-                client.track(name, json)
+                client.track(safeName, json)
             } catch (e: AunException) {
                 AunLog.w("telemetry", "telemetry track skipped", "error" to e.message)
             }
@@ -184,11 +186,13 @@ class CoreTelemetryService(
 
     override fun trackError(code: String, properties: Map<String, Any?>) {
         if (code.isBlank()) return
+        val safeCode = sanitizeLocalPaths(code)
+        if (safeCode.isBlank()) return
         val json = serializeProperties(properties)
         synchronized(gate) {
             if (closed || clientClosed || _consent != TelemetryConsent.FULL) return
             try {
-                client.trackError(code, json)
+                client.trackError(safeCode, json)
             } catch (e: AunException) {
                 AunLog.w("telemetry", "telemetry error skipped", "error" to e.message)
             }
@@ -1033,33 +1037,46 @@ class CoreTelemetryService(
                 trimmed.equals("proxy-authorization", ignoreCase = true)
         }
 
+        private fun resolveUniquePropertyKey(usedKeys: MutableSet<String>, base: String): String {
+            if (usedKeys.add(base)) return base
+            var suffix = 2
+            while (!usedKeys.add("$base#$suffix")) suffix++
+            return "$base#$suffix"
+        }
+
         internal fun serializeProperties(properties: Map<String, Any?>): String? {
             if (properties.isEmpty()) return null
+            val usedKeys = HashSet<String>(properties.size)
             val obj = buildJsonObject {
                 for ((key, value) in properties) {
                     if (key.isNotBlank() && value != null) {
-                        putSanitizedProperty(key, value)
+                        putSanitizedProperty(key, value, usedKeys)
                     }
                 }
             }
             return if (obj.isEmpty()) null else obj.toString()
         }
 
-        private fun kotlinx.serialization.json.JsonObjectBuilder.putSanitizedProperty(key: String, value: Any) {
+        private fun kotlinx.serialization.json.JsonObjectBuilder.putSanitizedProperty(
+            key: String,
+            value: Any,
+            usedKeys: MutableSet<String>
+        ) {
             if (isAuthHeaderPropertyKey(key)) {
-                put(key, JsonPrimitive("[redacted]"))
+                put(resolveUniquePropertyKey(usedKeys, key), JsonPrimitive("[redacted]"))
                 return
             }
             val safeKey = sanitizeLocalPaths(key)
             if (safeKey.isBlank()) return
+            val uniqueKey = resolveUniquePropertyKey(usedKeys, safeKey)
             when (value) {
-                is String -> put(safeKey, JsonPrimitive(sanitizeLocalPaths(value)))
-                is Boolean -> put(safeKey, JsonPrimitive(value))
-                is Int -> put(safeKey, JsonPrimitive(value))
-                is Long -> put(safeKey, JsonPrimitive(value))
-                is Double -> if (value.isFinite()) put(safeKey, JsonPrimitive(value))
-                is Float -> if (value.isFinite()) put(safeKey, JsonPrimitive(value.toDouble()))
-                else -> put(safeKey, JsonPrimitive(sanitizeLocalPaths(value.toString())))
+                is String -> put(uniqueKey, JsonPrimitive(sanitizeLocalPaths(value)))
+                is Boolean -> put(uniqueKey, JsonPrimitive(value))
+                is Int -> put(uniqueKey, JsonPrimitive(value))
+                is Long -> put(uniqueKey, JsonPrimitive(value))
+                is Double -> if (value.isFinite()) put(uniqueKey, JsonPrimitive(value))
+                is Float -> if (value.isFinite()) put(uniqueKey, JsonPrimitive(value.toDouble()))
+                else -> put(uniqueKey, JsonPrimitive(sanitizeLocalPaths(value.toString())))
             }
         }
     }

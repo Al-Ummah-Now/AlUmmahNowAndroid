@@ -495,11 +495,19 @@ class CoreTelemetryUrlContinuationTest {
             "\"Authorization\\u003dsecret\"" to "\"Authorization\\u003d[redacted]\"",
             "headers=\"Authorization\\u003a opaqueSecret123\"" to "headers=\"Authorization\\u003a [redacted]\"",
             "headers=\"Authorization\\u003d opaqueSecret123\" status=ok" to
-                "headers=\"Authorization\\u003d [redacted]\" status=ok"
+                "headers=\"Authorization\\u003d [redacted]\" status=ok",
+            "received (\"Authorization\\u003a opaqueSecret123\")" to "received (\"Authorization\\u003a [redacted]\")",
+            "Authorization\\u003a opaqueSecret123" to "[redacted-path]",
+            "{\"msg\":\"Basic YWI6\\u00632VjcmV0\"}" to "{\"msg\":\"Basic [redacted]\"}",
+            "{\"m\":\"literal=\\\"test\\\\stuff\\\"tail\",\"next\":1}" to
+                "{\"m\":\"literal=\\\"[redacted-path]\\\"tail\",\"next\":1}",
+            "{\"m\":\"{\\\"path\\\":\\\"/Users/Alice/Secret.mov\\\"}\",\"next\":1}" to
+                "{\"m\":\"{\\\"path\\\":\\\"[redacted-path]\\\"}\",\"next\":1}"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
+        assertEquals("Bearer [redacted]", CoreTelemetryService.sanitizeLocalPaths("Bearer " + "A".repeat(65536)))
     }
 
     @Test
@@ -515,6 +523,7 @@ class CoreTelemetryUrlContinuationTest {
                 "detail" to "Authorization: Bearer secret",
                 "path" to "/Users/Alice/Secret.mov",
                 "/Users/Alice/Acquisition.mov" to 1,
+                "/Users/Bob/Merger.mov" to 2,
                 "Authorization" to "opaqueSecret123",
                 "uri" to java.net.URI("https://example.com/api?token=secret"),
                 "count" to 2,
@@ -524,8 +533,11 @@ class CoreTelemetryUrlContinuationTest {
         assertTrue(props != null)
         assertTrue(!props!!.contains("secret", ignoreCase = true))
         assertTrue(!props.contains("Alice"))
+        assertTrue(!props.contains("Bob"))
         assertTrue(!props.contains("Acquisition"))
+        assertTrue(!props.contains("Merger"))
         assertTrue(props.contains("\"[redacted-path]\":1"))
+        assertTrue(props.contains("\"[redacted-path]#2\":2"))
         assertTrue(props.contains("\"detail\":\"Authorization: Bearer [redacted]\""))
         assertTrue(props.contains("\"path\":\"[redacted-path]\""))
         assertTrue(props.contains("\"Authorization\":\"[redacted]\""))

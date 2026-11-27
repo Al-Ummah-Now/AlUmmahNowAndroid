@@ -26,12 +26,6 @@ internal object CoreTelemetryAuthScanner {
         "Bearer", "Basic", "Digest", "Token", "Api-Key", "ApiKey",
         "OAuth", "Negotiate", "Mutual", "HOBA", "Vapid", "SCRAM-SHA-256", "AWS4-HMAC-SHA256"
     )
-    private val bearerTokenRegex = Regex(
-        """\b(Bearer)[\s\p{Zs}]+""" +
-            """(?!\[redacted\](?=$|[\s\p{Zs}"',;)\]}]|\\(?:[nrtbf"]|u00(?:20|09|0[aAdD]|[aA]0))))""" +
-            """(?:\\[^\r\n\s\p{Zs}]|[^\s\p{Zs}\\"',;)\]}]|\\(?=$|[\s\p{Zs}\r\n]))+""",
-        RegexOption.IGNORE_CASE
-    )
     private val basicTokenRegex = Regex(
         """\b(Basic)[\s\p{Zs}]+([A-Za-z0-9+/_-]{2,}={0,2})(?![A-Za-z0-9+/_=-])""",
         RegexOption.IGNORE_CASE
@@ -64,20 +58,20 @@ internal object CoreTelemetryAuthScanner {
 
     fun redactAuthCredentials(text: String): String {
         val headerScrubbed = redactAuthHeaders(text)
-        val bearerScrubbed = bearerTokenRegex.replace(headerScrubbed, "$1 [redacted]")
-        val basicScrubbed = basicTokenRegex.replace(bearerScrubbed) { match ->
+        val bearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactBearerTokens(headerScrubbed)
+        val escapedBearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBearerInBalancedQuotes(bearerScrubbed)
+        val escapedBasicScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBasicInBalancedQuotes(
+            escapedBearerScrubbed,
+            basicTokenRegex,
+            ::isBasicCredentialToken
+        )
+        return basicTokenRegex.replace(escapedBasicScrubbed) { match ->
             if (isBasicCredentialToken(match.groupValues[2])) {
                 "${match.groupValues[1]} [redacted]"
             } else {
                 match.value
             }
         }
-        return CoreTelemetryQuotedAuthHelpers.redactEscapedTokensInBalancedQuotes(
-            basicScrubbed,
-            bearerTokenRegex,
-            basicTokenRegex,
-            ::isBasicCredentialToken
-        )
     }
 
     private data class AuthValueContext(
@@ -95,13 +89,11 @@ internal object CoreTelemetryAuthScanner {
         val normalizedKey: String?
     )
 
-    private fun mayContainAuthHeader(text: String, maxDepth: Int): Boolean {
-        if (text.indexOf(':') >= 0 || text.indexOf('=') >= 0) return true
-        return maxDepth > 0 && text.indexOf('"') >= 0 && text.contains("\\u")
-    }
+    private fun mayContainAuthHeader(text: String): Boolean =
+        text.indexOf(':') >= 0 || text.indexOf('=') >= 0 || text.contains("\\u")
 
     private fun redactAuthHeaders(text: String, maxDepth: Int = 4): String {
-        if (!mayContainAuthHeader(text, maxDepth)) return text
+        if (!mayContainAuthHeader(text)) return text
         val builder = HeaderBuilder(text)
         scanAuthHeaders(text, maxDepth, builder)
         return builder.finish()
@@ -165,15 +157,15 @@ internal object CoreTelemetryAuthScanner {
     ): Int {
         val allowNl = keyMatch.isJsonCandidate || keyMatch.hasJsonPrefix
         val sep = skipAuthWhitespace(text, keyMatch.keyEnd, allowNl)
-        if (sep >= text.length || (text[sep] != ':' && text[sep] != '=')) return keyMatch.keyEnd
-        val isColon = text[sep] == ':'
+        val sepMatch = CoreTelemetryQuotedAuthHelpers.matchAuthSeparator(text, sep) ?: return keyMatch.keyEnd
+        val (sepLen, isColon) = sepMatch
         val ctx = AuthValueContext(
-            isJsonMember = keyMatch.isJsonCandidate && isColon,
-            allowTruncatedObj = keyMatch.hasJsonPrefix && isColon,
-            failedTopEnd = if (isColon) keyMatch.failedTopEnd else -1
+            isJsonMember = keyMatch.isJsonCandidate && isColon && sepLen == 1,
+            allowTruncatedObj = keyMatch.hasJsonPrefix && isColon && sepLen == 1,
+            failedTopEnd = if (isColon && sepLen == 1) keyMatch.failedTopEnd else -1
         )
-        val valStart = skipAuthWhitespace(text, sep + 1, ctx.isJsonMember || ctx.allowTruncatedObj)
-        if (valStart >= text.length || isNewline(text[valStart])) return sep + 1
+        val valStart = skipAuthWhitespace(text, sep + sepLen, ctx.isJsonMember || ctx.allowTruncatedObj)
+        if (valStart >= text.length || isNewline(text[valStart])) return sep + sepLen
         if (keyMatch.normalizedKey != null) {
             val q = text[keyMatch.keyStart]
             builder.appendRedacted(keyMatch.keyStart, keyMatch.keyEnd, "$q${keyMatch.normalizedKey}$q")
