@@ -937,11 +937,10 @@ class CoreTelemetryService(
                         finalTail = extended.tail
                         extended.endPos
                     } else {
-                        val idx = vaultedUrls.size
-                        vaultedUrls += baseRedacted
-                        out.append(prefix).append(idx).append('\u001F').append(baseTail)
-                        finalTail = baseTail
-                        span.totalEnd
+                        val urls = Triple(rawUrl, baseRedacted, baseTail)
+                        val (end, emitTail) = emitSimpleVaultedUrl(out, text, span, quoteState, urls, prefix, vaultedUrls)
+                        finalTail = emitTail
+                        end
                     }
                     quoteState = cont.advanceQuoteState(finalTail, 0, finalTail.length, quoteState)
                     tracker.onVaultedUrl(endPos, activeQuoteFromState(quoteState))
@@ -952,6 +951,30 @@ class CoreTelemetryService(
             }
             val out = sb ?: return text
             return out.append(text, copied, text.length).toString()
+        }
+
+        @Suppress("LongParameterList")
+        private fun emitSimpleVaultedUrl(
+            out: StringBuilder,
+            text: String,
+            span: CoreTelemetryScanners.UrlSpan,
+            quoteState: Int,
+            urls: Triple<String, String, String>,
+            prefix: String,
+            vaultedUrls: MutableList<String>
+        ): Pair<Int, String> {
+            val quotedSecret = CoreTelemetryScanners.resolveQuotedSecretUrlTail(
+                text,
+                span,
+                (quoteState and 2) != 0,
+                urls.first,
+                urls.second
+            )
+            val idx = vaultedUrls.size
+            vaultedUrls += quotedSecret?.first ?: urls.second
+            val emitTail = if (quotedSecret != null) "" else urls.third
+            out.append(prefix).append(idx).append('\u001F').append(emitTail)
+            return (quotedSecret?.second ?: span.totalEnd) to emitTail
         }
 
         private fun activeQuoteFromState(quoteState: Int): Char = when {

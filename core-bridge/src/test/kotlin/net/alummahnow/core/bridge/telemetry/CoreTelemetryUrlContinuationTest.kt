@@ -430,7 +430,20 @@ class CoreTelemetryUrlContinuationTest {
             "[\"prefix\\nalice@example.com\"]" to "[\"prefix\\n[redacted-email]\"]",
             "[\"\\u0020alice@example.com ok\"]" to "[\"\\u0020[redacted-email] ok\"]",
             "[\"https://a.test\",\"open /foo\",\"https://b.test\"]" to
-                "[\"https://a.test\",\"open [redacted-path]\",\"https://b.test\"]"
+                "[\"https://a.test\",\"open [redacted-path]\",\"https://b.test\"]",
+            "[\"https://example.com/webhook/first\\u00A0secondSecret\"]" to
+                "[\"https://example.com/webhook/[redacted]\"]",
+            "[\"https://example.com/webhook/\\u00A0secondSecret\"]" to
+                "[\"https://example.com/webhook/[redacted]\"]",
+            "[\" https://example.com/api?token=first secondSecret\"]" to
+                "[\" https://example.com/api?[redacted]\"]",
+            "[\"fetch https://example.com/api?token=first secondSecret\"]" to
+                "[\"fetch https://example.com/api?[redacted]\"]",
+            "[\"fetch https://example.com/api?token=first secondSecret\",\"public\"]" to
+                "[\"fetch https://example.com/api?[redacted]\",\"public\"]",
+            "[\"al\\u0069\\u0063e@example.com ok\"]" to "[\"[redacted-email] ok\"]",
+            "[\"prefix\\nal\\u0069\\u0063e@example.com\"]" to "[\"prefix\\n[redacted-email]\"]",
+            "[\"\\u0020al\\u0069\\u0063e@example.com ok\"]" to "[\"\\u0020[redacted-email] ok\"]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))

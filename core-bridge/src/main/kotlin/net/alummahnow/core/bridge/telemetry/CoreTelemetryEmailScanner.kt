@@ -164,10 +164,18 @@ internal object CoreTelemetryEmailScanner {
             return findQuotedEmailLocalStart(text, atPos, minPos)
         }
         var localStart = atPos
-        while (localStart > minPos && isEmailLocalChar(text, localStart - 1) && !isSchemeSlash(text, localStart - 1)) {
-            localStart--
+        while (true) {
+            while (localStart > minPos && isEmailLocalChar(text, localStart - 1) && !isSchemeSlash(text, localStart - 1)) {
+                localStart--
+            }
+            val adjusted = adjustEmailLocalEscapeStart(text, localStart, atPos, minPos)
+            if (adjusted < localStart) {
+                localStart = adjusted
+            } else {
+                localStart = adjusted
+                break
+            }
         }
-        localStart = adjustEmailLocalEscapeStart(text, localStart, atPos, minPos)
         var trimmedStart = localStart
         while (trimmedStart < atPos && isEmailLeadingWrapper(text[trimmedStart])) trimmedStart++
         return if (trimmedStart < atPos) trimmedStart else localStart

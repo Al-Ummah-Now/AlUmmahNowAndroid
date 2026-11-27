@@ -37,14 +37,45 @@ internal object CoreTelemetryScanners {
         return if (validPrefix && !prevBlocked && !isFile) start else null
     }
 
+    fun resolveQuotedSecretUrlTail(
+        text: String,
+        span: UrlSpan,
+        inDoubleQuote: Boolean,
+        rawUrl: String,
+        redactedUrl: String
+    ): Pair<String, Int>? {
+        val wrapped = span.start > 0 && text[span.start - 1] == '<'
+        val canExtend = !span.hasQf &&
+            inDoubleQuote &&
+            !wrapped &&
+            span.totalEnd < text.length &&
+            text[span.totalEnd] !in "\"\r\n"
+        if (!canExtend) return null
+        val secretUrl = when {
+            redactedUrl.endsWith("[redacted]") -> redactedUrl
+            else -> redactUrlPathSecrets(rawUrl + "x").takeIf { it.endsWith("[redacted]") }
+        } ?: return null
+        return secretUrl to scanToClosingDoubleQuote(text, span.totalEnd)
+    }
+
+    private fun scanToClosingDoubleQuote(text: String, start: Int): Int {
+        var p = start
+        var escaped = false
+        while (p < text.length) {
+            val ch = text[p]
+            val atEnd = ch == '\r' || ch == '\n'
+            if (atEnd || (ch == '"' && !escaped)) break
+            escaped = ch == '\\' && !escaped
+            p++
+        }
+        return p
+    }
+
     fun computeQueryAngleStopMask(text: String, urlStart: Int, inDoubleQuote: Boolean): Int {
         val wrappedInAngle = urlStart > 0 && text[urlStart - 1] == '<'
         val stopOnLess = !inDoubleQuote && !wrappedInAngle
         val stopOnGreater = !inDoubleQuote || wrappedInAngle
-        val allowInlineSpace = inDoubleQuote &&
-            urlStart > 0 &&
-            text[urlStart - 1] == '"' &&
-            !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, urlStart - 1, 0)
+        val allowInlineSpace = inDoubleQuote && !wrappedInAngle
         return (if (stopOnLess) 1 else 0) or (if (stopOnGreater) 2 else 0) or (if (allowInlineSpace) 4 else 0)
     }
 
