@@ -541,7 +541,7 @@ internal object CoreTelemetryScanners {
         var segStart = 0
         while (segStart < text.length) {
             var segEnd = segStart
-            while (segEnd < text.length && !isQuotedSegStop(text[segEnd])) segEnd++
+            while (segEnd < text.length && text[segEnd] != '"' && !isQuotedSegStop(text[segEnd])) segEnd++
             copied = redactSingleQuotesInSegment(text, segStart, segEnd, copied, hasAt) { open, endPos ->
                 val out = sb ?: StringBuilder(text.length).also { sb = it }
                 out.append(text, copied, open).append("[redacted-path]")

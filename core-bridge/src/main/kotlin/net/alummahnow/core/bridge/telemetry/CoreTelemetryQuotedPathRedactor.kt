@@ -111,25 +111,64 @@ internal object CoreTelemetryQuotedPathRedactor {
         var copied = 0
         for (span in spans) {
             val innerStart = span.open + 1
-            if (innerStart < span.close && containsAssignDelimiter(current, innerStart, span.close)) {
-                val inner = current.substring(innerStart, span.close)
-                val scrubbed = regex.replace(inner, "$1[redacted-path]")
-                if (scrubbed != inner) {
-                    val out = sb ?: StringBuilder(current.length).also { sb = it }
-                    out.append(current, copied, innerStart).append(scrubbed)
-                    copied = span.close
-                }
+            if (innerStart < span.close && containsAssignCandidate(current, innerStart, span.close)) {
+                val (nextSb, nextCopied) = replaceAssignedInDecodedSpan(current, innerStart, span.close, regex, sb, copied)
+                sb = nextSb
+                copied = nextCopied
             }
         }
         val out = sb ?: return current
         return out.append(current, copied, current.length).toString()
     }
 
-    private fun containsAssignDelimiter(text: String, start: Int, end: Int): Boolean {
+    @Suppress("LongParameterList")
+    private fun replaceAssignedInDecodedSpan(
+        current: String,
+        innerStart: Int,
+        close: Int,
+        regex: Regex,
+        initialSb: StringBuilder?,
+        initialCopied: Int
+    ): Pair<StringBuilder?, Int> {
+        val (decoded, rawOffsets) = decodeQuotedSpanWithOffsets(current, innerStart, close)
+        var match = regex.find(decoded) ?: return initialSb to initialCopied
+        var sb = initialSb
+        var copied = initialCopied
+        while (true) {
+            val g1 = match.groups[1]
+            val rawG1End = rawOffsets[if (g1 != null) g1.range.last + 1 else match.range.first]
+            val rawEnd = rawOffsets[match.range.last + 1]
+            val out = sb ?: StringBuilder(current.length).also { sb = it }
+            out.append(current, copied, rawG1End).append("[redacted-path]")
+            copied = rawEnd
+            match = match.next() ?: break
+        }
+        return sb to copied
+    }
+
+    private fun containsAssignCandidate(text: String, start: Int, end: Int): Boolean {
         for (i in start until end) {
-            if (text[i] == ':' || text[i] == '=') return true
+            val ch = text[i]
+            val isUnicodeEsc = ch == '\\' && i + 5 < end && text[i + 1] == 'u'
+            if (ch == ':' || ch == '=' || isUnicodeEsc) return true
         }
         return false
+    }
+
+    private fun decodeQuotedSpanWithOffsets(text: String, start: Int, end: Int): Pair<String, IntArray> {
+        val cap = end - start
+        val chars = CharArray(cap)
+        val offsets = IntArray(cap + 1)
+        var count = 0
+        var pos = start
+        while (pos < end) {
+            offsets[count] = pos
+            val dec = decodeJsonCharAt(text, pos, end)
+            chars[count++] = dec.ch
+            pos += dec.len
+        }
+        offsets[count] = end
+        return String(chars, 0, count) to offsets
     }
 
     private fun buildMaskedDoubleQuotes(text: String, spans: List<QuotedPathSpan>): String {
@@ -319,12 +358,13 @@ internal object CoreTelemetryQuotedPathRedactor {
     private fun stepQuotedPathScanner(text: String, pos: Int, end: Int, tokenStart: Int): QuotedScanStep {
         val dec0 = decodeJsonCharAt(text, pos, end)
         val driveAfter = matchDecodedWindowsDrive(text, pos, end, dec0)
-        val prefixAfter = if (tokenStart < 0) matchDecodedHomeOrUnc(text, pos, end, dec0) else -1
+        val homeAfter = if (tokenStart < 0) matchDecodedHome(text, pos, end, dec0) else -1
+        val isBackslashSep = dec0.ch == '\\' && (tokenStart >= 0 || dec0.len > 1)
         return when {
             driveAfter >= 0 -> checkTrailingNonWs(text, pos, driveAfter, end)
-            dec0.ch == '/' -> checkSlashRun(text, pos, pos + dec0.len, end, tokenStart)
-            prefixAfter >= 0 -> checkTrailingNonWs(text, pos, prefixAfter, end)
-            else -> stepPlainQuotedChar(text, pos, end, dec0, tokenStart)
+            dec0.ch == '/' || isBackslashSep -> checkSepRun(text, pos, pos + dec0.len, end, dec0.ch, tokenStart)
+            homeAfter >= 0 -> checkTrailingNonWs(text, pos, homeAfter, end)
+            else -> stepPlainQuotedChar(pos, dec0, tokenStart)
         }
     }
 
@@ -339,30 +379,29 @@ internal object CoreTelemetryQuotedPathRedactor {
         return if (dec2.ch == '/' || dec2.ch == '\\') p2 + dec2.len else -1
     }
 
-    private fun matchDecodedHomeOrUnc(text: String, pos: Int, end: Int, dec0: DecodedJsonChar): Int {
-        if ((dec0.ch != '~' && dec0.ch != '\\') || pos + dec0.len >= end) return -1
+    private fun matchDecodedHome(text: String, pos: Int, end: Int, dec0: DecodedJsonChar): Int {
+        if (dec0.ch != '~' || pos + dec0.len >= end) return -1
         val p1 = pos + dec0.len
         val dec1 = decodeJsonCharAt(text, p1, end)
-        val matched = (dec0.ch == '~' && dec1.ch == '/') || (dec0.ch == '\\' && dec1.ch == '\\')
-        return if (matched) p1 + dec1.len else -1
+        return if (dec1.ch == '/') p1 + dec1.len else -1
     }
 
-    private fun stepPlainQuotedChar(
-        text: String,
-        pos: Int,
-        end: Int,
-        dec0: DecodedJsonChar,
-        tokenStart: Int
-    ): QuotedScanStep = when {
+    private fun stepPlainQuotedChar(pos: Int, dec0: DecodedJsonChar, tokenStart: Int): QuotedScanStep = when {
         isDecodedWhitespace(dec0.ch) || isQuotedPathDelimiter(dec0.ch) -> QuotedScanStep(-1, pos + dec0.len, -1)
-        dec0.ch == '\\' && tokenStart >= 0 -> checkTrailingNonWs(text, tokenStart, pos + dec0.len, end)
-        dec0.ch == '\\' -> QuotedScanStep(-1, pos + dec0.len, tokenStart)
         else -> QuotedScanStep(-1, pos + dec0.len, if (tokenStart < 0) pos else tokenStart)
     }
 
-    private fun checkSlashRun(text: String, pos: Int, afterPos: Int, end: Int, tokenStart: Int): QuotedScanStep {
+    @Suppress("LongParameterList")
+    private fun checkSepRun(
+        text: String,
+        pos: Int,
+        afterPos: Int,
+        end: Int,
+        runChar: Char,
+        tokenStart: Int
+    ): QuotedScanStep {
         if (tokenStart >= 0) return checkTrailingNonWs(text, tokenStart, afterPos, end)
-        val (nextRoot, stopCh) = scanSlashRunEnd(text, afterPos, end)
+        val (nextRoot, stopCh) = scanCharRunEnd(text, afterPos, end, runChar)
         val found = if (nextRoot < end && !isDecodedWhitespace(stopCh)) pos else -1
         return QuotedScanStep(found, nextRoot, -1)
     }
@@ -373,13 +412,13 @@ internal object CoreTelemetryQuotedPathRedactor {
         return QuotedScanStep(found, next, -1)
     }
 
-    private fun scanSlashRunEnd(text: String, pos: Int, end: Int): Pair<Int, Char> {
+    private fun scanCharRunEnd(text: String, pos: Int, end: Int, runChar: Char): Pair<Int, Char> {
         var next = pos
         var stopCh = '\u0000'
         var done = false
         while (next < end && !done) {
             val dec = decodeJsonCharAt(text, next, end)
-            if (dec.ch == '/' || isHorizontalSpace(dec.ch)) {
+            if (dec.ch == runChar || isHorizontalSpace(dec.ch)) {
                 next += dec.len
             } else {
                 stopCh = dec.ch

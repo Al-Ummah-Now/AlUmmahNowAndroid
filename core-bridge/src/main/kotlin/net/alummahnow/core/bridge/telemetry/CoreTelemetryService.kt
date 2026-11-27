@@ -574,7 +574,7 @@ class CoreTelemetryService(
             return out.append(text, copied, text.length).toString()
         }
 
-        private fun isSegmentStop(ch: Char): Boolean = ch in "\r\n\u001E\u001F"
+        private fun isSegmentStop(ch: Char): Boolean = ch in "\r\n\u001E\u001F\""
 
         private fun findLastUnquotedFilenameExt(text: String, segStart: Int, segEnd: Int): Pair<Int, Int>? {
             for (dot in segEnd - 1 downTo segStart) {

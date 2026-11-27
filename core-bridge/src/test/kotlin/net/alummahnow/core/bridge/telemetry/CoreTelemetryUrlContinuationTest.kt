@@ -322,6 +322,17 @@ class CoreTelemetryUrlContinuationTest {
             "{\"message\":\"see report.pdf now\",\"keep\":\"public\"}" to
                 "{\"message\":\"[redacted-path] now\",\"keep\":\"public\"}",
             "{\"status\":\"secret.mov pending\"}" to "{\"status\":\"[redacted-path] pending\"}",
+            "[\"path=alpha\",{\"keep\":\"beta.pdf attached\"}]" to
+                "[\"path=[redacted-path]\",{\"keep\":\"[redacted-path] attached\"}]",
+            "[\"read this\",{\"x\":\"report.pdf attached\"}]" to
+                "[\"read this\",{\"x\":\"[redacted-path] attached\"}]",
+            "{\"'\":\"secret.pdf' pending\"}" to "{\"'\":\"[redacted-path]' pending\"}",
+            "[\"hello\\npath=Acquisition\"]" to "[\"hello\\npath=[redacted-path]\"]",
+            "[\"hello\\npath=alpha\\npath=beta\"]" to "[\"hello\\npath=[redacted-path]\\npath=[redacted-path]\"]",
+            "[\"path\\u003dAcquisition\"]" to "[\"path\\u003d[redacted-path]\"]",
+            "[\"\\\\Secret\"]" to "[\"[redacted-path]\"]",
+            "[\"\\u005CSecret\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"\\\\\",\"public\"]" to "[\"\\\\\",\"public\"]",
             "Failed reading /Users/alice/My \"Secret\" Folder/file.mov" to "Failed reading [redacted-path]"
         )
         for ((input, expected) in cases) {
