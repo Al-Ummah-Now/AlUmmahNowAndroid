@@ -43,13 +43,13 @@ class CoreTelemetryServiceTest {
     }
 
     @Test
-    fun `sanitizeLocalPaths redacts unix unicode windows unc file uri and spaced filenames`() {
+    fun `sanitizeLocalPaths redacts unix unicode windows and unc paths`() {
         val raw = buildString {
             appendLine("Opened /workspace/E\u0301lodie/Very Secret Client Project Name.mov")
             appendLine("Failed to open '/data/user/0/O'Brien.mov'")
             appendLine("""Read "/Users/O'Brien/Final.mov"""")
             appendLine("Failed reading /Private (Client).mov")
-            appendLine("Secret /Private Client")
+            appendLine("Label /Private Client")
             appendLine("Key /private-key")
             appendLine("Path /workspace/alice/Project;Acquisition.mov")
             appendLine("Colon '/workspace/alice/Project:2026;Acquisition.mov'")
@@ -70,6 +70,34 @@ class CoreTelemetryServiceTest {
             appendLine("""EmbeddedDrive open(pathC:\Secret\Acquisition.mov)""")
             appendLine("DriveDoubleSlash open(C://Secret/Acquisition.mov)")
             appendLine("""WindowsDoubleSlash C://Users\Alice\Secret.mov""")
+            appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4""")
+            appendLine("ColonPrefixed error 42:/home/alice/private.mov")
+            appendLine("""\\fileserver\share\secret.mp4""")
+            appendLine("~/private/key.pem")
+            appendLine("Bang /!Acquisition.mov")
+            appendLine("""Quoted "/!Acquisition.mov"""")
+            appendLine("java.io.IOException: /Users/alice/Draft:99 in open()")
+            appendLine("    at open /storage/emulated/0/Private:99\rCaused by: /Users/alice/Cause:99")
+            appendLine("    at net.alummahnow.viewer.MainActivity.onCreate(MainActivity.kt:42)")
+        }
+        val scrubbed = CoreTelemetryService.sanitizeLocalPaths(raw)
+        val forbidden = listOf(
+            "alice", "smith", "lodie", "brien", "private", "client", "acquisition",
+            "secret", "abcdefghijkl", "project>.mov", "storage", "name.mov",
+            "confidential", "workspace", "fileserver", "key.pem"
+        )
+        for (token in forbidden) {
+            assertFalse("Unexpected leak of $token", scrubbed.contains(token, ignoreCase = true))
+        }
+        assertFalse(scrubbed.contains(":99"))
+        assertFalse(scrubbed.contains("in open()"))
+        assertTrue(scrubbed.contains("MainActivity.kt:42"))
+        assertTrue(scrubbed.contains("[redacted-path]"))
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts bare relative and adjacent filenames`() {
+        val raw = buildString {
             appendLine("BareQuoted Could not find file 'Secret.mov'")
             appendLine("RelSlash Could not find file 'private/Secret.mov'")
             appendLine("DotRelSlash Could not find file './Secret.mov'")
@@ -85,65 +113,11 @@ class CoreTelemetryServiceTest {
             appendLine("AdjacentParenUrl (https://example.com)(private/Secret.mov)")
             appendLine("AdjacentCommaUrl https://example.com/api,open(C://Secret/Acquisition.mov)")
             appendLine("UrlParenPath https://example.com(/Users/alice/Secret.mov)")
-            appendLine("Bang /!Acquisition.mov")
-            appendLine("""Quoted "/!Acquisition.mov"""")
-            appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4""")
-            appendLine("ColonPrefixed error 42:/home/alice/private.mov")
-            appendLine("""\\fileserver\share\secret.mp4""")
-            appendLine("~/private/key.pem")
-            appendLine("java.io.IOException: /Users/alice/Draft:99 in open()")
-            appendLine("    at open /storage/emulated/0/Private:99\rCaused by: /Users/alice/Cause:99")
-            appendLine("    at net.alummahnow.viewer.MainActivity.onCreate(MainActivity.kt:42)")
-            appendLine("https://videos.api.alummahnow.net/v1/items")
-            appendLine("https://example.com/?path=/api/items")
-            appendLine("https://[2001:db8::1]/v1/items")
-            appendLine("https://example.com/a(b)/items")
-            appendLine("open(https://example.com/a(b)/items)")
-            appendLine("git+http2://example.com/repo")
-            appendLine("profile://example.com/repo")
-            appendLine("https://[::1]:8443/api")
-            appendLine("a123456789012345678901234567890123://example.com/repo")
-            appendLine("HTTP/1.1 503 Service Unavailable")
         }
         val scrubbed = CoreTelemetryService.sanitizeLocalPaths(raw)
-        assertFalse(scrubbed.contains("alice", ignoreCase = true))
-        assertFalse(scrubbed.contains("smith", ignoreCase = true))
-        assertFalse(scrubbed.contains("lodie", ignoreCase = true))
-        assertFalse(scrubbed.contains("brien", ignoreCase = true))
-        assertFalse(scrubbed.contains("private", ignoreCase = true))
-        assertFalse(scrubbed.contains("client", ignoreCase = true))
-        assertFalse(scrubbed.contains("acquisition", ignoreCase = true))
-        assertFalse(scrubbed.contains("secret", ignoreCase = true))
-        assertFalse(scrubbed.contains("abcdefghijkl", ignoreCase = true))
-        assertFalse(scrubbed.contains("project>.mov", ignoreCase = true))
-        assertFalse(scrubbed.contains("storage", ignoreCase = true))
-        assertFalse(scrubbed.contains("name.mov", ignoreCase = true))
-        assertFalse(scrubbed.contains("confidential", ignoreCase = true))
-        assertFalse(scrubbed.contains("workspace", ignoreCase = true))
-        assertFalse(scrubbed.contains("fileserver", ignoreCase = true))
-        assertFalse(scrubbed.contains("key.pem", ignoreCase = true))
-        assertFalse(scrubbed.contains(":99"))
-        assertFalse(scrubbed.contains("in open()"))
-        assertTrue(scrubbed.contains("MainActivity.kt:42"))
-        assertTrue(scrubbed.contains("https://videos.api.alummahnow.net/v1/items"))
-        assertTrue(scrubbed.contains("https://example.com/?path=/api/items"))
-        assertTrue(scrubbed.contains("https://[2001:db8::1]/v1/items"))
-        assertTrue(scrubbed.contains("https://example.com/a(b)/items"))
-        assertTrue(scrubbed.contains("open(https://example.com/a(b)/items)"))
-        assertTrue(scrubbed.contains("git+http2://example.com/repo"))
-        assertTrue(scrubbed.contains("profile://example.com/repo"))
-        assertTrue(scrubbed.contains("https://[::1]:8443/api"))
-        assertTrue(scrubbed.contains("a123456789012345678901234567890123://example.com/repo"))
-        assertTrue(scrubbed.contains("HTTP/1.1 503 Service Unavailable"))
-        assertTrue(scrubbed.contains("[redacted-path]"))
-        assertEquals(
-            "https://example.com/a'b/items",
-            CoreTelemetryService.sanitizeLocalPaths("https://example.com/a'b/items")
-        )
-        assertEquals(
-            "https://foo!bar.example/api",
-            CoreTelemetryService.sanitizeLocalPaths("https://foo!bar.example/api")
-        )
+        for (token in listOf("secret", "private", "brien", "acquisition", "alice")) {
+            assertFalse("Unexpected leak of $token", scrubbed.contains(token, ignoreCase = true))
+        }
         assertEquals(
             "open [redacted-path] from https://example.com/api",
             CoreTelemetryService.sanitizeLocalPaths("open Secret.mov from https://example.com/api")
@@ -165,16 +139,40 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("open Secret.mov:42")
         )
         assertEquals(
+            "Failure: Main.ts:42",
+            CoreTelemetryService.sanitizeLocalPaths("Failure: Main.ts:42")
+        )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths preserves valid RFC 3986 urls and rejects malformed or file uris`() {
+        val preserved = listOf(
+            "https://videos.api.alummahnow.net/v1/items",
+            "https://example.com/?path=/api/items",
+            "https://[2001:db8::1]/v1/items",
+            "https://example.com/a(b)/items",
+            "https://example.com/a(b;c)/items",
+            "open(https://example.com/a(b)/items)",
+            "https://example.com/a'b/items",
+            "https://foo!bar.example/api",
+            "https://one;two.example/api",
+            "https://example.com/v1;version=2/items",
+            "git+http2://example.com/repo",
+            "profile://example.com/repo",
+            "https://[::1]:8443/api",
+            "a123456789012345678901234567890123://example.com/repo",
+            "HTTP/1.1 503 Service Unavailable"
+        )
+        for (item in preserved) {
+            assertEquals(item, CoreTelemetryService.sanitizeLocalPaths(item))
+        }
+        assertEquals(
             "https://example.com/api,[redacted-path]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,private/Secret.mov")
         )
         assertEquals(
-            "https://one;two.example/api",
-            CoreTelemetryService.sanitizeLocalPaths("https://one;two.example/api")
-        )
-        assertEquals(
-            "https://example.com/v1;version=2/items",
-            CoreTelemetryService.sanitizeLocalPaths("https://example.com/v1;version=2/items")
+            "https://example.com/api;[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api;file:///storage/emulated/0/Secret.mov")
         )
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://[:::]/api") == "https://[:::]/api")
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://bad%zz/api") == "https://bad%zz/api")

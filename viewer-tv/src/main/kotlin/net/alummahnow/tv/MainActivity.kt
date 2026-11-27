@@ -63,42 +63,43 @@ class MainActivity : ComponentActivity() {
             TvApp(
                 telemetryEnabled = telemetryEnabled,
                 telemetryWarning = telemetryWarning,
-                onToggleTelemetry = {
-                    val next = !telemetryEnabled
-                    if (next) {
-                        if (telemetry.setConsent(TelemetryConsent.FULL)) {
-                            if (prefs.edit().putBoolean(KEY_TELEMETRY, true).commit()) {
-                                telemetryEnabledState.value = true
-                                telemetrySaveUncertainState.value = false
-                                telemetryWarningResState.value = null
-                            } else {
-                                telemetry.setConsent(TelemetryConsent.OFF)
-                                val rolledBack = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
-                                if (rolledBack) telemetryEnabledState.value = false
-                                telemetrySaveUncertainState.value = !rolledBack
-                                telemetryWarningResState.value = if (rolledBack) {
-                                    DesignR.string.aun_diagnostics_enable_error
-                                } else {
-                                    DesignR.string.aun_diagnostics_disable_error
-                                }
-                            }
-                        } else {
-                            telemetry.setConsent(TelemetryConsent.OFF)
-                            telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
-                        }
+                onToggleTelemetry = { toggleTelemetry(telemetry, prefs, telemetryEnabled) }
+            )
+        }
+    }
+
+    private fun toggleTelemetry(telemetry: TelemetryService, prefs: SharedPreferences, currentlyEnabled: Boolean) {
+        if (!currentlyEnabled) {
+            if (telemetry.setConsent(TelemetryConsent.FULL)) {
+                if (prefs.edit().putBoolean(KEY_TELEMETRY, true).commit()) {
+                    telemetryEnabledState.value = true
+                    telemetrySaveUncertainState.value = false
+                    telemetryWarningResState.value = null
+                } else {
+                    telemetry.setConsent(TelemetryConsent.OFF)
+                    val rolledBack = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
+                    if (rolledBack) telemetryEnabledState.value = false
+                    telemetrySaveUncertainState.value = !rolledBack
+                    telemetryWarningResState.value = if (rolledBack) {
+                        DesignR.string.aun_diagnostics_enable_error
                     } else {
-                        val purged = telemetry.setConsent(TelemetryConsent.OFF)
-                        val saved = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
-                        if (saved) telemetryEnabledState.value = false
-                        telemetrySaveUncertainState.value = !saved
-                        telemetryWarningResState.value = when {
-                            !saved -> DesignR.string.aun_diagnostics_disable_error
-                            !purged -> DesignR.string.aun_diagnostics_purge_warning
-                            else -> null
-                        }
+                        DesignR.string.aun_diagnostics_disable_error
                     }
                 }
-            )
+            } else {
+                telemetry.setConsent(TelemetryConsent.OFF)
+                telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
+            }
+        } else {
+            val purged = telemetry.setConsent(TelemetryConsent.OFF)
+            val saved = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
+            if (saved) telemetryEnabledState.value = false
+            telemetrySaveUncertainState.value = !saved
+            telemetryWarningResState.value = when {
+                !saved -> DesignR.string.aun_diagnostics_disable_error
+                !purged -> DesignR.string.aun_diagnostics_purge_warning
+                else -> null
+            }
         }
     }
 

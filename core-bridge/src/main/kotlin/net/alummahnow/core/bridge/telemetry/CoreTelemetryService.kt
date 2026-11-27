@@ -364,26 +364,26 @@ class CoreTelemetryService(
         @Volatile
         private var activeCrashService: TelemetryService? = null
 
+        private val fileUriRegex = Regex("""(?<![A-Za-z0-9+.-])file://[^\r\n]+""", RegexOption.IGNORE_CASE)
         private val urlVaultRegex = Regex(
             """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://(?:\[([^\]\s"'<>\\{}\r\n]+)\]|""" +
                 """(?:[A-Za-z0-9._~!$&'*+;=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
-                """(?:[/?#](?:[^\s"<>\\{},()\[\]\r\n]|\([^\s"<>\\{},;()\[\]/:\\]+\)|""" +
-                """\[[^\s"<>\\{},;()\[\]/:\\]+\])*|(?=$|[\s"'<>\\{},;()\[\]]))""",
+                """(?:[/?#](?:[^\s"<>\\{},()\[\]\r\n]|\([^\s"<>\\{},()\[\]/:\\]+\)|""" +
+                """\[[^\s"<>\\{},()\[\]/:\\]+\])*|(?=$|[\s"'<>\\{},;()\[\]]))""",
             RegexOption.IGNORE_CASE
         )
-        private val ioKeywordVerbs =
+        private const val ioKeywordVerbs =
             "open|opening|read|reading|write|writing|delete|deleting|remove|removing|rename|stat|" +
                 "create|creating|load|loading|save|saving|access|accessing|unlink|" +
                 "file|path|directory|folder|document|filename|filepath"
-        private val bareFilenameExtensions =
+        private const val bareFilenameExtensions =
             "mov|mp4|m4v|mkv|webm|avi|ts|m3u8|mpd|mp3|m4a|wav|aac|flac|ogg|opus|" +
                 "jpg|jpeg|png|gif|webp|heic|svg|pdf|txt|md|rtf|doc|docx|xls|xlsx|ppt|pptx|" +
                 "csv|json|xml|yaml|yml|toml|ini|cfg|conf|log|srt|vtt|ass|ssa|" +
                 "zip|tar|gz|tgz|bz2|xz|7z|rar|dmg|pkg|msi|exe|apk|aab|ipa|" +
                 "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
-        private val sourceLineExts = "kt|java|swift|cs|cpp|cc|c|h|hpp|rs|py|js|ts|go|rb|m|mm"
+        private const val sourceLineExts = "kt|java|swift|cs|cpp|cc|c|h|hpp|rs|py|js|ts|go|rb|m|mm"
         private val pathRedactionRules: List<Pair<Regex, String>> = listOf(
-            Regex("""(?<![A-Za-z0-9+.-])file://[^\r\n]+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
             Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
             Regex(
                 """(\()(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^()\r\n]+(\))""",
@@ -413,7 +413,7 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?:$bareFilenameExtensions)\b(?!\()""",
+                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?!ts:\d+)(?:$bareFilenameExtensions)\b(?!\()""",
                 RegexOption.IGNORE_CASE
             ) to "$1$2[redacted-path]"
         )
@@ -501,12 +501,13 @@ class CoreTelemetryService(
         /** Scrubs local paths, relative paths, bare filenames, and `file://` URIs while preserving non-`file` URLs. */
         fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
+            val textWithoutFileUris = fileUriRegex.replace(text, "[redacted-path]")
             var prefix = "\u001EAUNURL"
-            while (text.contains(prefix)) {
+            while (textWithoutFileUris.contains(prefix)) {
                 prefix += "X"
             }
             val vaultedUrls = mutableListOf<String>()
-            var scrubbed = urlVaultRegex.replace(text) { match ->
+            var scrubbed = urlVaultRegex.replace(textWithoutFileUris) { match ->
                 val raw = match.value
                 val ipv6 = match.groups[1]?.value
                 val validAuthority = ipv6 == null || runCatching { URI("http://[$ipv6]") }.isSuccess
@@ -519,7 +520,7 @@ class CoreTelemetryService(
                         url = url.dropLast(1)
                         tail = ";"
                     }
-                    if (match.range.first > 0 && text[match.range.first - 1] == '\'' && url.endsWith('\'')) {
+                    if (match.range.first > 0 && textWithoutFileUris[match.range.first - 1] == '\'' && url.endsWith('\'')) {
                         url = url.dropLast(1)
                         tail = "'$tail"
                     }

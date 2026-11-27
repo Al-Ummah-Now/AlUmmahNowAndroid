@@ -414,8 +414,11 @@ private fun StaffHome(
                             val rolledBack = services.prefs.setTelemetryEnabled(false)
                             services.prefs.setTelemetrySaveUncertain(!rolledBack)
                             services.prefs.setTelemetryWarningRes(
-                                if (rolledBack) DesignR.string.aun_diagnostics_enable_error
-                                else DesignR.string.aun_diagnostics_disable_error
+                                if (rolledBack) {
+                                    DesignR.string.aun_diagnostics_enable_error
+                                } else {
+                                    DesignR.string.aun_diagnostics_disable_error
+                                }
                             )
                         }
                     } else {

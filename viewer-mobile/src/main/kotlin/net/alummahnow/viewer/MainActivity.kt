@@ -375,8 +375,11 @@ internal fun ViewerNavHost(
                             val rolledBack = container.displayPrefs.setTelemetryEnabled(false)
                             container.displayPrefs.setTelemetrySaveUncertain(!rolledBack)
                             container.displayPrefs.setTelemetryWarningRes(
-                                if (rolledBack) DesignR.string.aun_diagnostics_enable_error
-                                else DesignR.string.aun_diagnostics_disable_error
+                                if (rolledBack) {
+                                    DesignR.string.aun_diagnostics_enable_error
+                                } else {
+                                    DesignR.string.aun_diagnostics_disable_error
+                                }
                             )
                         }
                     } else {

@@ -95,17 +95,17 @@ class AppContainer(context: Context) : StudioContainer {
         initialEnabled = telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false)
     )
 
-    private val _telemetryEnabled = MutableStateFlow(telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false))
-    private val _telemetrySaveFailed = MutableStateFlow(false)
-    private val _telemetryWarningRes = MutableStateFlow<Int?>(null)
+    private val telemetryEnabledState = MutableStateFlow(telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false))
+    private val telemetrySaveFailedState = MutableStateFlow(false)
+    private val telemetryWarningResState = MutableStateFlow<Int?>(null)
 
-    override val telemetryEnabledFlow: StateFlow<Boolean> = _telemetryEnabled.asStateFlow()
-    override val telemetrySaveFailedFlow: StateFlow<Boolean> = _telemetrySaveFailed.asStateFlow()
-    override val telemetryWarningResFlow: StateFlow<Int?> = _telemetryWarningRes.asStateFlow()
+    override val telemetryEnabledFlow: StateFlow<Boolean> = telemetryEnabledState.asStateFlow()
+    override val telemetrySaveFailedFlow: StateFlow<Boolean> = telemetrySaveFailedState.asStateFlow()
+    override val telemetryWarningResFlow: StateFlow<Int?> = telemetryWarningResState.asStateFlow()
 
-    override fun isTelemetryEnabled(): Boolean = _telemetryEnabled.value || _telemetrySaveFailed.value
+    override fun isTelemetryEnabled(): Boolean = telemetryEnabledState.value || telemetrySaveFailedState.value
 
-    override fun isTelemetryPreferenceSaveFailed(): Boolean = _telemetrySaveFailed.value
+    override fun isTelemetryPreferenceSaveFailed(): Boolean = telemetrySaveFailedState.value
 
     override fun setTelemetryEnabled(enabled: Boolean): Boolean =
         if (enabled) enableTelemetry() else disableTelemetry()
@@ -113,33 +113,33 @@ class AppContainer(context: Context) : StudioContainer {
     private fun enableTelemetry(): Boolean {
         if (!telemetry.setConsent(TelemetryConsent.FULL)) {
             telemetry.setConsent(TelemetryConsent.OFF)
-            _telemetryWarningRes.value = DesignR.string.aun_diagnostics_enable_error
+            telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
             return false
         }
         if (!telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, true).commit()) {
             telemetry.setConsent(TelemetryConsent.OFF)
             val rolledBack = telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
-            if (rolledBack) _telemetryEnabled.value = false
-            _telemetrySaveFailed.value = !rolledBack
-            _telemetryWarningRes.value = if (rolledBack) {
+            if (rolledBack) telemetryEnabledState.value = false
+            telemetrySaveFailedState.value = !rolledBack
+            telemetryWarningResState.value = if (rolledBack) {
                 DesignR.string.aun_diagnostics_enable_error
             } else {
                 DesignR.string.aun_diagnostics_disable_error
             }
             return false
         }
-        _telemetryEnabled.value = true
-        _telemetrySaveFailed.value = false
-        _telemetryWarningRes.value = null
+        telemetryEnabledState.value = true
+        telemetrySaveFailedState.value = false
+        telemetryWarningResState.value = null
         return true
     }
 
     private fun disableTelemetry(): Boolean {
         val purged = telemetry.setConsent(TelemetryConsent.OFF)
         val saved = telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
-        if (saved) _telemetryEnabled.value = false
-        _telemetrySaveFailed.value = !saved
-        _telemetryWarningRes.value = when {
+        if (saved) telemetryEnabledState.value = false
+        telemetrySaveFailedState.value = !saved
+        telemetryWarningResState.value = when {
             !saved -> DesignR.string.aun_diagnostics_disable_error
             !purged -> DesignR.string.aun_diagnostics_purge_warning
             else -> null
