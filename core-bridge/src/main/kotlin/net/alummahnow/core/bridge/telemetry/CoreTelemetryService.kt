@@ -369,20 +369,20 @@ class CoreTelemetryService(
                 """(?:[A-Za-z0-9._~!$&'*+;=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
                 """(?:/(?:(?!(?:file://|[A-Za-z]:[\\/]))(?:[^\s"<>\\{},()\[\]?#\r\n]|""" +
                 """\([^\s"<>\\{},()\[\]/:\\?#]+\)|\[[^\s"<>\\{},()\[\]/:\\?#]+\]))*)?)""" +
-                """([?#][^\s"<>\\{}\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
+                """([?#][^\s"<>\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
             RegexOption.IGNORE_CASE
         )
-        private const val ioKeywordVerbs =
+        private const val IO_KEYWORD_VERBS =
             "open|opening|read|reading|write|writing|delete|deleting|remove|removing|rename|stat|" +
                 "create|creating|load|loading|save|saving|access|accessing|unlink|" +
                 "file|path|directory|folder|document|filename|filepath"
-        private const val bareFilenameExtensions =
+        private const val BARE_FILENAME_EXTENSIONS =
             "mov|mp4|m4v|mkv|webm|avi|ts|m3u8|mpd|mp3|m4a|wav|aac|flac|ogg|opus|" +
                 "jpg|jpeg|png|gif|webp|heic|svg|pdf|txt|md|rtf|doc|docx|xls|xlsx|ppt|pptx|" +
                 "csv|json|xml|yaml|yml|toml|ini|cfg|conf|log|srt|vtt|ass|ssa|" +
                 "zip|tar|gz|tgz|bz2|xz|7z|rar|dmg|pkg|msi|exe|apk|aab|ipa|" +
                 "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
-        private const val sourceLineExts = "kt|java|swift|cs|cpp|cc|c|h|hpp|rs|py|js|ts|go|rb|m|mm"
+        private const val SOURCE_LINE_EXTS = "kt|java|swift|cs|cpp|cc|c|h|hpp|rs|py|js|ts|go|rb|m|mm"
         private val pathRedactionRules: List<Pair<Regex, String>> = listOf(
             Regex("""(?<![A-Za-z0-9+.-])file://(?:(?!\s+\u001E)[^\r\n\u001E])+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
             Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
@@ -410,7 +410,7 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(\b(?:$ioKeywordVerbs)\b(?:\s*[:=]\s*|\s+))(?!\u001E)[^\r\n\u001E\u001F]*\.(?!(?:$sourceLineExts):\d+)""" +
+                """(\b(?:$IO_KEYWORD_VERBS)\b(?:\s*[:=]\s*|\s+))(?!\u001E)[^\r\n\u001E\u001F]*\.(?!(?:$SOURCE_LINE_EXTS):\d+)""" +
                     """[A-Za-z0-9]{1,16}\b(?!\()""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
@@ -419,12 +419,15 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?!ts:\d+)(?:$bareFilenameExtensions)\b(?!\()""",
+                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
                 RegexOption.IGNORE_CASE
             ) to "$1$2[redacted-path]"
         )
         private val postRestoreRedactionRules: List<Pair<Regex, String>> = listOf(
-            Regex("""\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b""") to "[redacted-email]",
+            Regex(
+                """(?:[A-Za-z0-9._+-]|%(?!40)[0-9A-Fa-f]{2})+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b""",
+                RegexOption.IGNORE_CASE
+            ) to "[redacted-email]",
             Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE) to "Bearer [redacted]"
         )
 
@@ -515,38 +518,8 @@ class CoreTelemetryService(
             while (text.contains(prefix)) {
                 prefix += "X"
             }
-            val vaultedUrls = mutableListOf<String>()
-            var scrubbed = urlVaultRegex.replace(text) { match ->
-                val raw = match.value
-                val ipv6 = match.groups[2]?.value
-                val validAuthority = ipv6 == null || runCatching { URI("http://[$ipv6]") }.isSuccess
-                if (raw.startsWith("file://", ignoreCase = true) || !validAuthority) {
-                    raw
-                } else {
-                    val baseUrl = match.groups[1]?.value ?: raw
-                    val qf = match.groups[3]?.value
-                    var tail = ""
-                    val url = if (!qf.isNullOrEmpty()) {
-                        val (cleanQf, trimmedTail) = trimQueryOrFragmentDelimiters(qf, text, match.range.first)
-                        tail = trimmedTail
-                        "$baseUrl${cleanQf.first()}[redacted]"
-                    } else {
-                        var cleanBase = baseUrl
-                        if (cleanBase.endsWith(';')) {
-                            cleanBase = cleanBase.dropLast(1)
-                            tail = ";"
-                        }
-                        if (match.range.first > 0 && text[match.range.first - 1] == '\'' && cleanBase.endsWith('\'')) {
-                            cleanBase = cleanBase.dropLast(1)
-                            tail = "'$tail"
-                        }
-                        cleanBase
-                    }
-                    val idx = vaultedUrls.size
-                    vaultedUrls += url
-                    "$prefix$idx\u001F$tail"
-                }
-            }
+            val (vaulted, vaultedUrls) = vaultNonFileUrls(text, prefix)
+            var scrubbed = vaulted
             for ((regex, template) in pathRedactionRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
@@ -559,32 +532,93 @@ class CoreTelemetryService(
             return scrubbed
         }
 
-        private fun trimQueryOrFragmentDelimiters(qf: String, text: String, matchStart: Int): Pair<String, String> {
-            var value = qf
-            var tail = ""
-            while (value.length > 1) {
-                val last = value.last()
-                when {
-                    last == ';' || last == ',' -> {
-                        value = value.dropLast(1)
-                        tail = "$last$tail"
-                    }
-                    last == '\'' && matchStart > 0 && text[matchStart - 1] == '\'' -> {
-                        value = value.dropLast(1)
-                        tail = "'$tail"
-                    }
-                    last == ')' && value.count { it == ')' } > value.count { it == '(' } -> {
-                        value = value.dropLast(1)
-                        tail = ")$tail"
-                    }
-                    last == ']' && value.count { it == ']' } > value.count { it == '[' } -> {
-                        value = value.dropLast(1)
-                        tail = "]$tail"
-                    }
-                    else -> break
+        private fun vaultNonFileUrls(text: String, prefix: String): Pair<String, List<String>> {
+            val vaultedUrls = mutableListOf<String>()
+            val scrubbed = urlVaultRegex.replace(text) { match ->
+                val raw = match.value
+                val ipv6 = match.groups[2]?.value
+                val validAuthority = ipv6 == null || runCatching { URI("http://[$ipv6]") }.isSuccess
+                val skip = raw.startsWith("file://", ignoreCase = true) ||
+                    isInsideFileUriToken(text, match.range.first) ||
+                    !validAuthority
+                if (skip) {
+                    raw
+                } else {
+                    val (url, tail) = formatVaultedUrl(match, text)
+                    val idx = vaultedUrls.size
+                    vaultedUrls += url
+                    "$prefix$idx\u001F$tail"
                 }
             }
-            return value to tail
+            return scrubbed to vaultedUrls
+        }
+
+        private fun formatVaultedUrl(match: MatchResult, text: String): Pair<String, String> {
+            val baseUrl = match.groups[1]?.value ?: match.value
+            val qf = match.groups[3]?.value
+            if (!qf.isNullOrEmpty()) {
+                val (cleanQf, tail) = trimQueryOrFragmentDelimiters(qf, text, match.range.first)
+                return "$baseUrl${cleanQf.first()}[redacted]" to tail
+            }
+            var cleanBase = baseUrl
+            var tail = ""
+            if (cleanBase.endsWith(';')) {
+                cleanBase = cleanBase.dropLast(1)
+                tail = ";"
+            }
+            if (match.range.first > 0 && text[match.range.first - 1] == '\'' && cleanBase.endsWith('\'')) {
+                cleanBase = cleanBase.dropLast(1)
+                tail = "'$tail"
+            }
+            return cleanBase to tail
+        }
+
+        private fun isInsideFileUriToken(text: String, matchStart: Int): Boolean {
+            var tokenStart = matchStart
+            while (tokenStart > 0 && !text[tokenStart - 1].isWhitespace()) {
+                tokenStart--
+            }
+            return tokenStart < matchStart && text.substring(tokenStart, matchStart).contains("file://", ignoreCase = true)
+        }
+
+        private fun trimQueryOrFragmentDelimiters(qf: String, text: String, matchStart: Int): Pair<String, String> {
+            val excess = countExcessClosers(qf)
+            var end = qf.length
+            val precededByQuote = matchStart > 0 && text[matchStart - 1] == '\''
+            while (end > 1 && shouldTrimCloser(qf[end - 1], precededByQuote, excess)) {
+                end--
+            }
+            return qf.substring(0, end) to qf.substring(end)
+        }
+
+        private fun countExcessClosers(qf: String): IntArray {
+            val excess = IntArray(3)
+            for (ch in qf) {
+                when (ch) {
+                    '(' -> excess[0]--
+                    ')' -> excess[0]++
+                    '[' -> excess[1]--
+                    ']' -> excess[1]++
+                    '{' -> excess[2]--
+                    '}' -> excess[2]++
+                }
+            }
+            return excess
+        }
+
+        private fun shouldTrimCloser(ch: Char, precededByQuote: Boolean, excess: IntArray): Boolean {
+            val slot = when (ch) {
+                ')' -> 0
+                ']' -> 1
+                '}' -> 2
+                else -> -1
+            }
+            if (slot >= 0) {
+                if (excess[slot] <= 0) return false
+                excess[slot]--
+                return true
+            }
+            return ch == ';' || ch == ',' || (ch == '\'' && precededByQuote)
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {

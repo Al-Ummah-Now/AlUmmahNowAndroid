@@ -209,6 +209,9 @@ class CoreTelemetryServiceTest {
             "(https://example.com/api?q=(PrivateProject))" to "(https://example.com/api?[redacted])",
             "https://example.com/api#first,PrivateProject" to "https://example.com/api#[redacted]",
             "https://example.com/users/alice@example.com" to "https://example.com/users/[redacted-email]",
+            "https://example.com/users/alice%40example.com" to "https://example.com/users/[redacted-email]",
+            "https://example.com/?token=abc{Secret}xyz" to "https://example.com/?[redacted]",
+            "file:///private/(https://Secret/Acquisition.mov)" to "[redacted-path]",
             "(relative/Secret.mov and https://example.com/api)" to "([redacted-path] https://example.com/api)",
             "Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and Bearer abcdefg" to
                 "Failed for [redacted-email] with Bearer [redacted] and Bearer [redacted]"
