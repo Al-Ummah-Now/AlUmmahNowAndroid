@@ -896,15 +896,20 @@ class CoreTelemetryService(
                 val sep = text.indexOf("://", searchFrom)
                 if (sep < 0) break
                 val start = CoreTelemetryScanners.findNonFileSchemeStart(text, sep, copied)
+                val urlQuoteState = if (start != null && !tracker.isEmbeddedInPath(text, start)) {
+                    cont.advanceQuoteState(text, copied, start, quoteState)
+                } else {
+                    quoteState
+                }
                 val span = if (start != null && !tracker.isEmbeddedInPath(text, start)) {
-                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep)
+                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep, urlQuoteState)
                 } else {
                     null
                 }
                 if (span == null) {
                     searchFrom = sep + 3
                 } else {
-                    quoteState = cont.advanceQuoteState(text, copied, span.start, quoteState)
+                    quoteState = urlQuoteState
                     val (url, baseTail) = cont.formatVaultedUrl(span, text, (quoteState and 1) != 0)
                     val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
                     val rawUrl = text.substring(span.start, span.baseEnd)

@@ -37,7 +37,7 @@ internal object CoreTelemetryScanners {
         return if (validPrefix && !prevBlocked && !isFile) start else null
     }
 
-    fun scanUrlAfterScheme(text: String, start: Int, sep: Int): UrlSpan? {
+    fun scanUrlAfterScheme(text: String, start: Int, sep: Int, quoteState: Int = 0): UrlSpan? {
         val afterHost = scanUrlHost(text, sep + SCHEME_SEP_LEN) ?: return null
         val afterPort = scanOptionalPort(text, afterHost) ?: return null
         val (baseEnd, truncated) = if (afterPort < text.length && text[afterPort] == '/') {
@@ -46,7 +46,7 @@ internal object CoreTelemetryScanners {
             afterPort to false
         }
         val startsQf = !truncated && baseEnd < text.length && (text[baseEnd] == '?' || text[baseEnd] == '#')
-        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd) else baseEnd
+        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd, quoteState) else baseEnd
         val boundaryOk = totalEnd == text.length || isUrlEndBoundary(text, totalEnd)
         return if (boundaryOk) UrlSpan(start, baseEnd, totalEnd, startsQf) else null
     }
@@ -455,7 +455,7 @@ internal object CoreTelemetryScanners {
         return text[nextPos] == ':' || startsEmbeddedFilesystemPath(text, nextPos)
     }
 
-    fun scanQueryOrFragment(text: String, start: Int): Int {
+    fun scanQueryOrFragment(text: String, start: Int, quoteState: Int = 0): Int {
         var p = start + 1
         var stopped = false
         while (p < text.length && !stopped) {
@@ -463,7 +463,7 @@ internal object CoreTelemetryScanners {
             if (ch.isWhitespace() || ch == '<' || ch == '>') {
                 stopped = true
             } else if (ch == '"') {
-                val adj = adjustEscapedQuoteQueryStop(text, start, p)
+                val adj = adjustEscapedQuoteQueryStop(text, start, p, quoteState)
                 if (adj != null) {
                     p = adj
                     stopped = true
@@ -477,14 +477,15 @@ internal object CoreTelemetryScanners {
         return p
     }
 
-    private fun adjustEscapedQuoteQueryStop(text: String, start: Int, quotePos: Int): Int? {
+    private fun adjustEscapedQuoteQueryStop(text: String, start: Int, quotePos: Int, quoteState: Int): Int? {
         var bs = 0
         while (quotePos - 1 - bs > start && text[quotePos - 1 - bs] == '\\') bs++
-        if ((bs and 1) == 0) return quotePos
-        val atBoundary = quotePos + 1 >= text.length ||
-            text[quotePos + 1].isWhitespace() ||
-            text[quotePos + 1] in "}]),;<>"
-        return if (atBoundary) quotePos - 1 else null
+        return when {
+            (bs and 1) == 0 -> quotePos
+            (quoteState and 4) != 0 -> quotePos - 1
+            (quoteState and 2) == 0 -> quotePos
+            else -> null
+        }
     }
 
     private fun isUrlEndBoundary(text: String, pos: Int): Boolean {

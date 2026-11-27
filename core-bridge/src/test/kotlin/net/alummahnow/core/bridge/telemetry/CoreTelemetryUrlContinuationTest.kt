@@ -244,7 +244,11 @@ class CoreTelemetryUrlContinuationTest {
             "[\"https://example.com/api{1:\\\"see https://other.com/x?token=opaqueSecret123\\\"}?outer=value\"]" to
                 "[\"https://example.com/api{1:\\\"see https://other.com/x?[redacted]\\\"}?[redacted]\"]",
             "[\"https://example.com/api?token=opaqueSecret123\\\"moreSecret\"]" to
-                "[\"https://example.com/api?[redacted]\"]"
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/api?token=first\\\",opaqueSecret123\",\"public\"]" to
+                "[\"https://example.com/api?[redacted]\",\"public\"]",
+            "[\"https://example.com/api{1:\\\"see https://other.com/x?token=opaqueSecret123\\\"}\"]" to
+                "[\"https://example.com/api{1:\\\"see https://other.com/x?[redacted]\\\"}\"]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
