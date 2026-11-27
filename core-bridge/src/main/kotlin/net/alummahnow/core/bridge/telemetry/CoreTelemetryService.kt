@@ -579,6 +579,7 @@ class CoreTelemetryService(
             private var cursor = 0
             private var hasPathOnLine = false
             private var pathQuote = '\u0000'
+            private var escapedBackslash = false
             private var tokenStart = -1
             private var tokenEnd = -1
             private var tokenHasPathSep = false
@@ -587,7 +588,7 @@ class CoreTelemetryService(
 
             fun isEmbeddedInPath(text: String, matchStart: Int): Boolean {
                 advanceTo(text, matchStart)
-                val curTokenIsPath = tokenHasPathSep && !isProtocolToken(text, tokenStart, tokenEnd)
+                val curTokenIsPath = tokenHasPathSep && !isNonPathSlashToken(text, tokenStart, tokenEnd)
                 return pathQuote != '\u0000' || curTokenIsPath || (hasPathOnLine && (!wsBeforeRun || inWrapperRun))
             }
 
@@ -599,6 +600,7 @@ class CoreTelemetryService(
             private fun resetLineState() {
                 hasPathOnLine = false
                 pathQuote = '\u0000'
+                escapedBackslash = false
                 tokenStart = -1
                 tokenEnd = -1
                 tokenHasPathSep = false
@@ -619,25 +621,31 @@ class CoreTelemetryService(
             }
 
             private fun processLineChar(text: String, ch: Char) {
-                if (pathQuote != '\u0000' && ch == pathQuote) {
+                if (pathQuote != '\u0000' && ch == pathQuote && !escapedBackslash) {
                     resetLineState()
                     return
                 }
                 val atTokenStart = tokenStart < 0 || inWrapperRun
                 if (isFileSchemeAt(text, cursor) || startsLocalPathAt(text, cursor, atTokenStart)) {
                     hasPathOnLine = true
-                    if (cursor > 0 && (text[cursor - 1] == '"' || text[cursor - 1] == '\'')) {
-                        pathQuote = text[cursor - 1]
-                    }
+                    captureOpeningQuote(text, cursor)
                 }
                 updateRunState(text, ch)
+                escapedBackslash = if (ch == '\\') !escapedBackslash else false
+            }
+
+            private fun captureOpeningQuote(text: String, pos: Int) {
+                if (pathQuote == '\u0000' && pos > 0 && (text[pos - 1] == '"' || text[pos - 1] == '\'')) {
+                    pathQuote = text[pos - 1]
+                }
             }
 
             private fun updateRunState(text: String, ch: Char) {
                 when {
                     ch.isWhitespace() -> if (!inWrapperRun) {
-                        if (tokenHasPathSep && !isProtocolToken(text, tokenStart, tokenEnd)) {
+                        if (tokenHasPathSep && !isNonPathSlashToken(text, tokenStart, tokenEnd)) {
                             hasPathOnLine = true
+                            captureOpeningQuote(text, tokenStart)
                         }
                         tokenStart = -1
                         tokenEnd = -1
@@ -676,16 +684,19 @@ class CoreTelemetryService(
             return isLetter && text[pos + 1] == ':' && isPathSep(text[pos + 2])
         }
 
-        private fun isProtocolToken(text: String, start: Int, end: Int): Boolean {
+        private fun isNonPathSlashToken(text: String, start: Int, end: Int): Boolean {
             if (start < 0 || end <= start) return false
             val token = text.substring(start, end)
             val slashIdx = token.indexOf('/')
-            val validSlash = slashIdx > 0 && slashIdx + 1 < token.length &&
-                !token.contains('\\') && token.indexOf('/', slashIdx + 1) < 0 &&
-                token[slashIdx + 1] in '0'..'9'
-            if (!validSlash) return false
-            val proto = token.substring(0, slashIdx).uppercase(Locale.ROOT)
-            return proto == "HTTP" || proto == "TLS" || proto == "SSL"
+            val singleSlash = slashIdx > 0 && slashIdx + 1 < token.length &&
+                !token.contains('\\') && token.indexOf('/', slashIdx + 1) < 0
+            if (!singleSlash) return false
+            val before = token.substring(0, slashIdx)
+            val after = token.substring(slashIdx + 1)
+            val isProto = after[0] in '0'..'9' && before.uppercase(Locale.ROOT).let {
+                it == "HTTP" || it == "TLS" || it == "SSL"
+            }
+            return isProto || (before.all { it in '0'..'9' } && after.all { it in '0'..'9' })
         }
 
         private fun isFileSchemeAt(text: String, pos: Int): Boolean {
@@ -704,22 +715,31 @@ class CoreTelemetryService(
         private fun fileUriSpanEnd(text: String, schemeEnd: Int, quote: Char, vaultPrefix: String): Pair<Int, Int> {
             var rawEnd = schemeEnd
             var stoppedAtVault = false
+            var escapedBackslash = false
             while (rawEnd < text.length) {
                 val ch = text[rawEnd]
-                if (ch == '\r' || ch == '\n' || (quote != '\u0000' && ch == quote)) break
+                if (isFileUriStopChar(ch, quote, escapedBackslash)) break
                 if (ch == '\u001E' && text.regionMatches(rawEnd, vaultPrefix, 0, vaultPrefix.length)) {
                     stoppedAtVault = true
                     break
                 }
+                escapedBackslash = if (ch == '\\') !escapedBackslash else false
                 rawEnd++
             }
-            if (!stoppedAtVault) return rawEnd to rawEnd
+            val trimmedEnd = if (stoppedAtVault) trimFileUriTail(text, schemeEnd, rawEnd) else rawEnd
+            return rawEnd to trimmedEnd
+        }
+
+        private fun isFileUriStopChar(ch: Char, quote: Char, escapedBackslash: Boolean): Boolean =
+            ch == '\r' || ch == '\n' || (quote != '\u0000' && ch == quote && !escapedBackslash)
+
+        private fun trimFileUriTail(text: String, schemeEnd: Int, rawEnd: Int): Int {
             var trimmedEnd = rawEnd
             while (trimmedEnd > schemeEnd) {
                 val prev = text[trimmedEnd - 1]
                 if (isOpeningWrapper(prev) || prev.isWhitespace()) trimmedEnd-- else break
             }
-            return rawEnd to trimmedEnd
+            return trimmedEnd
         }
 
         private fun redactFileUris(text: String, vaultPrefix: String): String {

@@ -219,6 +219,7 @@ class CoreTelemetryServiceTest {
             "file:///private/My Folder/( https://Secret/Acquisition.mov)" to "[redacted-path]",
             "file:///private/Project Folder/ (https://Secret/Acquisition.mov)" to "[redacted-path]",
             "\"file:///private/My Folder (https://Secret/Acquisition.mov)\"" to "\"[redacted-path]\"",
+            "\"file:///private/Client \\\"Internal\\\" Acquisition\"" to "\"[redacted-path]\"",
             "\"file:///a.mov\" (https://example.com/api)" to "\"[redacted-path]\" (https://example.com/api)",
             "file:///private/Folder/ https://example.com/api" to "[redacted-path] https://example.com/api",
             "file:///private/My\u00A0Acquisition" to "[redacted-path]",
@@ -231,6 +232,18 @@ class CoreTelemetryServiceTest {
                 "[redacted-path] https://example.com/ (https://other.example/api)",
             "file:///a.mov; https://example.com/ /private/foo(https://Secret/Acquisition.mov)" to
                 "[redacted-path] https://example.com/ [redacted-path]",
+            "(relative/Secret.mov and https://example.com/api)" to "([redacted-path] https://example.com/api)",
+            "Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and Bearer abcdefg" to
+                "Failed for [redacted-email] with Bearer [redacted] and Bearer [redacted]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+    }
+
+    @Test
+    fun `sanitizeLocalPaths handles spaced paths sentinels protocol tokens and fractions`() {
+        val cases = listOf(
             "/private/My Folder/(https://Secret/Acquisition.mov)" to "[redacted-path]",
             "/private/foo(https://Secret/Acquisition.mov)" to "[redacted-path]",
             "/private/Client Files (https://Secret/Acquisition.mov)" to "[redacted-path]",
@@ -241,10 +254,7 @@ class CoreTelemetryServiceTest {
             "/private/Secret\u001EAcquisition" to "[redacted-path]",
             "/private/Secret^Acquisition" to "[redacted-path]",
             "TLS/1.3(https://example.com/api)" to "TLS/1.3(https://example.com/api)",
-            "HTTP/2(https://example.com/api)" to "HTTP/2(https://example.com/api)",
-            "(relative/Secret.mov and https://example.com/api)" to "([redacted-path] https://example.com/api)",
-            "Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and Bearer abcdefg" to
-                "Failed for [redacted-email] with Bearer [redacted] and Bearer [redacted]"
+            "HTTP/2(https://example.com/api)" to "HTTP/2(https://example.com/api)"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
@@ -253,6 +263,14 @@ class CoreTelemetryServiceTest {
         assertEquals(repeated, CoreTelemetryService.sanitizeLocalPaths(repeated))
         val manyXs = "\u001EAUNURL" + "X".repeat(5000)
         assertEquals(manyXs, CoreTelemetryService.sanitizeLocalPaths(manyXs))
+        assertTrue(
+            CoreTelemetryService.sanitizeLocalPaths("\"relative/My Clip.mov\" and (https://example.com/api)")
+                .contains("https://example.com/api")
+        )
+        assertTrue(
+            CoreTelemetryService.sanitizeLocalPaths("progress 1/2 (https://example.com/api)")
+                .contains("https://example.com/api")
+        )
     }
 
     @Test
