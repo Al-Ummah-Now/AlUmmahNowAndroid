@@ -282,8 +282,20 @@ class CoreTelemetryServiceTest {
             "https://example.com/a(b/c)",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/a(b/c)")
         )
+        assertEquals(
+            "https://example.com/a(b(c/d))",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/a(b(c/d))")
+        )
+        assertEquals(
+            "https://example.com/a([redacted-path])",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/a(/storage/PrivateProject)")
+        )
         assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/User's Private Project'"))
+        assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/Artists' Private Project'"))
+        assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/Project'2 Secret'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2's Acquisition.qzx'"))
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2' Acquisition.qzx'"))
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("private]folder\\secret"))
         assertEquals(
             "progress 1/2. (https://example.com/api)",
             CoreTelemetryService.sanitizeLocalPaths("progress 1/2. (https://example.com/api)")
@@ -293,41 +305,26 @@ class CoreTelemetryServiceTest {
             "opening\u00A0[redacted-path]",
             CoreTelemetryService.sanitizeLocalPaths("opening\u00A0Acquisition.qzx")
         )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening \"1/2 (https://private.example/Acquisition.mov)\"")
-                .contains("private.example")
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts embedded quoted URLs and scales linearly on adversarial inputs`() {
+        val privateCases = listOf(
+            "opening \"1/2 (https://private.example/Acquisition.mov)\"",
+            "opening \"HTTP/2 (https://private.example/Acquisition.mov)\"",
+            "opening \"My Project/Clip https://private.example/Acquisition.mov\"",
+            "opening \"(relative/My Clip.mov) https://private.example/Acquisition.mov\"",
+            "opening \"/tmp/Project 'draft' (https://private.example/Acquisition.mov)\"",
+            "opening /tmp/Project 'draft' (https://private.example/Acquisition.mov)",
+            "opening \"relative/My's (https://private.example/Acquisition.mov)\"",
+            "opening relative/My(1) (https://private.example/Acquisition.mov)"
         )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening \"HTTP/2 (https://private.example/Acquisition.mov)\"")
-                .contains("private.example")
-        )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening \"My Project/Clip https://private.example/Acquisition.mov\"")
-                .contains("private.example")
-        )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening \"(relative/My Clip.mov) https://private.example/Acquisition.mov\"")
-                .contains("private.example")
-        )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening \"/tmp/Project 'draft' (https://private.example/Acquisition.mov)\"")
-                .contains("private.example")
-        )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening /tmp/Project 'draft' (https://private.example/Acquisition.mov)")
-                .contains("private.example")
-        )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening \"relative/My's (https://private.example/Acquisition.mov)\"")
-                .contains("private.example")
-        )
+        for (input in privateCases) {
+            assertFalse(CoreTelemetryService.sanitizeLocalPaths(input).contains("private.example"), "leaked: $input")
+        }
         assertTrue(
             CoreTelemetryService.sanitizeLocalPaths("opening \"relative/My's Clip.mov\" (https://example.com/api)")
                 .contains("https://example.com/api")
-        )
-        assertFalse(
-            CoreTelemetryService.sanitizeLocalPaths("opening relative/My(1) (https://private.example/Acquisition.mov)")
-                .contains("private.example")
         )
         assertEquals(
             "can't reach https://example.com/api",
@@ -343,6 +340,10 @@ class CoreTelemetryServiceTest {
         assertEquals(repeatedEquals, CoreTelemetryService.sanitizeLocalPaths(repeatedEquals))
         val leadingSpaces = " ".repeat(50_000) + "x.qzx"
         assertEquals(leadingSpaces, CoreTelemetryService.sanitizeLocalPaths(leadingSpaces))
+        val repeatedBrackets = "https://[".repeat(20_000)
+        assertTrue(CoreTelemetryService.sanitizeLocalPaths(repeatedBrackets).contains("[redacted-path]"))
+        val longQuotedFile = "'" + "b".repeat(100_000) + ".pdf'"
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(longQuotedFile))
     }
 
     @Test

@@ -366,15 +366,6 @@ class CoreTelemetryService(
         @Volatile
         private var activeCrashService: TelemetryService? = null
 
-        private val urlVaultRegex = Regex(
-            """(?<![A-Za-z0-9+.-/\\])([A-Za-z][A-Za-z0-9+.-]+://(?:\[([^\]\s"'<>\\{}\r\n]+)\]|""" +
-                """(?:[A-Za-z0-9._~!$&'*+;=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
-                """(?:/(?:(?!(?:file://|[A-Za-z]:[\\/]))(?:[^\s"<>\\{},()\[\]?#\r\n]|""" +
-                """\([^\s"<>\\{},()\[\]:\\?#]+\)|\[[^\s"<>\\{},()\[\]:\\?#]+\]))*)?)""" +
-                """([?#][^\s"<>\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
-            RegexOption.IGNORE_CASE
-        )
-        private const val FILE_SCHEME_PREFIX = "file://"
         private const val VAULT_PREFIX = "\u001EAUNURL"
         private const val MAX_FILENAME_EXT_LEN = 16
         private const val MAX_FILENAME_EXT_CHECK = 17
@@ -390,6 +381,10 @@ class CoreTelemetryService(
                 "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
         private val sourceLineExtSet = setOf(
             "kt", "java", "swift", "cs", "cpp", "cc", "c", "h", "hpp", "rs", "py", "js", "ts", "go", "rb", "m", "mm"
+        )
+        private val keywordQuotedPathRegex = Regex(
+            """(\b(?:file|path|directory|folder|document)[^\S\r\n]+)(['"])(?!\u001E)[^'"\r\n]+\2""",
+            RegexOption.IGNORE_CASE
         )
         private val keywordFilenamePrefixRegex = Regex(
             """\b(?:$IO_KEYWORD_VERBS)\b(?:[^\S\r\n]*[:=][^\S\r\n]*|[^\S\r\n]+)""",
@@ -407,7 +402,7 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>()\[\]{}:,;=\u001E\u001F]+\\""" +
+                """(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>()\[{:,;=\u001E\u001F]+\\""" +
                     """[^\r\n\u001E\u001F\s]+(?:[^\S\r\n]+[^\r\n\u001E\u001F\s]+)*"""
             ) to "$1[redacted-path]",
             Regex("""["']/[ \t]+[^\r\n\u001E]+""") to "[redacted-path]",
@@ -419,12 +414,6 @@ class CoreTelemetryService(
                 """(^|[\s(\[{"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
                     """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s]+(?:[^\S\r\n]+[^\r\n\u001E\u001F\s]+)*""",
-                RegexOption.IGNORE_CASE
-            ) to "$1[redacted-path]",
-            Regex(""""[^"\r\n/\\]*\.[A-Za-z0-9]{1,16}"""") to "[redacted-path]",
-            Regex("""(?<![\p{L}\p{N}])'(?:[^'\r\n/\\]|(?<=[\p{L}\p{N}])'(?=\p{L}))*\.[A-Za-z0-9]{1,16}'""") to "[redacted-path]",
-            Regex(
-                """(\b(?:file|path|directory|folder|document)[^\S\r\n]+)(['"])(?!\u001E)[^'"\r\n]+\2""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]"
         )
@@ -530,12 +519,14 @@ class CoreTelemetryService(
             for ((regex, template) in preKeywordPathRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
+            scrubbed = CoreTelemetryScanners.redactQuotedFilenames(scrubbed)
+            scrubbed = keywordQuotedPathRegex.replace(scrubbed, "$1[redacted-path]")
             scrubbed = redactKeywordUnquotedFilenames(scrubbed)
             for ((regex, template) in postKeywordPathRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
             scrubbed = restoreVaultedUrls(scrubbed, VAULT_PREFIX, vaultedUrls)
-            scrubbed = redactEmails(scrubbed)
+            scrubbed = CoreTelemetryScanners.redactEmails(scrubbed)
             scrubbed = bearerTokenRegex.replace(scrubbed, "Bearer [redacted]")
             return if (hadSentinels) unescapeSentinels(scrubbed) else scrubbed
         }
@@ -564,110 +555,32 @@ class CoreTelemetryService(
             return out.append(text, copied, text.length).toString()
         }
 
-        private fun isSegmentStop(ch: Char): Boolean =
-            ch == '\r' || ch == '\n' || ch == '\u001E' || ch == '\u001F'
+        private fun isSegmentStop(ch: Char): Boolean = ch in "\r\n\u001E\u001F"
 
         private fun findLastUnquotedFilenameExt(text: String, segStart: Int, segEnd: Int): Pair<Int, Int>? {
             for (dot in segEnd - 1 downTo segStart) {
                 if (text[dot] != '.') continue
                 val extStart = dot + 1
                 var extEnd = extStart
-                while (extEnd < segEnd && extEnd - extStart < MAX_FILENAME_EXT_CHECK && isAsciiAlphaNum(text[extEnd])) {
+                while (extEnd < segEnd && extEnd - extStart < MAX_FILENAME_EXT_CHECK &&
+                    CoreTelemetryScanners.isAsciiAlphaNum(text[extEnd])
+                ) {
                     extEnd++
                 }
                 val extLen = extEnd - extStart
-                val validBounds = extLen in 1..MAX_FILENAME_EXT_LEN &&
-                    (extEnd == text.length || (!isAsciiWordChar(text[extEnd]) && text[extEnd] != '('))
-                if (validBounds && !isSourceLineReference(text, extStart, extEnd)) {
+                val validEnd = extEnd == text.length ||
+                    (!CoreTelemetryScanners.isAsciiWordChar(text[extEnd]) && text[extEnd] != '(')
+                if (extLen in 1..MAX_FILENAME_EXT_LEN && validEnd && !isSourceLineReference(text, extStart, extEnd)) {
                     return dot to extEnd
                 }
             }
             return null
         }
 
-        private fun isSourceLineReference(text: String, extStart: Int, extEnd: Int): Boolean =
-            extEnd + 1 < text.length &&
-                text[extEnd] == ':' &&
-                text[extEnd + 1] in '0'..'9' &&
-                text.substring(extStart, extEnd).lowercase(Locale.ROOT) in sourceLineExtSet
-
-        private fun isAsciiAlphaNum(ch: Char): Boolean =
-            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9'
-
-        private fun redactEmails(text: String): String {
-            if (text.indexOf('@') < 0 && text.indexOf("%40") < 0) return text
-            var sb: StringBuilder? = null
-            var copied = 0
-            var i = 0
-            while (i < text.length) {
-                val atLen = emailAtLength(text, i)
-                if (atLen == 0) {
-                    i++
-                    continue
-                }
-                val localStart = scanEmailLocalStart(text, i, copied)
-                val domEnd = if (localStart < i) findEmailDomainEnd(text, i + atLen) else -1
-                if (domEnd > 0) {
-                    val out = sb ?: StringBuilder(text.length).also { sb = it }
-                    out.append(text, copied, localStart).append("[redacted-email]")
-                    copied = domEnd
-                    i = domEnd
-                } else {
-                    i += atLen
-                }
-            }
-            val out = sb ?: return text
-            return out.append(text, copied, text.length).toString()
+        private fun isSourceLineReference(text: String, extStart: Int, extEnd: Int): Boolean {
+            val hasLineSuffix = extEnd + 1 < text.length && text[extEnd] == ':' && text[extEnd + 1] in '0'..'9'
+            return hasLineSuffix && text.substring(extStart, extEnd).lowercase(Locale.ROOT) in sourceLineExtSet
         }
-
-        private fun emailAtLength(text: String, pos: Int): Int = when {
-            text[pos] == '@' -> 1
-            text[pos] == '%' && pos + 2 < text.length && text[pos + 1] == '4' && text[pos + 2] == '0' -> 3
-            else -> 0
-        }
-
-        private fun scanEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
-            var localStart = atPos
-            while (localStart > minPos && isEmailLocalChar(text, localStart - 1)) {
-                localStart--
-            }
-            return localStart
-        }
-
-        private fun isEmailLocalChar(text: String, pos: Int): Boolean {
-            val ch = text[pos]
-            if (ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '.' || ch == '_' || ch == '+' || ch == '-') {
-                return true
-            }
-            return ch == '%' && !(pos + 2 < text.length && text[pos + 1] == '4' && text[pos + 2] == '0')
-        }
-
-        private fun findEmailDomainEnd(text: String, domStart: Int): Int {
-            var k = domStart
-            var lastDot = -1
-            var lettersSinceDot = 0
-            var bestEnd = -1
-            while (k < text.length) {
-                val ch = text[k]
-                when {
-                    ch in 'A'..'Z' || ch in 'a'..'z' -> lettersSinceDot = if (lastDot >= 0) lettersSinceDot + 1 else 0
-                    ch == '.' -> {
-                        lastDot = if (k > domStart) k else -1
-                        lettersSinceDot = 0
-                    }
-                    ch in '0'..'9' || ch == '-' -> lettersSinceDot = -1
-                    else -> break
-                }
-                k++
-                if (lastDot > domStart && lettersSinceDot >= 2 && (k == text.length || !isAsciiWordChar(text[k]))) {
-                    bestEnd = k
-                }
-            }
-            return bestEnd
-        }
-
-        private fun isAsciiWordChar(ch: Char): Boolean =
-            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '_'
 
         private fun escapeSentinels(text: String): Pair<String, Boolean> {
             val first = text.indexOfFirst { it == '\u0018' || it == '\u001E' || it == '\u001F' }
@@ -841,34 +754,27 @@ class CoreTelemetryService(
                 '/' -> true
                 '~' -> pos + 1 < text.length && text[pos + 1] == '/'
                 '\\' -> pos + 1 < text.length && text[pos + 1] == '\\'
-                else -> isWindowsDriveAt(text, pos)
+                else -> CoreTelemetryScanners.isWindowsDriveAt(text, pos)
             }
-        }
-
-        private fun isWindowsDriveAt(text: String, pos: Int): Boolean {
-            if (pos + 2 >= text.length) return false
-            val ch = text[pos]
-            val isLetter = ch in 'A'..'Z' || ch in 'a'..'z'
-            return isLetter && text[pos + 1] == ':' && isPathSep(text[pos + 2])
         }
 
         private fun isNonPathSlashToken(text: String, start: Int, end: Int, insideQuote: Boolean): Boolean {
             if (insideQuote || start < 0 || end <= start) return false
             var trimmedEnd = end
             while (trimmedEnd > start && isTrailingSentencePunct(text[trimmedEnd - 1])) trimmedEnd--
-            if (trimmedEnd <= start) return false
-            val token = text.substring(start, trimmedEnd)
-            val slashIdx = token.indexOf('/')
-            if (slashIdx <= 0 || slashIdx + 1 >= token.length || token.contains('\\')) return false
-            if (token.indexOf('/', slashIdx + 1) >= 0) return false
-            val before = token.substring(0, slashIdx)
-            val after = token.substring(slashIdx + 1)
-            if (isProtocolPair(before, after)) return true
-            return before.all { it in '0'..'9' } && after.all { it in '0'..'9' }
+            return trimmedEnd > start && isAllowedNonPathSlash(text.substring(start, trimmedEnd))
         }
 
-        private fun isTrailingSentencePunct(ch: Char): Boolean =
-            ch == '.' || ch == ',' || ch == ';' || ch == ':' || ch == '!' || ch == '?' || ch == ')' || ch == ']' || ch == '}'
+        private fun isAllowedNonPathSlash(token: String): Boolean {
+            val slashIdx = token.indexOf('/')
+            val validSplit = slashIdx > 0 && slashIdx + 1 < token.length && !token.contains('\\')
+            if (!validSplit || token.indexOf('/', slashIdx + 1) >= 0) return false
+            val before = token.substring(0, slashIdx)
+            val after = token.substring(slashIdx + 1)
+            return isProtocolPair(before, after) || (before.all { it in '0'..'9' } && after.all { it in '0'..'9' })
+        }
+
+        private fun isTrailingSentencePunct(ch: Char): Boolean = ch in ".,;:!?)]}"
 
         private fun isProtocolPair(before: String, after: String): Boolean {
             if (after[0] !in '0'..'9') return false
@@ -876,73 +782,25 @@ class CoreTelemetryService(
             return upper == "HTTP" || upper == "TLS" || upper == "SSL"
         }
 
-        private fun isFileSchemeAt(text: String, pos: Int): Boolean {
-            val boundaryOk = pos == 0 || !isUrlSchemeChar(text[pos - 1])
-            return boundaryOk && text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true)
-        }
+        private fun isFileSchemeAt(text: String, pos: Int): Boolean =
+            CoreTelemetryScanners.isFileSchemeAt(text, pos)
 
-        private fun isUrlSchemeChar(ch: Char): Boolean =
-            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '+' || ch == '.' || ch == '-'
+        private fun isOpeningWrapper(ch: Char): Boolean = CoreTelemetryScanners.isOpeningWrapper(ch)
 
-        private fun isOpeningWrapper(ch: Char): Boolean =
-            ch == '(' || ch == '[' || ch == '{' || ch == '"' || ch == '\''
-
-        private fun isPathSep(ch: Char): Boolean = ch == '/' || ch == '\\'
-
-        private fun fileUriSpanEnd(text: String, schemeEnd: Int, quote: Char, vaultPrefix: String): Pair<Int, Int> {
-            var rawEnd = schemeEnd
-            var stoppedAtVault = false
-            var escapedBackslash = false
-            while (rawEnd < text.length) {
-                val ch = text[rawEnd]
-                if (isFileUriStopChar(text, rawEnd, schemeEnd, quote, escapedBackslash)) break
-                if (ch == '\u001E' && text.regionMatches(rawEnd, vaultPrefix, 0, vaultPrefix.length)) {
-                    stoppedAtVault = true
-                    break
-                }
-                escapedBackslash = if (ch == '\\') !escapedBackslash else false
-                rawEnd++
-            }
-            val trimmedEnd = if (stoppedAtVault) trimFileUriTail(text, schemeEnd, rawEnd) else rawEnd
-            return rawEnd to trimmedEnd
-        }
-
-        private fun isFileUriStopChar(
-            text: String,
-            pos: Int,
-            schemeEnd: Int,
-            quote: Char,
-            escapedBackslash: Boolean
-        ): Boolean {
-            val ch = text[pos]
-            if (ch == '\r' || ch == '\n') return true
-            if (quote == '\u0000' || ch != quote || escapedBackslash) return false
-            return !(pos > schemeEnd && isInnerApostrophe(text, pos, ch))
-        }
-
-        private fun trimFileUriTail(text: String, schemeEnd: Int, rawEnd: Int): Int {
-            var trimmedEnd = rawEnd
-            while (trimmedEnd > schemeEnd) {
-                val prev = text[trimmedEnd - 1]
-                if (isOpeningWrapper(prev) || prev.isWhitespace()) trimmedEnd-- else break
-            }
-            return trimmedEnd
-        }
+        private fun isPathSep(ch: Char): Boolean = CoreTelemetryScanners.isPathSep(ch)
 
         private fun redactFileUris(text: String, vaultPrefix: String): String {
-            val schemeLen = FILE_SCHEME_PREFIX.length
+            val schemeLen = 7
             if (text.length < schemeLen) return text
             var sb: StringBuilder? = null
             var copyStart = 0
             var pos = 0
             while (pos < text.length) {
-                if (isFileSchemeAt(text, pos)) {
+                if (CoreTelemetryScanners.isFileSchemeAt(text, pos)) {
                     val quote = if (pos > 0 && (text[pos - 1] == '"' || text[pos - 1] == '\'')) text[pos - 1] else '\u0000'
-                    val (rawEnd, trimmedEnd) = fileUriSpanEnd(text, pos + schemeLen, quote, vaultPrefix)
+                    val (rawEnd, trimmedEnd) = CoreTelemetryScanners.fileUriSpanEnd(text, pos + schemeLen, quote, vaultPrefix)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
-                    out.append(text, copyStart, pos)
-                    out.append("[redacted-path]")
-                    out.append(text, trimmedEnd, rawEnd)
+                    out.append(text, copyStart, pos).append("[redacted-path]").append(text, trimmedEnd, rawEnd)
                     copyStart = rawEnd
                     pos = rawEnd
                 } else {
@@ -950,31 +808,36 @@ class CoreTelemetryService(
                 }
             }
             val out = sb ?: return text
-            out.append(text, copyStart, text.length)
-            return out.toString()
+            return out.append(text, copyStart, text.length).toString()
         }
 
         private fun vaultNonFileUrls(text: String, prefix: String): Pair<String, List<String>> {
+            if (text.indexOf("://") < 0) return text to emptyList()
             val vaultedUrls = mutableListOf<String>()
             val tracker = VaultLineTracker()
-            val scrubbed = urlVaultRegex.replace(text) { match ->
-                val raw = match.value
-                val ipv6 = match.groups[2]?.value
-                val validAuthority = ipv6 == null || runCatching { URI("http://[$ipv6]") }.isSuccess
-                val skip = raw.startsWith("file://", ignoreCase = true) ||
-                    tracker.isEmbeddedInPath(text, match.range.first) ||
-                    !validAuthority
-                if (skip) {
-                    raw
+            var sb: StringBuilder? = null
+            var copied = 0
+            var searchFrom = 0
+            while (searchFrom < text.length) {
+                val sep = text.indexOf("://", searchFrom)
+                if (sep < 0) break
+                val span = CoreTelemetryScanners.scanNonFileUrl(text, sep, copied)
+                if (span == null || tracker.isEmbeddedInPath(text, span.start)) {
+                    searchFrom = sep + 3
                 } else {
-                    val (url, tail) = formatVaultedUrl(match, text)
+                    val (url, tail) = formatVaultedUrl(span, text)
+                    val out = sb ?: StringBuilder(text.length).also { sb = it }
+                    out.append(text, copied, span.start)
                     val idx = vaultedUrls.size
                     vaultedUrls += url
-                    tracker.onVaultedUrl(match.range.last + 1)
-                    "$prefix$idx\u001F$tail"
+                    tracker.onVaultedUrl(span.totalEnd)
+                    out.append(prefix).append(idx).append('\u001F').append(tail)
+                    copied = span.totalEnd
+                    searchFrom = span.totalEnd
                 }
             }
-            return scrubbed to vaultedUrls
+            val out = sb ?: return text to emptyList()
+            return out.append(text, copied, text.length).toString() to vaultedUrls
         }
 
         private fun restoreVaultedUrls(text: String, prefix: String, vaultedUrls: List<String>): String {
@@ -1002,11 +865,11 @@ class CoreTelemetryService(
             return sb.toString()
         }
 
-        private fun formatVaultedUrl(match: MatchResult, text: String): Pair<String, String> {
-            val baseUrl = match.groups[1]?.value ?: match.value
-            val qf = match.groups[3]?.value
-            if (!qf.isNullOrEmpty()) {
-                val (cleanQf, tail) = trimQueryOrFragmentDelimiters(qf, text, match.range.first)
+        private fun formatVaultedUrl(span: CoreTelemetryScanners.UrlSpan, text: String): Pair<String, String> {
+            val baseUrl = text.substring(span.start, span.baseEnd)
+            if (span.hasQf) {
+                val qf = text.substring(span.baseEnd, span.totalEnd)
+                val (cleanQf, tail) = trimQueryOrFragmentDelimiters(qf, text, span.start)
                 return "$baseUrl${cleanQf.first()}[redacted]" to tail
             }
             var cleanBase = baseUrl
@@ -1015,7 +878,7 @@ class CoreTelemetryService(
                 cleanBase = cleanBase.dropLast(1)
                 tail = ";"
             }
-            if (match.range.first > 0 && text[match.range.first - 1] == '\'' && cleanBase.endsWith('\'')) {
+            if (span.start > 0 && text[span.start - 1] == '\'' && cleanBase.endsWith('\'')) {
                 cleanBase = cleanBase.dropLast(1)
                 tail = "'$tail"
             }
