@@ -12,8 +12,8 @@ internal object CoreTelemetryScanners {
     private const val SCHEME_SEP_LEN = 3
     private const val PERCENT_ENC_LEN = 3
     private const val URL_HOST_PUNCT = "._~!$&'*+;=-"
-    private const val URL_PATH_STOP = "\"<>\\{}?#\r\n"
-    private const val URL_CONT_STOP = "\"<>\\?#\r\n"
+    private const val URL_PATH_STOP = "\"<>\\?#\r\n"
+    private const val URL_CONT_STOP = "<>\\?#\r\n"
     private const val URL_END_BOUNDARY = "\"'<>\\{},;()[]"
     private const val DECODED_ASCII_MIN = 0x21
     private const val DECODED_ASCII_MAX = 0x7E
@@ -185,12 +185,15 @@ internal object CoreTelemetryScanners {
         val ch = text[p]
         return when {
             isPathStopChar(text, p, ch) || ch == ',' -> -1
-            ch == '(' || ch == '[' -> pushGroupOpener(text, p, openPositions, openChars)
-            ch == ')' || ch == ']' -> popGroupCloser(p, ch, openPositions, openChars)
-            openChars.isNotEmpty() && ch == ':' -> -1
+            ch in "([{" -> pushGroupOpener(text, p, openPositions, openChars)
+            ch in ")]}" -> popGroupCloser(p, ch, openPositions, openChars)
+            openChars.isNotEmpty() && isForbiddenInOpenGroup(ch, openChars) -> -1
             else -> p + 1
         }
     }
+
+    private fun isForbiddenInOpenGroup(ch: Char, openChars: ArrayList<Char>): Boolean =
+        ch == ':' || (ch == '/' && openChars.contains('{'))
 
     private fun pushGroupOpener(
         text: String,
@@ -210,7 +213,11 @@ internal object CoreTelemetryScanners {
         openPositions: ArrayList<Int>,
         openChars: ArrayList<Char>
     ): Int {
-        val expected = if (ch == ')') '(' else '['
+        val expected = when (ch) {
+            ')' -> '('
+            ']' -> '['
+            else -> '{'
+        }
         if (openChars.isEmpty() || openChars[openChars.lastIndex] != expected) return -1
         openPositions.removeAt(openPositions.lastIndex)
         openChars.removeAt(openChars.lastIndex)
@@ -222,17 +229,23 @@ internal object CoreTelemetryScanners {
         return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
-    private fun isContStopChar(text: String, pos: Int, ch: Char): Boolean {
-        val stopChar = ch.isWhitespace() || ch in URL_CONT_STOP
+    private fun isContStopChar(text: String, pos: Int, ch: Char, allowQuote: Boolean): Boolean {
+        val stopChar = ch.isWhitespace() || ch in URL_CONT_STOP || (ch == '"' && !allowQuote)
         return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
-    fun scanUrlContinuation(text: String, start: Int): Int {
+    fun scanUrlContinuation(text: String, start: Int, allowGroupQuotes: Boolean): Int {
         var p = start
+        var groupDepth = 0
         while (p < text.length) {
             val ch = text[p]
             val startsScheme = p > start && text[p - 1] in ",;()[]{}'" && isUrlSchemeAt(text, p)
-            if (isContStopChar(text, p, ch) || startsScheme) break
+            if (isContStopChar(text, p, ch, allowGroupQuotes && groupDepth > 0) || startsScheme) break
+            if (ch in "([{") {
+                groupDepth++
+            } else if (ch in ")]}" && groupDepth > 0) {
+                groupDepth--
+            }
             p++
         }
         return p

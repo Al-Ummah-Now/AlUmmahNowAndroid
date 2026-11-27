@@ -539,6 +539,22 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken{tag:opaqueSecret123}")
         )
         assertEquals(
+            "https://example.com/users/{id}/profile?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/users/{id}/profile?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/users/{[redacted-path]?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/users/{private/Secret.mov}?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken{tag:\"opaqueSecret123\"}")
+        )
+        assertEquals(
+            "https://example.com/api{tag:\"value\"}?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api{tag:\"value\"}?token=opaqueSecret123")
+        )
+        assertEquals(
             "https://api.telegram.org/bot123:[redacted]/sendMessage",
             CoreTelemetryService.sanitizeLocalPaths("https://api.telegram." + "org/bot123:%2FopaqueSecret123/sendMessage")
         )
