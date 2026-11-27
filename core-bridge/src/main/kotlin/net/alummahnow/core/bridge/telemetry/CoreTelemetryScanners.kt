@@ -198,7 +198,7 @@ internal object CoreTelemetryScanners {
             ch == ',' && (!allowCommas || shouldStopAtUrlComma(text, p)) -> -1
             ch == '(' || ch == '[' -> pushGroupOpener(text, p, ch, openPositions, openChars)
             ch == ')' || ch == ']' -> popGroupCloser(p, ch, openPositions, openChars)
-            openChars.isNotEmpty() && ch == ':' -> -1
+            !allowCommas && openChars.isNotEmpty() && ch == ':' -> -1
             else -> p + 1
         }
     }
@@ -238,11 +238,12 @@ internal object CoreTelemetryScanners {
         val nextPos = commaPos + 1
         if (nextPos >= text.length) return true
         val next = text[nextPos]
+        if (next == '(' || next == '[') return false
         val stopsAfterComma = next != ',' && (next.isWhitespace() || next in URL_PATH_STOP || next in URL_END_BOUNDARY)
         return stopsAfterComma || startsEmbeddedPathInsideGroup(text, nextPos)
     }
 
-    private fun startsEmbeddedPathInsideGroup(text: String, nextPos: Int): Boolean {
+    fun startsEmbeddedPathInsideGroup(text: String, nextPos: Int): Boolean {
         if (nextPos >= text.length) return true
         val ch = text[nextPos]
         val directPath = ch == '/' || ch == '\\' || ch == ':'

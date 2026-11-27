@@ -13,7 +13,7 @@ internal object CoreTelemetryAuthJsonHelpers {
         val closeToOpenMap = HashMap<Int, Int>()
         val memberCommaOpen = HashMap<Int, Int>()
         val arrayCommaOpen = HashMap<Int, Int>()
-        val containerValidForAuth = HashMap<Int, Boolean>()
+        val containerAuthState = HashMap<Int, Int>()
         var failedContainerBack = -1
     }
 
@@ -100,32 +100,40 @@ internal object CoreTelemetryAuthJsonHelpers {
         return if (beforeVal >= 0 && (text[beforeVal] == '[' || text[beforeVal] == ',')) beforeVal else -1
     }
 
-    fun isInsideValidTopLevelJsonContainer(text: String, openPos: Int, cache: JsonScanCache): Boolean {
-        cache.containerValidForAuth[openPos]?.let { return it }
+    fun classifyTopLevelJsonContainer(text: String, openPos: Int, cache: JsonScanCache): Int {
+        cache.containerAuthState[openPos]?.let { return it }
         val visited = ArrayList<Int>()
         var curOpen = openPos
-        var valid = false
+        var authState = -1
         var walking = true
         while (walking && curOpen >= 0) {
-            val known = cache.containerValidForAuth[curOpen]
-            if (known != null) {
-                valid = known
+            val step = stepTopLevelJsonContainer(text, curOpen, visited, cache)
+            if (step == Int.MIN_VALUE) {
                 walking = false
+            } else if (step <= -2) {
+                curOpen = -step - 2
             } else {
-                visited.add(curOpen)
-                val endPos = CoreTelemetryAuthJsonValidator.tryParseJsonValue(text, curOpen, cache.validJsonValueEnd)
-                if (endPos <= curOpen) {
-                    walking = false
-                } else if (reachesLineOrTextEnd(text, endPos)) {
-                    valid = true
-                    walking = false
-                } else {
-                    curOpen = findParentJsonContainerOpen(text, curOpen, cache)
-                }
+                authState = step
+                walking = false
             }
         }
-        for (pos in visited) cache.containerValidForAuth[pos] = valid
-        return valid
+        for (pos in visited) cache.containerAuthState[pos] = authState
+        return authState
+    }
+
+    private fun stepTopLevelJsonContainer(
+        text: String,
+        curOpen: Int,
+        visited: ArrayList<Int>,
+        cache: JsonScanCache
+    ): Int {
+        cache.containerAuthState[curOpen]?.let { return it }
+        visited.add(curOpen)
+        val endPos = CoreTelemetryAuthJsonValidator.tryParseJsonValue(text, curOpen, cache.validJsonValueEnd)
+        if (endPos <= curOpen) return Int.MIN_VALUE
+        val parentOpen = findParentJsonContainerOpen(text, curOpen, cache)
+        if (parentOpen >= 0) return -(parentOpen + 2)
+        return if (reachesLineOrTextEnd(text, endPos)) 0 else endPos
     }
 
     private fun reachesLineOrTextEnd(text: String, start: Int): Boolean {
@@ -330,7 +338,7 @@ internal object CoreTelemetryAuthJsonHelpers {
         return CoreTelemetryAuthJsonValidator.tryParseJsonValue(text, bracePos, cache.validJsonValueEnd)
     }
 
-    private fun skipJsonWhitespace(text: String, start: Int): Int {
+    fun skipJsonWhitespace(text: String, start: Int): Int {
         var p = start
         while (p < text.length && isJsonWhitespace(text[p])) p++
         return p

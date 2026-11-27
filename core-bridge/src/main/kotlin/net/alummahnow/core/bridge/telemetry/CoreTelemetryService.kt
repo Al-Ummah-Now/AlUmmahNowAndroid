@@ -955,11 +955,17 @@ class CoreTelemetryService(
             text: String
         ): String? {
             val canCheck = !span.hasQf && tail.isEmpty() && span.totalEnd < text.length
-            if (!canCheck || text[span.totalEnd] != ',') return null
-            if (CoreTelemetryScanners.shouldStopAtUrlComma(text, span.totalEnd)) return null
-            val withComma = "$url,"
-            val probe = CoreTelemetryScanners.redactUrlPathSecrets(withComma)
-            return if (probe != withComma && probe.endsWith("[redacted]")) probe else null
+            if (!canCheck) return null
+            val nextCh = text[span.totalEnd]
+            val canContinue = when (nextCh) {
+                ',' -> !CoreTelemetryScanners.shouldStopAtUrlComma(text, span.totalEnd)
+                '(', '[' -> !CoreTelemetryScanners.startsEmbeddedPathInsideGroup(text, span.totalEnd + 1)
+                else -> false
+            }
+            if (!canContinue) return null
+            val withNext = "$url$nextCh"
+            val probe = CoreTelemetryScanners.redactUrlPathSecrets(withNext)
+            return if (probe != withNext && probe.endsWith("[redacted]")) probe else null
         }
 
         private fun extendRedactedWebhookComma(

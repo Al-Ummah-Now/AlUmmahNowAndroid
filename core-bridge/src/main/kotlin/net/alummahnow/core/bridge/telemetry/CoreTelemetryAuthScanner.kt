@@ -64,11 +64,18 @@ internal object CoreTelemetryAuthScanner {
         }
     }
 
+    private data class AuthValueContext(
+        val isJsonMember: Boolean,
+        val allowTruncatedObj: Boolean,
+        val failedTopEnd: Int
+    )
+
     private data class AuthKeyMatch(
         val keyStart: Int,
         val keyEnd: Int,
         val isJsonCandidate: Boolean,
         val hasJsonPrefix: Boolean,
+        val failedTopEnd: Int,
         val normalizedKey: String?
     )
 
@@ -95,15 +102,19 @@ internal object CoreTelemetryAuthScanner {
         val allowNl = keyMatch.isJsonCandidate || keyMatch.hasJsonPrefix
         val sep = skipAuthWhitespace(text, keyMatch.keyEnd, allowNl)
         if (sep >= text.length || (text[sep] != ':' && text[sep] != '=')) return keyMatch.keyEnd
-        val isJsonMember = keyMatch.isJsonCandidate && text[sep] == ':'
-        val allowTruncatedObj = keyMatch.hasJsonPrefix && text[sep] == ':'
-        val valStart = skipAuthWhitespace(text, sep + 1, isJsonMember || allowTruncatedObj)
+        val isColon = text[sep] == ':'
+        val ctx = AuthValueContext(
+            isJsonMember = keyMatch.isJsonCandidate && isColon,
+            allowTruncatedObj = keyMatch.hasJsonPrefix && isColon,
+            failedTopEnd = if (isColon) keyMatch.failedTopEnd else -1
+        )
+        val valStart = skipAuthWhitespace(text, sep + 1, ctx.isJsonMember || ctx.allowTruncatedObj)
         if (valStart >= text.length || isNewline(text[valStart])) return sep + 1
         if (keyMatch.normalizedKey != null) {
             val q = text[keyMatch.keyStart]
             builder.appendRedacted(keyMatch.keyStart, keyMatch.keyEnd, "$q${keyMatch.normalizedKey}$q")
         }
-        return redactAuthHeaderValue(text, valStart, isJsonMember, allowTruncatedObj, builder)
+        return redactAuthHeaderValue(text, valStart, ctx, builder)
     }
 
     private fun matchAuthHeaderKey(
@@ -116,9 +127,9 @@ internal object CoreTelemetryAuthScanner {
         if (pos > 0 && isAuthKeyWordChar(text[pos - 1])) return null
         return when {
             matchesUnquotedKey(text, pos, "proxy-authorization", PROXY_AUTH_LEN) ->
-                AuthKeyMatch(pos, pos + PROXY_AUTH_LEN, isJsonCandidate = false, hasJsonPrefix = false, normalizedKey = null)
+                AuthKeyMatch(pos, pos + PROXY_AUTH_LEN, false, false, -1, null)
             matchesUnquotedKey(text, pos, "authorization", AUTH_LEN) ->
-                AuthKeyMatch(pos, pos + AUTH_LEN, isJsonCandidate = false, hasJsonPrefix = false, normalizedKey = null)
+                AuthKeyMatch(pos, pos + AUTH_LEN, false, false, -1, null)
             else -> null
         }
     }
@@ -144,19 +155,19 @@ internal object CoreTelemetryAuthScanner {
         cache: CoreTelemetryAuthJsonHelpers.JsonScanCache
     ): AuthKeyMatch? {
         val parsed = scanQuotedAuthKey(text, pos, quote) ?: return null
-        var hasPrefix = false
-        var isJson = false
-        if (quote == '"' && !parsed.hasInvalidJsonEscape) {
-            val openBrace = CoreTelemetryAuthJsonHelpers.findEnclosingJsonObjectStart(text, pos, cache)
-            hasPrefix = openBrace >= 0
-            isJson = openBrace >= 0 &&
-                CoreTelemetryAuthJsonHelpers.isInsideValidTopLevelJsonContainer(text, openBrace, cache)
+        val allowJson = quote == '"' && !parsed.hasInvalidJsonEscape
+        val openBrace = if (allowJson) CoreTelemetryAuthJsonHelpers.findEnclosingJsonObjectStart(text, pos, cache) else -1
+        val authState = if (openBrace >= 0) {
+            CoreTelemetryAuthJsonHelpers.classifyTopLevelJsonContainer(text, openBrace, cache)
+        } else {
+            -1
         }
         return AuthKeyMatch(
             pos,
             parsed.keyEnd,
-            isJsonCandidate = isJson,
-            hasJsonPrefix = hasPrefix,
+            isJsonCandidate = authState == 0,
+            hasJsonPrefix = openBrace >= 0,
+            failedTopEnd = if (authState > 0) authState else -1,
             normalizedKey = if (parsed.sawEscape) parsed.canonical else null
         )
     }
@@ -233,45 +244,43 @@ internal object CoreTelemetryAuthScanner {
     private fun redactAuthHeaderValue(
         text: String,
         valStart: Int,
-        isJsonMember: Boolean,
-        allowTruncatedObj: Boolean,
+        ctx: AuthValueContext,
         builder: HeaderBuilder
     ): Int {
         val ch = text[valStart]
         if (ch == '"' || ch == '\'') {
             val afterQuote = redactQuotedAuthString(text, valStart, ch, builder)
             val validJsonStr =
-                isJsonMember &&
+                ctx.isJsonMember &&
                     ch == '"' &&
                     CoreTelemetryAuthJsonValidator.scanJsonStringEnd(text, valStart + 1) == afterQuote
-            return redactTrailingPlainAuthContinuation(text, afterQuote, validJsonStr, builder)
+            return redactTrailingPlainAuthContinuation(text, afterQuote, validJsonStr, ctx.failedTopEnd, builder)
         }
         if (ch == '[') {
-            val afterArray = redactAuthArrayValue(text, valStart + 1, isJsonMember, allowTruncatedObj, builder)
+            val afterArray = redactAuthArrayValue(text, valStart + 1, ctx, builder)
             val validJsonArr =
-                isJsonMember &&
+                ctx.isJsonMember &&
                     CoreTelemetryAuthJsonValidator.tryParseJsonValue(text, valStart, builder.jsonCache.validJsonValueEnd) == afterArray
-            return redactTrailingPlainAuthContinuation(text, afterArray, validJsonArr, builder)
+            return redactTrailingPlainAuthContinuation(text, afterArray, validJsonArr, ctx.failedTopEnd, builder)
         }
-        val afterObj = if (ch == '{') tryRedactJsonObjectValue(text, valStart, isJsonMember, allowTruncatedObj, builder) else -1
-        if (afterObj >= 0) return redactTrailingPlainAuthContinuation(text, afterObj, isJsonMember, builder)
-        val afterPrim = if (isJsonMember) tryRedactJsonPrimitiveAuthValue(text, valStart, builder) else -1
-        return if (afterPrim >= 0) afterPrim else redactPlainAuthSpan(text, valStart, builder)
+        val afterObj = if (ch == '{') tryRedactJsonObjectValue(text, valStart, ctx, builder) else -1
+        if (afterObj >= 0) return redactTrailingPlainAuthContinuation(text, afterObj, ctx.isJsonMember, ctx.failedTopEnd, builder)
+        val afterPrim = if (ctx.isJsonMember) tryRedactJsonPrimitiveAuthValue(text, valStart, builder) else -1
+        return if (afterPrim >= 0) afterPrim else redactPlainAuthSpan(text, valStart, ctx.failedTopEnd, builder)
     }
 
     private fun tryRedactJsonObjectValue(
         text: String,
         bracePos: Int,
-        isJsonMember: Boolean,
-        allowTruncatedObj: Boolean,
+        ctx: AuthValueContext,
         builder: HeaderBuilder
     ): Int {
         val objEnd = CoreTelemetryAuthJsonHelpers.scanBalancedJsonObjectEnd(text, bracePos, builder.jsonCache)
         if (objEnd > bracePos) {
-            builder.appendRedacted(bracePos, objEnd, if (isJsonMember) "\"[redacted]\"" else "[redacted]")
+            builder.appendRedacted(bracePos, objEnd, if (ctx.isJsonMember) "\"[redacted]\"" else "[redacted]")
             return objEnd
         }
-        if (isJsonMember || allowTruncatedObj) {
+        if (ctx.isJsonMember || ctx.allowTruncatedObj) {
             builder.appendRedacted(bracePos, text.length, "\"[redacted]\"")
             return text.length
         }
@@ -292,8 +301,9 @@ internal object CoreTelemetryAuthScanner {
         return tokenEnd
     }
 
-    private fun redactPlainAuthSpan(text: String, valStart: Int, builder: HeaderBuilder): Int {
-        val lineEnd = scanPlainAuthValueEnd(text, valStart)
+    private fun redactPlainAuthSpan(text: String, valStart: Int, minEnd: Int, builder: HeaderBuilder): Int {
+        var lineEnd = scanPlainAuthValueEnd(text, valStart)
+        if (minEnd > lineEnd) lineEnd = scanPlainAuthValueEnd(text, minEnd)
         val redacted = redactAuthValueBody(text, valStart, lineEnd)
         if (redacted != null) builder.appendRedacted(valStart, lineEnd, redacted)
         return lineEnd
@@ -303,10 +313,16 @@ internal object CoreTelemetryAuthScanner {
         text: String,
         afterPos: Int,
         isJsonMember: Boolean,
+        failedTopEnd: Int,
         builder: HeaderBuilder
     ): Int {
         val tailStart = findTrailingPlainAuthStart(text, afterPos, isJsonMember)
-        return if (tailStart < 0) afterPos else redactPlainAuthSpan(text, tailStart, builder)
+        if (tailStart >= 0) return redactPlainAuthSpan(text, tailStart, failedTopEnd, builder)
+        if (!isJsonMember && failedTopEnd > afterPos) {
+            val nextStart = CoreTelemetryAuthJsonHelpers.skipJsonWhitespace(text, afterPos)
+            if (nextStart < text.length) return redactPlainAuthSpan(text, nextStart, failedTopEnd, builder)
+        }
+        return afterPos
     }
 
     private fun findTrailingPlainAuthStart(text: String, afterPos: Int, isJsonMember: Boolean): Int {
@@ -341,8 +357,7 @@ internal object CoreTelemetryAuthScanner {
     private fun redactAuthArrayValue(
         text: String,
         start: Int,
-        isJsonMember: Boolean,
-        allowTruncatedObj: Boolean,
+        ctx: AuthValueContext,
         builder: HeaderBuilder
     ): Int {
         var depth = 1
@@ -361,15 +376,15 @@ internal object CoreTelemetryAuthScanner {
                 }
                 ch == '"' || ch == '\'' -> k = redactQuotedAuthString(text, k, ch, builder)
                 ch == '{' -> {
-                    val objEnd = tryRedactJsonObjectValue(text, k, isJsonMember, allowTruncatedObj, builder)
-                    k = if (objEnd > k) objEnd else redactUnquotedArrayElement(text, k, isJsonMember, builder)
+                    val objEnd = tryRedactJsonObjectValue(text, k, ctx, builder)
+                    k = if (objEnd > k) objEnd else redactUnquotedArrayElement(text, k, ctx.isJsonMember, builder)
                 }
                 isHorizSpace(ch) || ch == ',' -> k++
                 isNewline(ch) -> {
-                    val next = if (isJsonMember) k + 1 else advanceObsFold(text, k)
+                    val next = if (ctx.isJsonMember || ctx.allowTruncatedObj) k + 1 else advanceObsFold(text, k)
                     if (next > k) k = next else stopped = true
                 }
-                else -> k = redactUnquotedArrayElement(text, k, isJsonMember, builder)
+                else -> k = redactUnquotedArrayElement(text, k, ctx.isJsonMember, builder)
             }
         }
         return k
