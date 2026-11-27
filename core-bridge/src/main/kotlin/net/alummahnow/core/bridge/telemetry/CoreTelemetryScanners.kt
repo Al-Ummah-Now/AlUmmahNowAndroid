@@ -167,9 +167,10 @@ internal object CoreTelemetryScanners {
     fun scanUrlPath(text: String, start: Int): Pair<Int, Boolean> {
         val openPositions = ArrayList<Int>()
         val openChars = ArrayList<Char>()
+        val openBraces = IntArray(1)
         var p = start
         while (p < text.length) {
-            val next = stepUrlPathChar(text, p, openPositions, openChars)
+            val next = stepUrlPathChar(text, p, openPositions, openChars, openBraces)
             if (next < 0) break
             p = next
         }
@@ -180,30 +181,33 @@ internal object CoreTelemetryScanners {
         text: String,
         p: Int,
         openPositions: ArrayList<Int>,
-        openChars: ArrayList<Char>
+        openChars: ArrayList<Char>,
+        openBraces: IntArray
     ): Int {
         val ch = text[p]
         return when {
             isPathStopChar(text, p, ch) || ch == ',' -> -1
-            ch in "([{" -> pushGroupOpener(text, p, openPositions, openChars)
-            ch in ")]}" -> popGroupCloser(p, ch, openPositions, openChars)
-            openChars.isNotEmpty() && isForbiddenInOpenGroup(ch, openChars) -> -1
+            ch in "([{" -> pushGroupOpener(text, p, openPositions, openChars, openBraces)
+            ch in ")]}" -> popGroupCloser(p, ch, openPositions, openChars, openBraces)
+            openBraces[0] > 0 && !isBraceTemplateChar(ch) -> -1
+            openChars.isNotEmpty() && ch == ':' -> -1
             else -> p + 1
         }
     }
 
-    private fun isForbiddenInOpenGroup(ch: Char, openChars: ArrayList<Char>): Boolean =
-        ch == ':' || (ch == '/' && openChars.contains('{'))
+    private fun isBraceTemplateChar(ch: Char): Boolean = isAsciiAlphaNum(ch) || ch == '_' || ch == '-'
 
     private fun pushGroupOpener(
         text: String,
         p: Int,
         openPositions: ArrayList<Int>,
-        openChars: ArrayList<Char>
+        openChars: ArrayList<Char>,
+        openBraces: IntArray
     ): Int {
-        if (startsEmbeddedPathInsideGroup(text, p + 1)) return -1
+        if (openBraces[0] > 0 || startsEmbeddedPathInsideGroup(text, p + 1)) return -1
         openPositions.add(p)
         openChars.add(text[p])
+        if (text[p] == '{') openBraces[0]++
         return p + 1
     }
 
@@ -211,7 +215,8 @@ internal object CoreTelemetryScanners {
         p: Int,
         ch: Char,
         openPositions: ArrayList<Int>,
-        openChars: ArrayList<Char>
+        openChars: ArrayList<Char>,
+        openBraces: IntArray
     ): Int {
         val expected = when (ch) {
             ')' -> '('
@@ -221,6 +226,7 @@ internal object CoreTelemetryScanners {
         if (openChars.isEmpty() || openChars[openChars.lastIndex] != expected) return -1
         openPositions.removeAt(openPositions.lastIndex)
         openChars.removeAt(openChars.lastIndex)
+        if (ch == '}') openBraces[0]--
         return p + 1
     }
 
@@ -229,26 +235,66 @@ internal object CoreTelemetryScanners {
         return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
-    private fun isContStopChar(text: String, pos: Int, ch: Char, allowQuote: Boolean): Boolean {
-        val stopChar = ch.isWhitespace() || ch in URL_CONT_STOP || (ch == '"' && !allowQuote)
-        return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
+    private fun isContStopChar(text: String, pos: Int, ch: Char): Boolean {
+        val stopChar = ch.isWhitespace() || ch in URL_CONT_STOP
+        val isDrive = (pos == 0 || !isAsciiAlphaNum(text[pos - 1])) && isWindowsDriveAt(text, pos)
+        return stopChar || isFileSchemeAt(text, pos) || isDrive
     }
 
-    fun scanUrlContinuation(text: String, start: Int, allowGroupQuotes: Boolean): Int {
+    private class ContScanState(val allowGroupQuotes: Boolean, val stopAtSchemes: Boolean) {
+        val groupStack = ArrayList<Char>()
+        var inQuote = false
+    }
+
+    fun scanUrlContinuation(text: String, start: Int, allowGroupQuotes: Boolean, stopAtSchemes: Boolean): Int {
         var p = start
-        var groupDepth = 0
+        val state = ContScanState(allowGroupQuotes, stopAtSchemes)
         while (p < text.length) {
-            val ch = text[p]
-            val startsScheme = p > start && text[p - 1] in ",;()[]{}'" && isUrlSchemeAt(text, p)
-            if (isContStopChar(text, p, ch, allowGroupQuotes && groupDepth > 0) || startsScheme) break
-            if (ch in "([{") {
-                groupDepth++
-            } else if (ch in ")]}" && groupDepth > 0) {
-                groupDepth--
+            val next = if (state.inQuote) {
+                stepQuotedContinuation(text, p, state)
+            } else {
+                stepUnquotedContinuation(text, p, start, state)
             }
-            p++
+            if (next < 0) break
+            p = next
         }
         return p
+    }
+
+    private fun stepQuotedContinuation(text: String, p: Int, state: ContScanState): Int {
+        val ch = text[p]
+        if (ch == '\r' || ch == '\n') return -1
+        if (state.stopAtSchemes && text[p - 1] in "\",;()[]{}'" && isUrlSchemeAt(text, p)) return -1
+        val isEscape = ch == '\\' && p + 1 < text.length
+        if (isEscape && text[p + 1] !in "\r\n") return p + 2
+        if (ch == '"') state.inQuote = false
+        return p + 1
+    }
+
+    private fun stepUnquotedContinuation(text: String, p: Int, start: Int, state: ContScanState): Int {
+        val ch = text[p]
+        val startsScheme = state.stopAtSchemes && p > start && text[p - 1] in ",;()[]{}'" && isUrlSchemeAt(text, p)
+        if (isContStopChar(text, p, ch) || startsScheme) return -1
+        if (ch == '"') {
+            if (!state.allowGroupQuotes || state.groupStack.isEmpty()) return -1
+            state.inQuote = true
+            return p + 1
+        }
+        updateContGroupStack(ch, state.groupStack)
+        return p + 1
+    }
+
+    private fun updateContGroupStack(ch: Char, stack: ArrayList<Char>) {
+        if (ch in "([{") {
+            stack.add(ch)
+        } else if (ch in ")]}") {
+            val expected = when (ch) {
+                ')' -> '('
+                ']' -> '['
+                else -> '{'
+            }
+            if (stack.isNotEmpty() && stack[stack.lastIndex] == expected) stack.removeAt(stack.lastIndex)
+        }
     }
 
     private fun isUrlSchemeAt(text: String, pos: Int): Boolean {
@@ -258,8 +304,14 @@ internal object CoreTelemetryScanners {
         return i - pos >= 2 && text.startsWith("://", i)
     }
 
-    fun trimWebhookContinuationEnd(text: String, urlStart: Int, minEnd: Int, scanEnd: Int): Int {
-        val excess = countExcessGroupClosers(text, urlStart, scanEnd)
+    fun trimWebhookContinuationEnd(
+        text: String,
+        urlStart: Int,
+        minEnd: Int,
+        scanEnd: Int,
+        allowGroupQuotes: Boolean
+    ): Int {
+        val excess = countExcessGroupClosers(text, urlStart, scanEnd, allowGroupQuotes)
         val precededByQuote = urlStart > 0 && text[urlStart - 1] == '\''
         var end = scanEnd
         while (end > minEnd && consumeTrailingWebhookCloser(text[end - 1], precededByQuote, excess)) {
@@ -268,19 +320,47 @@ internal object CoreTelemetryScanners {
         return end
     }
 
-    private fun countExcessGroupClosers(text: String, start: Int, end: Int): IntArray {
-        val excess = IntArray(3)
-        for (i in start until end) {
-            when (text[i]) {
-                '(' -> excess[0]--
-                ')' -> excess[0]++
-                '[' -> excess[1]--
-                ']' -> excess[1]++
-                '{' -> excess[2]--
-                '}' -> excess[2]++
+    private fun countExcessGroupClosers(text: String, start: Int, end: Int, allowGroupQuotes: Boolean): IntArray {
+        val excess = IntArray(4)
+        var inQuote = false
+        var i = start
+        while (i < end) {
+            val ch = text[i]
+            if (inQuote) {
+                if (ch == '\\' && i + 1 < end) {
+                    i += 2
+                } else {
+                    if (ch == '"') inQuote = false
+                    i++
+                }
+            } else {
+                if (ch == '"' && allowGroupQuotes && excess[3] > 0) inQuote = true else tallyGroupCloser(ch, excess)
+                i++
             }
         }
         return excess
+    }
+
+    private fun tallyGroupCloser(ch: Char, excess: IntArray) {
+        val openerSlot = when (ch) {
+            '(' -> 0
+            '[' -> 1
+            '{' -> 2
+            else -> -1
+        }
+        val closerSlot = when (ch) {
+            ')' -> 0
+            ']' -> 1
+            '}' -> 2
+            else -> -1
+        }
+        if (openerSlot >= 0) {
+            excess[openerSlot]--
+            excess[3]++
+        } else if (closerSlot >= 0) {
+            excess[closerSlot]++
+            if (excess[3] > 0) excess[3]--
+        }
     }
 
     private fun consumeTrailingWebhookCloser(ch: Char, precededByQuote: Boolean, excess: IntArray): Boolean = when {

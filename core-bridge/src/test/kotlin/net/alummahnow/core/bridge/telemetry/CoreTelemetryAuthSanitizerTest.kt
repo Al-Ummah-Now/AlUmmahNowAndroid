@@ -495,7 +495,7 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("https://example.com(/Users/alice/Secret.mov)/webhook/opaqueSecret123")
         )
         assertEquals(
-            "https://api.telegram.org/bot123:[redacted][redacted-path]",
+            "https://api.telegram.org/bot123:[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://api.telegram." + "org/bot123:opaqueSecret123,/Users/alice/Secret.mov")
         )
         assertEquals(
@@ -554,6 +554,36 @@ class CoreTelemetryAuthSanitizerTest {
             "https://example.com/api{tag:\"value\"}?[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api{tag:\"value\"}?token=opaqueSecret123")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths handles quoted webhook groups brace filenames and linear nested parens`() {
+        assertEquals(
+            "https://example.com/api{tag:\"value)\"}?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api{tag:\"value)\"}?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken{tag:\"first opaqueSecret123\"}")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken{tag:\"a)opaqueSecret123\"}suffixSecret")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken{abc://opaqueSecret123}")
+        )
+        assertEquals(
+            "https://example.com/users/[redacted-path]}?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/users/{Secret.mov}?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/api{url:\"https://other.com/x,public?[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api{url:\"https://other.com/x,public?token=opaqueSecret123\"}")
+        )
+        val nestedParens = "https://example.com/a" + "(".repeat(500) + "b/".repeat(500) + ")".repeat(500)
+        assertEquals(nestedParens, CoreTelemetryService.sanitizeLocalPaths(nestedParens))
         assertEquals(
             "https://api.telegram.org/bot123:[redacted]/sendMessage",
             CoreTelemetryService.sanitizeLocalPaths("https://api.telegram." + "org/bot123:%2FopaqueSecret123/sendMessage")
