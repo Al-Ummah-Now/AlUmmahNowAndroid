@@ -46,8 +46,10 @@ class MainActivity : ComponentActivity() {
             val telemetryEnabledPref by telemetryEnabledState.collectAsState()
             val telemetrySaveUncertain by telemetrySaveUncertainState.collectAsState()
             val telemetryWarningRes by telemetryWarningResState.collectAsState()
+            val lastPurgeFailed by telemetry.lastPurgeFailedFlow.collectAsState()
             val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
-            val telemetryWarning = telemetryWarningRes?.let { stringResource(it) }
+            val telemetryWarning = (telemetryWarningRes ?: if (lastPurgeFailed) DesignR.string.aun_diagnostics_purge_warning else null)
+                ?.let { stringResource(it) }
             LaunchedEffect(telemetryEnabledPref) {
                 if (telemetryEnabledPref) telemetry.flush()
             }

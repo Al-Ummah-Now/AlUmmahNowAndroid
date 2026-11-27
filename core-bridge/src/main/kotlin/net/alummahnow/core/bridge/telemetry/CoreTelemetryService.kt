@@ -13,6 +13,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -59,7 +62,7 @@ class CoreTelemetryService(
     private var _consent: TelemetryConsent = TelemetryConsent.OFF
     private var revoked: Boolean = false
     private var closed: Boolean = false
-    private var _lastPurgeFailed: Boolean = false
+    private val _lastPurgeFailedFlow = MutableStateFlow(false)
     private var inFlightFlushes: Int = 0
     private var consentEpoch: Long = 0L
     private var revokedFlushesRemaining: Int = 0
@@ -96,7 +99,9 @@ class CoreTelemetryService(
         }
 
     override val lastPurgeFailed: Boolean
-        get() = synchronized(gate) { _lastPurgeFailed }
+        get() = _lastPurgeFailedFlow.value
+
+    override val lastPurgeFailedFlow: StateFlow<Boolean> = _lastPurgeFailedFlow.asStateFlow()
 
     override fun setConsent(consent: TelemetryConsent): Boolean {
         val mapped = when (consent) {
@@ -116,11 +121,11 @@ class CoreTelemetryService(
                 return false
             } else {
                 var cancelOnFail: List<Job> = emptyList()
-                succeeded = if (revokedFlushesRemaining > 0 || (_lastPurgeFailed && !tryDeleteBufferFallback())) {
+                succeeded = if (revokedFlushesRemaining > 0 || (_lastPurgeFailedFlow.value && !tryDeleteBufferFallback())) {
                     false
                 } else {
                     try {
-                        _lastPurgeFailed = false
+                        _lastPurgeFailedFlow.value = false
                         client.setConsent(mapped)
                         _consent = consent
                         revoked = false
@@ -150,17 +155,17 @@ class CoreTelemetryService(
         val jobsToCancel = flushJobs.toList()
         flushJobs.clear()
         if (clientClosed) {
-            _lastPurgeFailed = !tryDeleteBufferFallback()
-            return Pair(!_lastPurgeFailed, jobsToCancel)
+            _lastPurgeFailedFlow.value = !tryDeleteBufferFallback()
+            return Pair(!_lastPurgeFailedFlow.value, jobsToCancel)
         }
         try {
             client.setConsent(TelemetryConsentState.DENIED)
-            _lastPurgeFailed = !tryDeleteSiblingTempFiles()
+            _lastPurgeFailedFlow.value = !tryDeleteSiblingTempFiles()
         } catch (e: AunException) {
-            _lastPurgeFailed = !tryDeleteBufferFallback()
+            _lastPurgeFailedFlow.value = !tryDeleteBufferFallback()
             AunLog.e("telemetry", failureMessage, e)
         }
-        return Pair(!_lastPurgeFailed, jobsToCancel)
+        return Pair(!_lastPurgeFailedFlow.value, jobsToCancel)
     }
 
     override fun track(name: String, properties: Map<String, Any?>) {
@@ -290,7 +295,7 @@ class CoreTelemetryService(
                     // Clean up any remnant if a flush already in flight before revocation completed
                     // its final persist rename after setConsent(DENIED) deleted the buffer file.
                     // Ordinary close() without revocation does not advance consentEpoch, keeping retryable buffers.
-                    _lastPurgeFailed = !tryDeleteBufferFallback()
+                    _lastPurgeFailedFlow.value = !tryDeleteBufferFallback()
                 }
             }
             if (closed && inFlightFlushes == 0 && !clientClosed) {
@@ -359,12 +364,40 @@ class CoreTelemetryService(
         @Volatile
         private var activeCrashService: TelemetryService? = null
 
-        private val fileUriRegex = Regex("""file://[^\r\n]+""", RegexOption.IGNORE_CASE)
-        private val windowsPathRegex = Regex("""(?:(?<![\p{L}\p{N}])[A-Za-z]:[\\/]|\\\\)[^\r\n]+""", RegexOption.IGNORE_CASE)
-        private val quotedSpacedRootPathRegex = Regex("""["']/[ \t]+[^\r\n]+""")
-        private val unixPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<![A-Za-z][A-Za-z0-9+.-]{0,31}:)//+(?=[ \t]*[^\s/])|""" +
-                """/(?=[ \t]*[^\s/]))[^\r\n]+"""
+        private val urlVaultRegex = Regex(
+            """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>()\[\]{}\r\n]+""",
+            RegexOption.IGNORE_CASE
+        )
+        private val bareFilenameExtensions =
+            "mov|mp4|m4v|mkv|webm|avi|ts|m3u8|mpd|mp3|m4a|wav|aac|flac|ogg|opus|" +
+                "jpg|jpeg|png|gif|webp|heic|svg|pdf|txt|md|rtf|doc|docx|xls|xlsx|ppt|pptx|" +
+                "csv|json|xml|yaml|yml|toml|ini|cfg|conf|log|srt|vtt|ass|ssa|" +
+                "zip|tar|gz|tgz|bz2|xz|7z|rar|dmg|pkg|msi|exe|apk|aab|ipa|" +
+                "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
+        private val pathRedactionRules: List<Pair<Regex, String>> = listOf(
+            Regex("""(?<![A-Za-z0-9+.-])file://[^\r\n]+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
+            Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
+            Regex("""(^|[\s(\[{"'=,:;])[^\s\\/"'<>]+\\[^\r\n]+""") to "$1[redacted-path]",
+            Regex("""["']/[ \t]+[^\r\n]+""") to "[redacted-path]",
+            Regex("""(?<![\p{L}\p{M}\p{N}._/-])(?:~/|//+(?=[ \t]*[^\s/])|/(?=[ \t]*[^\s/]))[^\r\n]+""") to "[redacted-path]",
+            Regex(
+                """(^|[\s(\[{"'=,:;])(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:]+/[^\r\n]+""",
+                RegexOption.IGNORE_CASE
+            ) to "$1[redacted-path]",
+            Regex(""""[^"\r\n/\\]*\.[A-Za-z0-9]{1,16}"""") to "[redacted-path]",
+            Regex("""'(?:[^'\r\n/\\]|'(?=\p{L}))*\.[A-Za-z0-9]{1,16}'""") to "[redacted-path]",
+            Regex(
+                """(\b(?:file|path|directory|folder|document)\s+)(['"])(?!\u001E)[^'"\r\n]+\2""",
+                RegexOption.IGNORE_CASE
+            ) to "$1[redacted-path]",
+            Regex(
+                """(\b(?:file|path|filename|filepath)\s*[:=]\s*)(?!\u001E)[^\r\n]+""",
+                RegexOption.IGNORE_CASE
+            ) to "$1[redacted-path]",
+            Regex(
+                """(?<![\p{L}\p{N}._-])[\p{L}\p{N}_-]+\.(?:$bareFilenameExtensions)\b(?!\s*\()""",
+                RegexOption.IGNORE_CASE
+            ) to "[redacted-path]"
         )
 
         /**
@@ -447,13 +480,30 @@ class CoreTelemetryService(
             return "https://$formattedHost$portSegment/api/v1/telemetry/batches"
         }
 
-        /** Scrubs local filesystem paths and `file://` URIs before crash or breadcrumb text enters telemetry. */
+        /** Scrubs local paths, relative paths, bare filenames, and `file://` URIs while preserving non-`file` URLs. */
         fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
-            var scrubbed = fileUriRegex.replace(text, "[redacted-path]")
-            scrubbed = windowsPathRegex.replace(scrubbed, "[redacted-path]")
-            scrubbed = quotedSpacedRootPathRegex.replace(scrubbed, "[redacted-path]")
-            return unixPathRegex.replace(scrubbed, "[redacted-path]")
+            var prefix = "\u001EAUNURL"
+            while (text.contains(prefix)) {
+                prefix += "X"
+            }
+            val vaultedUrls = mutableListOf<String>()
+            var scrubbed = urlVaultRegex.replace(text) { match ->
+                if (match.value.startsWith("file://", ignoreCase = true)) {
+                    match.value
+                } else {
+                    val idx = vaultedUrls.size
+                    vaultedUrls += match.value
+                    "$prefix$idx\u001F"
+                }
+            }
+            for ((regex, template) in pathRedactionRules) {
+                scrubbed = regex.replace(scrubbed, template)
+            }
+            for (idx in vaultedUrls.indices) {
+                scrubbed = scrubbed.replace("$prefix$idx\u001F", vaultedUrls[idx])
+            }
+            return scrubbed
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {

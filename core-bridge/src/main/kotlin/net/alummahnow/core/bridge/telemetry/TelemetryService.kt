@@ -1,5 +1,8 @@
 package net.alummahnow.core.bridge.telemetry
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
 /** How much diagnostic telemetry the person has opted into. Defaults to [OFF]. */
 enum class TelemetryConsent {
     OFF,
@@ -23,6 +26,7 @@ interface TelemetryService {
     val consent: TelemetryConsent
     val pendingCount: Int
     val lastPurgeFailed: Boolean
+    val lastPurgeFailedFlow: StateFlow<Boolean> get() = DEFAULT_PURGE_FAILED
 
     /**
      * Applies [consent]. Opting out immediately denies collection in the wrapper, cancels in-flight
@@ -49,6 +53,10 @@ interface TelemetryService {
     fun persist()
     suspend fun flush()
     fun close()
+
+    companion object {
+        private val DEFAULT_PURGE_FAILED: StateFlow<Boolean> = MutableStateFlow(false)
+    }
 }
 
 /** Silent no-op implementation used in tests, previews, and environments without the native library. */

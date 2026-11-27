@@ -255,8 +255,10 @@ private fun StaffHome(
     val telemetryEnabledPref by services.prefs.telemetryEnabledFlow.collectAsStateWithLifecycle()
     val telemetrySaveUncertain by services.prefs.telemetrySaveUncertain.collectAsStateWithLifecycle()
     val telemetryWarningRes by services.prefs.telemetryWarningRes.collectAsStateWithLifecycle()
+    val lastPurgeFailed by services.telemetry.lastPurgeFailedFlow.collectAsStateWithLifecycle()
     val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
-    val telemetryWarning = telemetryWarningRes?.let { stringResource(it) }
+    val telemetryWarning = (telemetryWarningRes ?: if (lastPurgeFailed) DesignR.string.aun_diagnostics_purge_warning else null)
+        ?.let { stringResource(it) }
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     var reblurTick by remember { mutableLongStateOf(0L) }
     val queue: QueueViewModel =

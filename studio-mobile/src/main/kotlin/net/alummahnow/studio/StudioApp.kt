@@ -52,6 +52,7 @@ import net.alummahnow.core.bridge.studio.ChannelRole
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.deletion.DeletionStage
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.components.FanousHeaderBar
 import net.alummahnow.design.components.FanousHeaderButton
 import net.alummahnow.design.components.FanousHeaderTitle
@@ -200,8 +201,10 @@ fun StudioApp(
     val telemetryEnabledPref by container.telemetryEnabledFlow.collectAsStateWithLifecycle()
     val telemetrySaveFailed by container.telemetrySaveFailedFlow.collectAsStateWithLifecycle()
     val telemetryWarningRes by container.telemetryWarningResFlow.collectAsStateWithLifecycle()
+    val lastPurgeFailed by container.telemetry.lastPurgeFailedFlow.collectAsStateWithLifecycle()
     val telemetryEnabled = telemetryEnabledPref || telemetrySaveFailed
-    val telemetryWarning = telemetryWarningRes?.let { stringResource(it) }
+    val telemetryWarning = (telemetryWarningRes ?: if (lastPurgeFailed) DesignR.string.aun_diagnostics_purge_warning else null)
+        ?.let { stringResource(it) }
     val termsModel: CreatorTermsViewModel = viewModel(key = "terms-${current.userId}") {
         // Pinned to this account: an acceptance can never be recorded for another one after a switch.
         CreatorTermsViewModel(container.repositoryFor(current.userId))
