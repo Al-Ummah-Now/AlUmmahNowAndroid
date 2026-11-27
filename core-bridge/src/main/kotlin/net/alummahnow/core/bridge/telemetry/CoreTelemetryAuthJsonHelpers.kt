@@ -144,7 +144,7 @@ internal object CoreTelemetryAuthJsonHelpers {
     private fun reachesLineOrTextEnd(text: String, start: Int): Boolean {
         var p = start
         while (p < text.length && isHorizSpace(text[p])) p++
-        return p >= text.length || isNewline(text[p])
+        return p >= text.length || isNewline(text[p]) || text[p] == ';' || text[p] == ')'
     }
 
     private fun findParentJsonContainerOpen(text: String, valueStart: Int, cache: JsonScanCache): Int {
@@ -322,7 +322,7 @@ internal object CoreTelemetryAuthJsonHelpers {
         isJsonWhitespace(ch) || ch == ':' || ch == ',' || ch == '['
 
     fun isJsonMemberContinuationDelimiter(text: String, pos: Int): Boolean = when (text[pos]) {
-        '}' -> pos + 1 >= text.length || isClosingBraceFollower(text[pos + 1])
+        '}', ']' -> pos + 1 >= text.length || isClosingBraceFollower(text[pos + 1])
         ',' -> isFollowedByJsonMemberKey(text, pos + 1)
         else -> false
     }

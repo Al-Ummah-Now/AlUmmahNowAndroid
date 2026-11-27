@@ -8,8 +8,8 @@ import java.nio.charset.StandardCharsets
  * Linear O(n) auth-header scanner (plain text, JSON escaped keys, arrays) and RFC 7617 Basic / Bearer redactor.
  */
 internal object CoreTelemetryAuthScanner {
-    private const val MAX_QUOTED_KEY_RAW_LEN = 129
-    private const val MAX_AUTH_KEY_LEN = 19
+    private const val MAX_QUOTED_KEY_RAW_LEN = 256
+    private const val MAX_AUTH_KEY_LEN = 64
     private const val HEX_ESCAPE_LEN = 6
     private const val BASE64_CHUNK_LEN = 4
     private const val BASE64_PAD_TWO = 2
@@ -83,12 +83,16 @@ internal object CoreTelemetryAuthScanner {
         val keyEnd: Int,
         val isJsonCandidate: Boolean,
         val hasJsonPrefix: Boolean,
+        val isTupleCandidate: Boolean,
         val failedTopEnd: Int,
         val normalizedKey: String?
     )
 
     private fun mayContainAuthHeader(text: String): Boolean =
-        text.indexOf(':') >= 0 || text.indexOf('=') >= 0 || text.contains("\\u")
+        text.indexOf(':') >= 0 ||
+            text.indexOf('=') >= 0 ||
+            text.contains("\\u") ||
+            (text.indexOf('[') >= 0 && text.indexOf(',') >= 0)
 
     private fun redactAuthHeaders(text: String, maxDepth: Int = 4): String {
         if (!mayContainAuthHeader(text)) return text
@@ -104,22 +108,36 @@ internal object CoreTelemetryAuthScanner {
             if (keyMatch != null) {
                 i = advanceAfterHeaderKey(text, keyMatch, builder)
             } else {
-                val close = if (maxDepth > 0 && isUnescapedDoubleQuote(text, i, builder.copied)) {
-                    CoreTelemetryQuotedAuthHelpers.findDoubleQuotedSpanEnd(text, i)
-                } else {
-                    -1
-                }
-                if (close > i) {
-                    val changed = redactAuthHeadersInBalancedSpan(text, i + 1, close, maxDepth - 1, builder)
-                    val reenterClose = !changed &&
-                        !CoreTelemetryQuotedAuthHelpers.isJsonStringStartBoundary(text, i) &&
-                        CoreTelemetryQuotedAuthHelpers.isJsonStringStartBoundary(text, close)
-                    i = if (reenterClose) close else close + 1
-                } else {
-                    i++
-                }
+                i = stepUnmatchedAuthPosition(text, i, maxDepth, builder)
             }
         }
+    }
+
+    private fun stepUnmatchedAuthPosition(text: String, pos: Int, maxDepth: Int, builder: HeaderBuilder): Int {
+        val isEscQuote = text[pos] == '\\' &&
+            pos + 1 < text.length &&
+            text[pos + 1] == '"' &&
+            !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, pos, builder.copied)
+        if (isEscQuote) {
+            val escEnd = CoreTelemetryAuthEscapedHelpers.tryRedactEscapedQuotedAuthHeader(
+                text,
+                pos,
+                builder::appendRedacted,
+                ::redactAuthValueBody
+            )
+            if (escEnd > pos) return escEnd
+        }
+        val close = if (maxDepth > 0 && isUnescapedDoubleQuote(text, pos, builder.copied)) {
+            CoreTelemetryQuotedAuthHelpers.findDoubleQuotedSpanEnd(text, pos)
+        } else {
+            -1
+        }
+        if (close <= pos) return pos + 1
+        val changed = redactAuthHeadersInBalancedSpan(text, pos + 1, close, maxDepth - 1, builder)
+        val reenterClose = !changed &&
+            !CoreTelemetryQuotedAuthHelpers.isJsonStringStartBoundary(text, pos) &&
+            CoreTelemetryQuotedAuthHelpers.isJsonStringStartBoundary(text, close)
+        return if (reenterClose) close else close + 1
     }
 
     private fun isUnescapedDoubleQuote(text: String, pos: Int, minPos: Int): Boolean =
@@ -141,7 +159,10 @@ internal object CoreTelemetryAuthScanner {
         } else {
             text.substring(innerStart, close) to null
         }
-        if (decoded.indexOf(':') < 0 && decoded.indexOf('=') < 0) return false
+        val hasSep = decoded.indexOf(':') >= 0 ||
+            decoded.indexOf('=') >= 0 ||
+            (decoded.indexOf('[') >= 0 && decoded.indexOf(',') >= 0)
+        if (!hasSep) return false
         val edits = ArrayList<Triple<Int, Int, String>>()
         scanAuthHeaders(decoded, nextDepth, HeaderBuilder(decoded, edits))
         if (edits.isEmpty()) return false
@@ -158,9 +179,12 @@ internal object CoreTelemetryAuthScanner {
         keyMatch: AuthKeyMatch,
         builder: HeaderBuilder
     ): Int {
-        val allowNl = keyMatch.isJsonCandidate || keyMatch.hasJsonPrefix
+        val allowNl = keyMatch.isJsonCandidate || keyMatch.hasJsonPrefix || keyMatch.isTupleCandidate
         val sep = skipAuthWhitespace(text, keyMatch.keyEnd, allowNl)
-        val sepMatch = CoreTelemetryQuotedAuthHelpers.matchAuthSeparator(text, sep) ?: return keyMatch.keyEnd
+        val sepMatch = CoreTelemetryQuotedAuthHelpers.matchAuthSeparator(text, sep)
+        if (sepMatch == null) {
+            return advanceTupleHeaderKey(text, keyMatch, sep, builder)
+        }
         val (sepLen, isColon) = sepMatch
         val ctx = AuthValueContext(
             isJsonMember = keyMatch.isJsonCandidate && isColon && sepLen == 1,
@@ -176,6 +200,22 @@ internal object CoreTelemetryAuthScanner {
         return redactAuthHeaderValue(text, valStart, ctx, builder)
     }
 
+    private fun advanceTupleHeaderKey(
+        text: String,
+        keyMatch: AuthKeyMatch,
+        sep: Int,
+        builder: HeaderBuilder
+    ): Int {
+        if (!keyMatch.isTupleCandidate || sep >= text.length || text[sep] != ',') return keyMatch.keyEnd
+        val valStart = CoreTelemetryAuthEscapedHelpers.resolveJsonTupleValueStart(text, sep + 1, builder.jsonCache)
+        if (valStart < 0) return keyMatch.keyEnd
+        if (keyMatch.normalizedKey != null) {
+            val q = text[keyMatch.keyStart]
+            builder.appendRedacted(keyMatch.keyStart, keyMatch.keyEnd, "$q${keyMatch.normalizedKey}$q")
+        }
+        return redactAuthHeaderValue(text, valStart, AuthValueContext(true, false, -1), builder)
+    }
+
     private val unquotedAuthHeaders = listOf("proxy-authorization", "authorization", "set-cookie", "cookie")
 
     private fun matchAuthHeaderKey(
@@ -187,7 +227,7 @@ internal object CoreTelemetryAuthScanner {
         if (ch == '"' || ch == '\'') return matchQuotedAuthKey(text, pos, ch, cache)
         if (pos > 0 && isAuthKeyWordChar(text[pos - 1])) return null
         val matched = unquotedAuthHeaders.firstOrNull { matchesUnquotedKey(text, pos, it, it.length) }
-        return matched?.let { AuthKeyMatch(pos, pos + it.length, false, false, -1, null) }
+        return matched?.let { AuthKeyMatch(pos, pos + it.length, false, false, false, -1, null) }
     }
 
     private fun matchesUnquotedKey(text: String, pos: Int, literal: String, len: Int): Boolean {
@@ -213,6 +253,7 @@ internal object CoreTelemetryAuthScanner {
         val parsed = scanQuotedAuthKey(text, pos, quote) ?: return null
         val hasPrefix = quote == '"' && CoreTelemetryAuthJsonHelpers.isPrecededByBraceOrComma(text, pos)
         val allowJson = quote == '"' && !parsed.hasInvalidJsonEscape
+        val isTuple = allowJson && isPrecededByOpenBracket(text, pos)
         val openBrace = if (allowJson) CoreTelemetryAuthJsonHelpers.findEnclosingJsonObjectStart(text, pos, cache) else -1
         val authState = if (openBrace >= 0) {
             CoreTelemetryAuthJsonHelpers.classifyTopLevelJsonContainer(text, openBrace, cache)
@@ -224,9 +265,16 @@ internal object CoreTelemetryAuthScanner {
             parsed.keyEnd,
             isJsonCandidate = authState == 0,
             hasJsonPrefix = hasPrefix,
+            isTupleCandidate = isTuple,
             failedTopEnd = if (authState > 0) authState else -1,
             normalizedKey = if (parsed.sawEscape) parsed.canonical else null
         )
+    }
+
+    private fun isPrecededByOpenBracket(text: String, pos: Int): Boolean {
+        var p = pos - 1
+        while (p >= 0 && text[p] in " \t\r\n") p--
+        return p >= 0 && text[p] == '['
     }
 
     private fun scanQuotedAuthKey(text: String, pos: Int, quote: Char): QuotedKeyResult? {
@@ -251,10 +299,10 @@ internal object CoreTelemetryAuthScanner {
                 }
                 decoded.length >= MAX_AUTH_KEY_LEN -> failed = true
                 else -> {
-                    val step = appendDecodedKeyChar(text, j, decoded)
+                    val (step, validEsc) = appendDecodedKeyChar(text, j, decoded)
                     if (ch == '\\') {
                         sawEscape = true
-                        if (step == 2) hasInvalidJsonEscape = true
+                        if (!validEsc) hasInvalidJsonEscape = true
                     }
                     if (step < 0) failed = true else j += step
                 }
@@ -263,31 +311,27 @@ internal object CoreTelemetryAuthScanner {
         return result
     }
 
-    private fun canonicalAuthKeyName(key: String): String? = when {
-        key.equals("authorization", ignoreCase = true) -> "Authorization"
-        key.equals("proxy-authorization", ignoreCase = true) -> "Proxy-Authorization"
-        key.equals("cookie", ignoreCase = true) -> "Cookie"
-        key.equals("set-cookie", ignoreCase = true) -> "Set-Cookie"
-        else -> null
-    }
+    private fun canonicalAuthKeyName(key: String): String? =
+        CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(key)
 
-    private fun appendDecodedKeyChar(text: String, pos: Int, out: StringBuilder): Int {
+    private fun appendDecodedKeyChar(text: String, pos: Int, out: StringBuilder): Pair<Int, Boolean> {
         val ch = text[pos]
         if (ch != '\\') {
             out.append(ch)
-            return 1
+            return 1 to true
         }
-        if (pos + 1 >= text.length) return -1
+        if (pos + 1 >= text.length) return -1 to false
         val next = text[pos + 1]
         if (next == 'u' && pos + HEX_ESCAPE_LEN <= text.length) {
             val hex = parseHex4(text, pos + 2)
             if (hex >= 0) {
                 out.append(hex.toChar())
-                return HEX_ESCAPE_LEN
+                return HEX_ESCAPE_LEN to true
             }
         }
-        out.append(next)
-        return 2
+        val (decodedChar, validJson) = CoreTelemetryAuthEscapedHelpers.decodeSimpleJsonEscape(next)
+        out.append(decodedChar)
+        return 2 to validJson
     }
 
     private fun parseHex4(text: String, pos: Int): Int {

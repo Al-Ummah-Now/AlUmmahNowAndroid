@@ -50,7 +50,7 @@ internal object CoreTelemetryQuotedAuthHelpers {
         for (i in start until end) {
             val ch = text[i]
             val isUnicodeEsc = ch == '\\' && i + HEX_ESCAPE_LEN <= end && text[i + 1] == 'u'
-            if (ch == ':' || ch == '=' || isUnicodeEsc) return true
+            if (ch in ":=[" || isUnicodeEsc) return true
         }
         return false
     }
@@ -89,21 +89,35 @@ internal object CoreTelemetryQuotedAuthHelpers {
         append(HEX_DIGITS[code and 0xF])
     }
 
+    private data class BearerMatch(val start: Int, val end: Int, val redactedOnly: Boolean)
+
     fun redactBearerTokens(text: String): String {
         if (!text.contains("bearer", ignoreCase = true)) return text
-        val ranges = findBearerTokenRanges(text)
+        val ranges = findBearerTokenRanges(text, allowLiteralQuoted = false)
         if (ranges.isEmpty()) return text
         val sb = StringBuilder(text.length)
         var copied = 0
-        for ((start, end) in ranges) {
-            sb.append(text, copied, start).append(text, start, start + BEARER_LEN).append(" [redacted]")
-            copied = end
+        for (match in ranges) {
+            sb.append(text, copied, match.start)
+            if (match.redactedOnly) {
+                sb.append("[redacted]")
+            } else {
+                sb.append(text, match.start, match.start + BEARER_LEN).append(" [redacted]")
+            }
+            copied = match.end
         }
         return sb.append(text, copied, text.length).toString()
     }
 
-    private fun findBearerTokenRanges(text: String): List<Pair<Int, Int>> {
-        val ranges = ArrayList<Pair<Int, Int>>()
+    private fun escapedDoubleQuoteLen(text: String, pos: Int): Int {
+        if (pos + 1 < text.length && text[pos] == '\\' && text[pos + 1] == '"') return 2
+        val hasUnicode = pos + HEX_ESCAPE_LEN <= text.length && text[pos] == '\\' && text[pos + 1] == 'u'
+        if (hasUnicode && CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2) == '"'.code) return HEX_ESCAPE_LEN
+        return 0
+    }
+
+    private fun findBearerTokenRanges(text: String, allowLiteralQuoted: Boolean): List<BearerMatch> {
+        val ranges = ArrayList<BearerMatch>()
         var inEscapedQuote = false
         var i = 0
         while (i < text.length) {
@@ -117,7 +131,7 @@ internal object CoreTelemetryQuotedAuthHelpers {
             } else {
                 var wsEnd = i + BEARER_LEN
                 while (wsEnd < text.length && CoreTelemetryScanners.isSpace(text[wsEnd])) wsEnd++
-                i = advanceAfterBearerPrefix(text, i, wsEnd, inEscapedQuote, ranges)
+                i = advanceAfterBearerPrefix(text, i, wsEnd, inEscapedQuote, allowLiteralQuoted, ranges)
             }
         }
         return ranges
@@ -150,21 +164,50 @@ internal object CoreTelemetryQuotedAuthHelpers {
             CoreTelemetryScanners.isSpace(text[pos + BEARER_LEN])
     }
 
+    @Suppress("LongParameterList")
     private fun advanceAfterBearerPrefix(
         text: String,
         prefixStart: Int,
         wsEnd: Int,
         stopAtEscapedQuote: Boolean,
-        ranges: MutableList<Pair<Int, Int>>
+        allowLiteralQuoted: Boolean,
+        ranges: MutableList<BearerMatch>
     ): Int {
         if (wsEnd >= text.length) return text.length
-        if (isRedactedBearerPlaceholder(text, wsEnd, stopAtEscapedQuote)) return wsEnd + REDACTED_LEN
-        val tokEnd = scanBearerTokenEnd(text, wsEnd, stopAtEscapedQuote)
-        if (tokEnd > wsEnd) {
-            ranges += prefixStart to tokEnd
-            return tokEnd
+        val quotedNext = if (!stopAtEscapedQuote) tryScanQuotedBearerToken(text, wsEnd, allowLiteralQuoted, ranges) else -1
+        return when {
+            quotedNext >= 0 -> quotedNext
+            isRedactedBearerPlaceholder(text, wsEnd, stopAtEscapedQuote) -> wsEnd + REDACTED_LEN
+            else -> {
+                val tokEnd = scanBearerTokenEnd(text, wsEnd, stopAtEscapedQuote)
+                if (tokEnd > wsEnd) ranges += BearerMatch(prefixStart, tokEnd, redactedOnly = false)
+                if (tokEnd > wsEnd) tokEnd else wsEnd
+            }
         }
-        return wsEnd
+    }
+
+    private fun tryScanQuotedBearerToken(
+        text: String,
+        wsEnd: Int,
+        allowLiteralQuoted: Boolean,
+        ranges: MutableList<BearerMatch>
+    ): Int {
+        val openLen = if (allowLiteralQuoted && text[wsEnd] == '"') 1 else escapedDoubleQuoteLen(text, wsEnd)
+        if (openLen <= 0) return -1
+        val innerStart = wsEnd + openLen
+        val stopEsc = openLen > 1
+        if (isRedactedBearerPlaceholder(text, innerStart, stopEsc)) return innerStart + REDACTED_LEN
+        val innerEnd = scanBearerTokenEnd(text, innerStart, stopEsc)
+        val closeLen = if (openLen == 1) {
+            if (innerEnd < text.length && text[innerEnd] == '"') 1 else 0
+        } else {
+            escapedDoubleQuoteLen(text, innerEnd)
+        }
+        if (innerEnd > innerStart && (closeLen > 0 || openLen == 1)) {
+            ranges += BearerMatch(innerStart, innerEnd, redactedOnly = true)
+            return innerEnd + closeLen
+        }
+        return if (innerEnd == innerStart && closeLen > 0) innerEnd + closeLen else -1
     }
 
     private fun isBearerStopPunct(ch: Char): Boolean = ch in "\"',;)]}"
@@ -252,14 +295,17 @@ internal object CoreTelemetryQuotedAuthHelpers {
         if (!decoded.contains("bearer", ignoreCase = true)) return initialSb to initialCopied
         var sb = initialSb
         var copied = initialCopied
-        for ((mStart, mEnd) in findBearerTokenRanges(decoded)) {
-            val rawStart = rawOffsets[mStart]
-            val rawEnd = rawOffsets[mEnd]
+        for (match in findBearerTokenRanges(decoded, allowLiteralQuoted = true)) {
+            val rawStart = rawOffsets[match.start]
+            val rawEnd = rawOffsets[match.end]
             if (rawStart >= copied) {
                 val out = sb ?: StringBuilder(text.length).also { sb = it }
                 out.append(text, copied, rawStart)
-                    .append(decoded, mStart, mStart + BEARER_LEN)
-                    .append(" [redacted]")
+                if (match.redactedOnly) {
+                    out.append("[redacted]")
+                } else {
+                    out.append(decoded, match.start, match.start + BEARER_LEN).append(" [redacted]")
+                }
                 copied = rawEnd
             }
         }

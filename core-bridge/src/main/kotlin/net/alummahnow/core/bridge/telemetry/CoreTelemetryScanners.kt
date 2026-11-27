@@ -540,12 +540,18 @@ internal object CoreTelemetryScanners {
      * file:// URIs fail closed to the next vaulted URL or line break so unescaped apostrophes
      * inside filenames (e.g. "O' Connor") can never leak suffixes.
      */
-    fun fileUriSpanEnd(text: String, schemeEnd: Int, isDoubleQuoted: Boolean, vaultPrefix: String): Pair<Int, Int> {
+    fun fileUriSpanEnd(
+        text: String,
+        schemeEnd: Int,
+        isDoubleQuoted: Boolean,
+        vaultPrefix: String,
+        limit: Int = text.length
+    ): Pair<Int, Int> {
         var rawEnd = schemeEnd
         var stoppedAtVault = false
         var escapedBackslash = false
         var done = false
-        while (rawEnd < text.length && !done) {
+        while (rawEnd < limit && !done) {
             val ch = text[rawEnd]
             val atVault = ch == '\u001E' && text.regionMatches(rawEnd, vaultPrefix, 0, vaultPrefix.length)
             if (ch == '\r' || ch == '\n' || atVault) {

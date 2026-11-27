@@ -867,8 +867,14 @@ class CoreTelemetryService(
                             quoteSpans = CoreTelemetryQuotedPathRedactor.collectBalancedDoubleQuoteSpans(text)
                         }
                     }
-                    val isDoubleQuoted = isDoubleQuotedFileUri(text, pos, quoteSpans, spanCursor)
-                    val (rawEnd, trimmedEnd) = CoreTelemetryScanners.fileUriSpanEnd(text, pos + schemeLen, isDoubleQuoted, vaultPrefix)
+                    val (isDoubleQuoted, scanLimit) = resolveFileUriQuoteBounds(text, pos, quoteSpans, spanCursor)
+                    val (rawEnd, trimmedEnd) = CoreTelemetryScanners.fileUriSpanEnd(
+                        text,
+                        pos + schemeLen,
+                        isDoubleQuoted,
+                        vaultPrefix,
+                        scanLimit
+                    )
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copyStart, pos).append("[redacted-path]").append(text, trimmedEnd, rawEnd)
                     copyStart = rawEnd
@@ -881,18 +887,36 @@ class CoreTelemetryService(
             return out.append(text, copyStart, text.length).toString()
         }
 
-        private fun isDoubleQuotedFileUri(
+        private fun resolveFileUriQuoteBounds(
             text: String,
             pos: Int,
             spans: List<CoreTelemetryQuotedPathRedactor.QuotedPathSpan>?,
             spanCursor: IntArray
-        ): Boolean {
-            if (pos > 0 && text[pos - 1] == '"') return true
-            if (spans == null) return false
+        ): Pair<Boolean, Int> {
+            val inSpan = findEnclosingQuoteSpan(pos, spans, spanCursor)
+            if (inSpan != null) {
+                val innerClose = CoreTelemetryQuotedPathRedactor.findInnerEscapedQuoteClose(
+                    text,
+                    pos,
+                    inSpan.open + 1,
+                    inSpan.close
+                )
+                return true to (if (innerClose >= 0) innerClose else text.length)
+            }
+            return (pos > 0 && text[pos - 1] == '"') to text.length
+        }
+
+        private fun findEnclosingQuoteSpan(
+            pos: Int,
+            spans: List<CoreTelemetryQuotedPathRedactor.QuotedPathSpan>?,
+            spanCursor: IntArray
+        ): CoreTelemetryQuotedPathRedactor.QuotedPathSpan? {
+            if (spans == null) return null
             var idx = spanCursor[0]
             while (idx < spans.size && spans[idx].close <= pos) idx++
             spanCursor[0] = idx
-            return idx < spans.size && spans[idx].open < pos && pos < spans[idx].close
+            val candidate = if (idx < spans.size) spans[idx] else null
+            return if (candidate != null && candidate.open < pos && pos < candidate.close) candidate else null
         }
 
         private fun vaultNonFileUrls(text: String, prefix: String): Pair<String, List<String>> {

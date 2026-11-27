@@ -495,7 +495,16 @@ class CoreTelemetryUrlContinuationTest {
             "\"Authorization\\u003dsecret\"" to "\"Authorization\\u003d[redacted]\"",
             "headers=\"Authorization\\u003a opaqueSecret123\"" to "headers=\"Authorization\\u003a [redacted]\"",
             "headers=\"Authorization\\u003d opaqueSecret123\" status=ok" to
-                "headers=\"Authorization\\u003d [redacted]\" status=ok",
+                "headers=\"Authorization\\u003d [redacted]\" status=ok"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scrubs cookies escaped header dumps tuples quoted bearer and file uri boundaries`() {
+        val cases = listOf(
             "received (\"Authorization\\u003a opaqueSecret123\")" to "received (\"Authorization\\u003a [redacted]\")",
             "Authorization\\u003a opaqueSecret123" to "[redacted-path]",
             "{\"msg\":\"Basic YWI6\\u00632VjcmV0\"}" to "{\"msg\":\"Basic [redacted]\"}",
@@ -510,7 +519,26 @@ class CoreTelemetryUrlContinuationTest {
                 "{\"Cookie\":\"[redacted]\",\"status\":\"ok\"}",
             "{\"m\":\"\\\"Bearer opaqueSecret123\\\"tail\",\"next\":1}" to
                 "{\"m\":\"\\\"Bearer [redacted]\\\"tail\",\"next\":1}",
-            "{\"m\":\"Bearer secret\\nX-Public: ok\"}" to "{\"m\":\"Bearer [redacted]\\nX-Public: ok\"}"
+            "{\"m\":\"Bearer secret\\nX-Public: ok\"}" to "{\"m\":\"Bearer [redacted]\\nX-Public: ok\"}",
+            "{\"Cookie \":\"session=opaqueSecret123\"}" to "{\"Cookie \":\"[redacted]\"}",
+            "{\"Cookie\\t\":\"opaqueSecret123\"}" to "{\"Cookie\":\"[redacted]\"}",
+            "[[\"Cookie\",\"session=opaqueSecret123\"]]" to "[[\"Cookie\",\"[redacted]\"]]",
+            "[[\"Cookie\\t\",\"opaqueSecret123\"]]" to "[[\"Cookie\",\"[redacted]\"]]",
+            "[[\"Authorization\",\"opaqueSecret123\"]]" to "[[\"Authorization\",\"[redacted]\"]]",
+            "[\"Authorization\",\"Cookie\",\"Accept\"]" to "[\"Authorization\",\"Cookie\",\"Accept\"]",
+            "{\\\"Authorization\\\":\\\"opaqueSecret123\\\"}" to "{\\\"Authorization\\\":\\\"[redacted]\\\"}",
+            "{\\\"Cookie\\\":\\\"opaqueSecret123\\\"}" to "{\\\"Cookie\\\":\\\"[redacted]\\\"}",
+            "{\\\"Authorization\\\":[123456789]}" to "{\\\"Authorization\\\":[\\\"[redacted]\\\"]}",
+            "{\\\"Authorization\\\":123456789,\\\"next\\\":1}" to "{\\\"Authorization\\\":\\\"[redacted]\\\",\\\"next\\\":1}",
+            "{\\\"Authorization\\\":{\\\"token\\\":\\\"secret\\\"},\\\"next\\\":1}" to
+                "{\\\"Authorization\\\":\\\"[redacted]\\\",\\\"next\\\":1}",
+            "{\"m\":\"auth = {\\\"a\\\":1,\\\"Cookie\\\":\\\"opaqueSecret123\\\"}; next\",\"next\":1}" to
+                "{\"m\":\"auth = {\\\"a\\\":1,\\\"Cookie\\\":\\\"[redacted]\\\"}; next\",\"next\":1}",
+            "{\"m\":\"Bearer \\\"opaqueSecret123\\\"tail\",\"next\":1}" to
+                "{\"m\":\"Bearer \\\"[redacted]\\\"tail\",\"next\":1}",
+            "{\"a\":\"Bearer \",\"b\":\"safe\"}" to "{\"a\":\"Bearer \",\"b\":\"safe\"}",
+            "{\"m\":\"literal=\\\"file:///tmp/private.mov\\\"tail\",\"next\":1}" to
+                "{\"m\":\"literal=\\\"[redacted-path]\\\"tail\",\"next\":1}"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))

@@ -93,6 +93,11 @@ internal object CoreTelemetryQuotedPathRedactor {
         return sb to copied
     }
 
+    fun findInnerEscapedQuoteClose(text: String, pathPos: Int, minPos: Int, segEnd: Int): Int {
+        if (!isPrecededByEscapedQuote(text, pathPos, minPos)) return -1
+        return findClosingEscapedQuote(text, pathPos, segEnd)?.first ?: -1
+    }
+
     private fun isPrecededByEscapedQuote(text: String, pos: Int, minPos: Int): Boolean {
         val simple = pos - 2 >= minPos && text[pos - 2] == '\\' && text[pos - 1] == '"'
         if (simple && !isOddBackslashesBefore(text, pos - 2, minPos)) return true
