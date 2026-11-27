@@ -19,6 +19,7 @@ import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.NullTelemetryService
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.core.bridge.telemetry.TelemetryService
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.integrity.PlayIntegrityTokenSource
 
 /** What the Admin UI needs. Tests pass fixtures (no network, no pushes, no AI). */
@@ -69,8 +70,9 @@ class AdminContainer(context: Context) : AdminServices {
             bufferPath = File(context.applicationContext.noBackupFilesDir, "admin-telemetry-buffer.json").absolutePath,
             initialEnabled = initialEnabled
         ).also { service ->
-            if (initialEnabled && service.consent == TelemetryConsent.OFF) {
-                prefs.setTelemetryEnabled(false)
+            if (initialEnabled && service.consent == TelemetryConsent.OFF && !prefs.setTelemetryEnabled(false)) {
+                prefs.setTelemetrySaveUncertain(true)
+                prefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_disable_error)
             }
             CoreTelemetryService.installUncaughtExceptionHandler(service)
         }

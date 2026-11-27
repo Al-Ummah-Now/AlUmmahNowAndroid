@@ -14,6 +14,7 @@ import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.NullTelemetryService
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.core.bridge.telemetry.TelemetryService
+import net.alummahnow.design.R as DesignR
 
 /** What the app's screens need. [AppContainer] is the real one; tests hand in fakes. */
 interface ViewerContainer {
@@ -47,8 +48,9 @@ class AppContainer(context: Context) : ViewerContainer {
             bufferPath = File(context.applicationContext.noBackupFilesDir, "viewer-telemetry-buffer.json").absolutePath,
             initialEnabled = initialEnabled
         ).also { service ->
-            if (initialEnabled && service.consent == TelemetryConsent.OFF) {
-                displayPrefs.setTelemetryEnabled(false)
+            if (initialEnabled && service.consent == TelemetryConsent.OFF && !displayPrefs.setTelemetryEnabled(false)) {
+                displayPrefs.setTelemetrySaveUncertain(true)
+                displayPrefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_disable_error)
             }
         }
     }

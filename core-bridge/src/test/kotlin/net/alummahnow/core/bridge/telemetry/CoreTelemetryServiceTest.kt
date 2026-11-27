@@ -290,11 +290,29 @@ class CoreTelemetryServiceTest {
             "https://example.com/a([redacted-path])",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/a(/storage/PrivateProject)")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts quoted file uris apostrophes and backslash paths`() {
         assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/User's Private Project'"))
+        assertEquals("'[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/O'Brien Secret"))
         assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/Artists' Private Project'"))
         assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/Project'2 Secret'"))
+        assertEquals(
+            "\"[redacted-path]\" progress \"done\"",
+            CoreTelemetryService.sanitizeLocalPaths("\"file:///tmp/Secret\" progress \"done\"")
+        )
+        assertEquals(
+            "'[redacted-path]' progress 1/2 '[redacted-path]'",
+            CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/a' progress 1/2 'file:///tmp/b'")
+        )
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2's Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2' Acquisition.qzx'"))
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 'Private Acquisition.qzx'"))
+        assertEquals(
+            "status \"ready; detail [redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("status \"ready; detail \"Private Project.qzx\"")
+        )
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("private]folder\\secret"))
         assertEquals(
             "progress 1/2. (https://example.com/api)",
@@ -344,6 +362,10 @@ class CoreTelemetryServiceTest {
         assertTrue(CoreTelemetryService.sanitizeLocalPaths(repeatedBrackets).contains("[redacted-path]"))
         val longQuotedFile = "'" + "b".repeat(100_000) + ".pdf'"
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(longQuotedFile))
+        val repeatedClosers = "x.qzx' ".repeat(20_000)
+        assertEquals(repeatedClosers, CoreTelemetryService.sanitizeLocalPaths(repeatedClosers))
+        val embeddedQueries = "/tmp;" + "https://host?x;".repeat(5_000)
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(embeddedQueries))
     }
 
     @Test

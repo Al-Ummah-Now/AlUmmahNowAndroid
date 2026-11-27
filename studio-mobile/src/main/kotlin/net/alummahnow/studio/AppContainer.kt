@@ -102,13 +102,15 @@ class AppContainer(context: Context) : StudioContainer {
         initialEnabled = initialTelemetryEnabled
     )
 
-    private val telemetryEnabledState = MutableStateFlow(
-        (initialTelemetryEnabled && telemetry.consent != TelemetryConsent.OFF).also { active ->
-            if (initialTelemetryEnabled && !active) telemetryConsentStore.setEnabled(false)
-        }
+    private val startupClearFailed = initialTelemetryEnabled &&
+        telemetry.consent == TelemetryConsent.OFF &&
+        !telemetryConsentStore.setEnabled(false)
+
+    private val telemetryEnabledState = MutableStateFlow(initialTelemetryEnabled && telemetry.consent != TelemetryConsent.OFF)
+    private val telemetrySaveFailedState = MutableStateFlow(startupClearFailed)
+    private val telemetryWarningResState = MutableStateFlow<Int?>(
+        if (startupClearFailed) DesignR.string.aun_diagnostics_disable_error else null
     )
-    private val telemetrySaveFailedState = MutableStateFlow(false)
-    private val telemetryWarningResState = MutableStateFlow<Int?>(null)
 
     override val telemetryEnabledFlow: StateFlow<Boolean> = telemetryEnabledState.asStateFlow()
     override val telemetrySaveFailedFlow: StateFlow<Boolean> = telemetrySaveFailedState.asStateFlow()

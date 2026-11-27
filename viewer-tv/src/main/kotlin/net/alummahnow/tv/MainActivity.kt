@@ -133,8 +133,12 @@ class MainActivity : ComponentActivity() {
                         initialEnabled = initialEnabled
                     ).also { service ->
                         val active = initialEnabled && service.consent != TelemetryConsent.OFF
-                        if (initialEnabled && !active) consentStore.setEnabled(false)
+                        val clearFailed = initialEnabled && !active && !consentStore.setEnabled(false)
                         telemetryEnabledState.value = active
+                        if (clearFailed) {
+                            telemetrySaveUncertainState.value = true
+                            telemetryWarningResState.value = DesignR.string.aun_diagnostics_disable_error
+                        }
                         telemetryInstance = service
                         CoreTelemetryService.installUncaughtExceptionHandler(service)
                     }

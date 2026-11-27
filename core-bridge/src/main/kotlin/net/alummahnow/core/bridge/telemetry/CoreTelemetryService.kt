@@ -383,11 +383,11 @@ class CoreTelemetryService(
             "kt", "java", "swift", "cs", "cpp", "cc", "c", "h", "hpp", "rs", "py", "js", "ts", "go", "rb", "m", "mm"
         )
         private val keywordQuotedPathRegex = Regex(
-            """(\b(?:file|path|directory|folder|document)[^\S\r\n]+)(['"])(?!\u001E)[^'"\r\n]+\2""",
+            """(\b(?:file|path|directory|folder|document)[ \t\p{Zs}]+)(['"])(?!\u001E)[^'"\r\n]+\2""",
             RegexOption.IGNORE_CASE
         )
         private val keywordFilenamePrefixRegex = Regex(
-            """\b(?:$IO_KEYWORD_VERBS)\b(?:[^\S\r\n]*[:=][^\S\r\n]*|[^\S\r\n]+)""",
+            """\b(?:$IO_KEYWORD_VERBS)\b(?:[ \t\p{Zs}]*[:=][ \t\p{Zs}]*|[ \t\p{Zs}]+)""",
             RegexOption.IGNORE_CASE
         )
         private val preKeywordPathRules: List<Pair<Regex, String>> = listOf(
@@ -398,22 +398,23 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]$2",
             Regex(
-                """(?:[A-Za-z]:[\\/]|\\\\)[^\S\r\n]*[^\r\n\u001E\s]+(?:[^\S\r\n]+[^\r\n\u001E\s]+)*""",
+                """(?:[A-Za-z]:[\\/]|\\\\)[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\s\p{Zs}]+)*""",
                 RegexOption.IGNORE_CASE
             ) to "[redacted-path]",
             Regex(
                 """(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>()\[{:,;=\u001E\u001F]+\\""" +
-                    """[^\r\n\u001E\u001F\s]+(?:[^\S\r\n]+[^\r\n\u001E\u001F\s]+)*"""
+                    """[^\r\n\u001E\u001F\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\u001F\s\p{Zs}]+)*"""
             ) to "$1[redacted-path]",
             Regex("""["']/[ \t]+[^\r\n\u001E]+""") to "[redacted-path]",
             Regex(
                 """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|//+(?=[ \t]*[^\s/])|/(?=[ \t]*[^\s/]))""" +
-                    """[^\S\r\n]*[^\r\n\u001E\s]+(?:[^\S\r\n]+[^\r\n\u001E\s]+)*"""
+                    """[ \t\p{Zs}]*[^\r\n\u001E\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\s\p{Zs}]+)*"""
             ) to "[redacted-path]",
             Regex(
                 """(^|[\s(\[{"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
-                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s]+(?:[^\S\r\n]+[^\r\n\u001E\u001F\s]+)*""",
+                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/""" +
+                    """[^\r\n\u001E\u001F\s\p{Zs}]+(?:[ \t\p{Zs}]+[^\r\n\u001E\u001F\s\p{Zs}]+)*""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]"
         )
@@ -821,8 +822,13 @@ class CoreTelemetryService(
             while (searchFrom < text.length) {
                 val sep = text.indexOf("://", searchFrom)
                 if (sep < 0) break
-                val span = CoreTelemetryScanners.scanNonFileUrl(text, sep, copied)
-                if (span == null || tracker.isEmbeddedInPath(text, span.start)) {
+                val start = CoreTelemetryScanners.findNonFileSchemeStart(text, sep, copied)
+                val span = if (start != null && !tracker.isEmbeddedInPath(text, start)) {
+                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep)
+                } else {
+                    null
+                }
+                if (span == null) {
                     searchFrom = sep + 3
                 } else {
                     val (url, tail) = formatVaultedUrl(span, text)

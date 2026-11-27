@@ -25,8 +25,16 @@ internal object CoreTelemetryScanners {
 
     internal data class UrlSpan(val start: Int, val baseEnd: Int, val totalEnd: Int, val hasQf: Boolean)
 
-    fun scanNonFileUrl(text: String, sep: Int, minStart: Int): UrlSpan? {
-        val start = findSchemeStart(text, sep, minStart) ?: return null
+    fun findNonFileSchemeStart(text: String, sep: Int, minStart: Int): Int? {
+        var start = sep
+        while (start > minStart && isUrlSchemeChar(text[start - 1])) start--
+        val validPrefix = sep - start >= 2 && isAsciiLetter(text[start])
+        val prevBlocked = start > 0 && isBlockedBeforeScheme(text[start - 1])
+        val isFile = sep - start == 4 && text.regionMatches(start, "file", 0, 4, ignoreCase = true)
+        return if (validPrefix && !prevBlocked && !isFile) start else null
+    }
+
+    fun scanUrlAfterScheme(text: String, start: Int, sep: Int): UrlSpan? {
         val afterHost = scanUrlHost(text, sep + SCHEME_SEP_LEN) ?: return null
         val afterPort = scanOptionalPort(text, afterHost) ?: return null
         val (baseEnd, truncated) = if (afterPort < text.length && text[afterPort] == '/') {
@@ -38,15 +46,6 @@ internal object CoreTelemetryScanners {
         val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd) else baseEnd
         val boundaryOk = totalEnd == text.length || isUrlEndBoundary(text, totalEnd)
         return if (boundaryOk) UrlSpan(start, baseEnd, totalEnd, startsQf) else null
-    }
-
-    private fun findSchemeStart(text: String, sep: Int, minStart: Int): Int? {
-        var start = sep
-        while (start > minStart && isUrlSchemeChar(text[start - 1])) start--
-        val validPrefix = sep - start >= 2 && isAsciiLetter(text[start])
-        val prevBlocked = start > 0 && isBlockedBeforeScheme(text[start - 1])
-        val isFile = sep - start == 4 && text.regionMatches(start, "file", 0, 4, ignoreCase = true)
-        return if (validPrefix && !prevBlocked && !isFile) start else null
     }
 
     private fun isBlockedBeforeScheme(ch: Char): Boolean =
@@ -199,8 +198,10 @@ internal object CoreTelemetryScanners {
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, i).append("[redacted-path]")
                     copied = close + 1
+                    i = close + 1
+                } else {
+                    i = if (close < text.length && text[close] == '"') close else close + 1
                 }
-                i = if (close < text.length && text[close] == '"') close + 1 else close
             }
         }
         val out = sb ?: return text
@@ -239,28 +240,28 @@ internal object CoreTelemetryScanners {
         onMatch: (Int, Int) -> Unit
     ): Int {
         var copied = initialCopied
-        var minOpen = maxOf(segStart, copied)
-        for (close in segStart + 1 until segEnd) {
-            if (text[close] == '\'' && endsWithFilenameExt(text, minOpen, close)) {
-                val open = findOpeningSingleQuote(text, segStart, minOpen, close)
-                if (open >= minOpen && endsWithFilenameExt(text, open + 1, close)) {
-                    onMatch(open, close)
-                    copied = close + 1
-                    minOpen = copied
+        var open = -1
+        var candidateClose = -1
+        for (pos in segStart until segEnd) {
+            if (text[pos] != '\'') continue
+            val isOpener = pos == segStart || !text[pos - 1].isLetterOrDigit()
+            if (isOpener) {
+                if (open < 0 || candidateClose >= 0) {
+                    open = pos
+                    candidateClose = -1
+                }
+            } else if (open >= 0) {
+                if (endsWithFilenameExt(text, open + 1, pos)) {
+                    onMatch(open, pos)
+                    copied = pos + 1
+                    open = -1
+                    candidateClose = -1
+                } else if (pos + 1 == segEnd || !text[pos + 1].isLetterOrDigit()) {
+                    candidateClose = pos
                 }
             }
         }
         return copied
-    }
-
-    private fun findOpeningSingleQuote(text: String, segStart: Int, minOpen: Int, close: Int): Int {
-        var open = close - 1
-        while (open >= minOpen) {
-            val isOpener = text[open] == '\'' && (open == segStart || !text[open - 1].isLetterOrDigit())
-            if (isOpener) break
-            open--
-        }
-        return open
     }
 
     private fun isQuotedSegStop(ch: Char): Boolean = ch in QUOTED_SEG_STOP
@@ -278,28 +279,50 @@ internal object CoreTelemetryScanners {
         var rawEnd = schemeEnd
         var stoppedAtVault = false
         var escapedBackslash = false
-        var lastQuotePos = -1
-        while (rawEnd < text.length) {
+        var candidateClose = -1
+        var done = false
+        while (rawEnd < text.length && !done) {
             val ch = text[rawEnd]
             val atVault = ch == '\u001E' && text.regionMatches(rawEnd, vaultPrefix, 0, vaultPrefix.length)
             if (ch == '\r' || ch == '\n' || atVault) {
                 stoppedAtVault = atVault
-                break
+                done = true
+            } else {
+                if (quote != '\u0000' && ch == quote && !escapedBackslash) {
+                    val nextClose = evaluateFileUriQuote(text, rawEnd, schemeEnd, quote, candidateClose)
+                    if (nextClose >= 0) candidateClose = nextClose
+                    done = nextClose == -2 || quote == '"'
+                }
+                if (!done) {
+                    escapedBackslash = if (ch == '\\') !escapedBackslash else false
+                    rawEnd++
+                }
             }
-            if (quote != '\u0000' && ch == quote && !escapedBackslash) lastQuotePos = rawEnd
-            escapedBackslash = if (ch == '\\') !escapedBackslash else false
-            rawEnd++
         }
-        if (lastQuotePos >= 0) return lastQuotePos to lastQuotePos
+        if (candidateClose >= 0) return candidateClose to candidateClose
         val trimmedEnd = if (stoppedAtVault) trimFileUriTail(text, schemeEnd, rawEnd) else rawEnd
         return rawEnd to trimmedEnd
+    }
+
+    private fun evaluateFileUriQuote(
+        text: String,
+        pos: Int,
+        schemeEnd: Int,
+        quote: Char,
+        candidateClose: Int
+    ): Int {
+        if (quote == '"') return pos
+        val opensNewQuote = candidateClose >= 0 && pos > schemeEnd && !text[pos - 1].isLetterOrDigit()
+        if (opensNewQuote) return -2
+        val canClose = pos + 1 == text.length || !text[pos + 1].isLetterOrDigit()
+        return if (canClose) pos else -1
     }
 
     private fun trimFileUriTail(text: String, schemeEnd: Int, rawEnd: Int): Int {
         var trimmedEnd = rawEnd
         while (trimmedEnd > schemeEnd) {
             val prev = text[trimmedEnd - 1]
-            if (isOpeningWrapper(prev) || prev.isWhitespace()) trimmedEnd-- else break
+            if (isOpeningWrapper(prev) || isSpace(prev)) trimmedEnd-- else break
         }
         return trimmedEnd
     }
@@ -390,6 +413,8 @@ internal object CoreTelemetryScanners {
     fun isOpeningWrapper(ch: Char): Boolean = ch in OPENING_WRAPPERS
 
     fun isPathSep(ch: Char): Boolean = ch == '/' || ch == '\\'
+
+    fun isSpace(ch: Char): Boolean = ch.isWhitespace() || Character.isSpaceChar(ch)
 
     fun isAsciiLetter(ch: Char): Boolean = ch in 'A'..'Z' || ch in 'a'..'z'
 
