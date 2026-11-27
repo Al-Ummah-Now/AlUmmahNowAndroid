@@ -269,7 +269,7 @@ class CoreTelemetryAuthSanitizerTest {
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2' Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 'Private Acquisition.qzx'"))
         assertEquals(
-            "status \"ready; detail [redacted-path]",
+            "status \"ready; detail \"[redacted-path]\"",
             CoreTelemetryService.sanitizeLocalPaths("status \"ready; detail \"Private Project.qzx\"")
         )
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("private]folder\\secret"))

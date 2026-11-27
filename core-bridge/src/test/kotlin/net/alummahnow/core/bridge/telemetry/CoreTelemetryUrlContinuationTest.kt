@@ -252,7 +252,19 @@ class CoreTelemetryUrlContinuationTest {
             "https://example.com/api?token=first\\\"opaqueSecret123" to
                 "https://example.com/api?[redacted]",
             "[\"see \\\"example https://example.com/api?token=first\\\",opaqueSecret123\"]" to
-                "[\"see \\\"example https://example.com/api?[redacted]\"]"
+                "[\"see \\\"example https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/api?token=first\\\">opaqueSecret123\"]" to
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/api?token=first<opaqueSecret123\",\"public\"]" to
+                "[\"https://example.com/api?[redacted]\",\"public\"]",
+            "[\"https://example.com/api(x)?token=first<opaqueSecret123\",\"public\"]" to
+                "[\"https://example.com/api(x)?[redacted]\",\"public\"]",
+            "[\"see <https://example.com/api?token=secret> public\"]" to
+                "[\"see <https://example.com/api?[redacted]> public\"]",
+            "[\"Acquisition.mov\"]" to "[\"[redacted-path]\"]",
+            "[\"report.pdf\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
+            "[\"https://example.com/api?token=opaqueSecret123\",\"Quarterly Report.pdf\"]" to
+                "[\"https://example.com/api?[redacted]\",\"[redacted-path]\"]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))

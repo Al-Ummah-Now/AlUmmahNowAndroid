@@ -37,7 +37,12 @@ internal object CoreTelemetryScanners {
         return if (validPrefix && !prevBlocked && !isFile) start else null
     }
 
-    fun scanUrlAfterScheme(text: String, start: Int, sep: Int): UrlSpan? {
+    fun scanUrlAfterScheme(
+        text: String,
+        start: Int,
+        sep: Int,
+        allowAngleBrackets: Boolean = false
+    ): UrlSpan? {
         val afterHost = scanUrlHost(text, sep + SCHEME_SEP_LEN) ?: return null
         val afterPort = scanOptionalPort(text, afterHost) ?: return null
         val (baseEnd, truncated) = if (afterPort < text.length && text[afterPort] == '/') {
@@ -46,7 +51,7 @@ internal object CoreTelemetryScanners {
             afterPort to false
         }
         val startsQf = !truncated && baseEnd < text.length && (text[baseEnd] == '?' || text[baseEnd] == '#')
-        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd) else baseEnd
+        val totalEnd = if (startsQf) scanQueryOrFragment(text, baseEnd, allowAngleBrackets) else baseEnd
         val boundaryOk = totalEnd == text.length || isUrlEndBoundary(text, totalEnd)
         return if (boundaryOk) UrlSpan(start, baseEnd, totalEnd, startsQf) else null
     }
@@ -455,12 +460,13 @@ internal object CoreTelemetryScanners {
         return text[nextPos] == ':' || startsEmbeddedFilesystemPath(text, nextPos)
     }
 
-    fun scanQueryOrFragment(text: String, start: Int): Int {
+    fun scanQueryOrFragment(text: String, start: Int, allowAngleBrackets: Boolean = false): Int {
         var p = start + 1
         var stopped = false
         while (p < text.length && !stopped) {
             val ch = text[p]
-            if (ch.isWhitespace() || ch == '<' || ch == '>') {
+            val isAngleStop = !allowAngleBrackets && (ch == '<' || ch == '>')
+            if (ch.isWhitespace() || isAngleStop) {
                 stopped = true
             } else if (ch == '"' && isUnescapedQueryQuote(text, start, p)) {
                 stopped = true
@@ -502,7 +508,7 @@ internal object CoreTelemetryScanners {
                 val matched = close < text.length && text[close] == '"' && !followedByEmailAt && endsWithFilenameExt(text, i + 1, close)
                 if (matched) {
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
-                    out.append(text, copied, i).append("[redacted-path]")
+                    out.append(text, copied, i).append("\"[redacted-path]\"")
                     copied = close + 1
                     i = close + 1
                 } else {

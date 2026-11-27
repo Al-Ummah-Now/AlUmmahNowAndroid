@@ -154,7 +154,8 @@ internal object CoreTelemetryUrlContinuation {
         val span = ctx.input.span
         val hasNext = ctx.pathEnd > span.totalEnd && ctx.pathEnd < text.length
         if (!hasNext || (text[ctx.pathEnd] != '?' && text[ctx.pathEnd] != '#')) return null
-        val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, ctx.pathEnd)
+        val allowAngles = ctx.input.inDoubleQuote && (span.start == 0 || text[span.start - 1] != '<')
+        val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, ctx.pathEnd, allowAngles)
         val (cleanQf, qfTail) = trimQueryOrFragmentDelimiters(
             text.substring(ctx.pathEnd, qfEnd),
             text,

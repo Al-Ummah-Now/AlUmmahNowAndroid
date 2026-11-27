@@ -895,6 +895,7 @@ class CoreTelemetryService(
             var sb: StringBuilder? = null
             var copied = 0
             var searchFrom = 0
+            var quoteCursor = 0
             var quoteState = 0
             val contLimits = IntArray(3)
             while (searchFrom < text.length) {
@@ -902,14 +903,18 @@ class CoreTelemetryService(
                 if (sep < 0) break
                 val start = CoreTelemetryScanners.findNonFileSchemeStart(text, sep, copied)
                 val span = if (start != null && !tracker.isEmbeddedInPath(text, start)) {
-                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep)
+                    if (start > quoteCursor) {
+                        quoteState = cont.advanceQuoteState(text, quoteCursor, start, quoteState)
+                        quoteCursor = start
+                    }
+                    val allowAngles = allowQuotedAngleBrackets(text, start, quoteState)
+                    CoreTelemetryScanners.scanUrlAfterScheme(text, start, sep, allowAngles)
                 } else {
                     null
                 }
                 if (span == null) {
                     searchFrom = sep + 3
                 } else {
-                    quoteState = cont.advanceQuoteState(text, copied, span.start, quoteState)
                     val (url, baseTail) = cont.formatVaultedUrl(span, text, (quoteState and 1) != 0)
                     val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
                     val rawUrl = text.substring(span.start, span.baseEnd)
@@ -934,12 +939,16 @@ class CoreTelemetryService(
                     quoteState = cont.advanceQuoteState(finalTail, 0, finalTail.length, quoteState)
                     tracker.onVaultedUrl(endPos)
                     copied = endPos
+                    quoteCursor = endPos
                     searchFrom = endPos
                 }
             }
             val out = sb ?: return text
             return out.append(text, copied, text.length).toString()
         }
+
+        private fun allowQuotedAngleBrackets(text: String, start: Int, quoteState: Int): Boolean =
+            (quoteState and 2) != 0 && (start == 0 || text[start - 1] != '<')
 
         private fun restoreVaultedUrls(text: String, prefix: String, vaultedUrls: List<String>): String {
             if (vaultedUrls.isEmpty()) return text
