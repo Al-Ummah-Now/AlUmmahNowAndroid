@@ -334,10 +334,12 @@ class CoreTelemetryServiceTest {
         assertEquals("\"([redacted-path]", CoreTelemetryService.sanitizeLocalPaths("\"(relative/Client) Acquisition Plan\""))
         assertEquals(
             "Failed for [redacted-email], [redacted-email], [redacted-email], 「[redacted-email]」, " +
-                "[redacted-email], [redacted-email], [redacted-email], [redacted-email], '[redacted-email]",
+                "[redacted-email], [redacted-email], [redacted-email], [redacted-email], " +
+                "'[redacted-email], [redacted-email], [redacted-email], [redacted-email]",
             CoreTelemetryService.sanitizeLocalPaths(
                 "Failed for 李@example.com, محمد@مثال.مصر, user@bücher.example, 「李·明@例え.jp」, " +
-                    "李@例え.xn--p1ai, 李!明@example.com, mary'ann@example.com, 李·明@example.com, 'o'brien@example.com"
+                    "李@例え.xn--p1ai, 李!明@example.com, mary'ann@example.com, 李·明@example.com, " +
+                    "'o'brien@example.com, {@example.com, 李，@example.com, 李，明@example.com"
             )
         )
         assertEquals(

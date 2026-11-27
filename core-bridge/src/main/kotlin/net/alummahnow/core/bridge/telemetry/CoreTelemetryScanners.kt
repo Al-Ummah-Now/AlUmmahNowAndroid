@@ -14,12 +14,9 @@ internal object CoreTelemetryScanners {
     private const val MIN_TLD_LEN = 2
     private const val MIN_PUNYCODE_TLD_LEN = 6
     private const val EMAIL_LOCAL_PUNCT = "._+-!#$&'*^`{|}~"
-    private const val NON_ASCII_EMAIL_STOPS = "\u3001\u3002\uFF0C\uFF1B\uFF1A\u060C\u061B"
-    private val NON_ASCII_EMAIL_STOP_CATEGORIES = setOf(
+    private val LEADING_UNICODE_WRAPPER_CATEGORIES = setOf(
         Character.START_PUNCTUATION,
-        Character.END_PUNCTUATION,
-        Character.INITIAL_QUOTE_PUNCTUATION,
-        Character.FINAL_QUOTE_PUNCTUATION
+        Character.INITIAL_QUOTE_PUNCTUATION
     )
     private const val URL_HOST_PUNCT = "._~!$&'*+;=-"
     private const val URL_PATH_STOP = "\"<>\\{},?#\r\n"
@@ -357,8 +354,15 @@ internal object CoreTelemetryScanners {
     private fun scanEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
         var localStart = atPos
         while (localStart > minPos && isEmailLocalChar(text, localStart - 1)) localStart--
-        while (localStart < atPos && text[localStart] in "'{}") localStart++
-        return localStart
+        var trimmedStart = localStart
+        while (trimmedStart < atPos && isEmailLeadingWrapper(text[trimmedStart])) trimmedStart++
+        return if (trimmedStart < atPos) trimmedStart else localStart
+    }
+
+    private fun isEmailLeadingWrapper(ch: Char): Boolean {
+        if (ch in "'{}") return true
+        if (ch.code < 0x80 || ch.isSurrogate()) return false
+        return Character.getType(ch).toByte() in LEADING_UNICODE_WRAPPER_CATEGORIES
     }
 
     private fun isUnicodeCombiningMark(ch: Char): Boolean {
@@ -371,8 +375,7 @@ internal object CoreTelemetryScanners {
     private fun isNonAsciiEmailLocalChar(ch: Char): Boolean {
         if (ch.code < 0x80) return false
         if (ch.isSurrogate()) return true
-        val blocked = isSpace(ch) || Character.isISOControl(ch) || ch in NON_ASCII_EMAIL_STOPS
-        return !blocked && Character.getType(ch).toByte() !in NON_ASCII_EMAIL_STOP_CATEGORIES
+        return !isSpace(ch) && !Character.isISOControl(ch)
     }
 
     private fun isEmailLocalChar(text: String, pos: Int): Boolean {
