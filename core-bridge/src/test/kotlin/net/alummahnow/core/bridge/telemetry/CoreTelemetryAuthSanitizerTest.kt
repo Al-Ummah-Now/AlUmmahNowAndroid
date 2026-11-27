@@ -97,6 +97,26 @@ class CoreTelemetryAuthSanitizerTest {
             "{\"Authorization\":null,\"status\":\"safe\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":null,\"status\":\"safe\"}")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts JSON object auth values and non-JSON quoted keys`() {
+        assertEquals(
+            "\"Authorization\": \"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("\"Authorization\": \"firstValue\" ]opaqueSecret123")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\",\"status\":\"safe\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":{\"token\":\"secret\"},\"status\":\"safe\"}")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\",\"status\":\"safe\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":{\n\"token\":\"opaqueSecret123\"\n},\"status\":\"safe\"}")
+        )
+        assertEquals(
+            "{\"Authorization\":[\"[redacted]\"],\"status\":\"safe\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":[{\"token\":\"start],opaqueSecret123\"}],\"status\":\"safe\"}")
+        )
         assertEquals(
             "Authorization: [[redacted]]\r\nNextHeader: safe",
             CoreTelemetryService.sanitizeLocalPaths("Authorization: [firstValue]\r\nNextHeader: safe")
