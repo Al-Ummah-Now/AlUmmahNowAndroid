@@ -526,16 +526,16 @@ class CoreTelemetryService(
                 redactFileUris(vaulted, VAULT_PREFIX)
             )
             for (regex in parenPathRegexes) {
-                scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
+                scrubbed = CoreTelemetryQuotedFilenameRedactor.replaceUnquotedParenPaths(scrubbed, regex)
             }
             scrubbed = CoreTelemetryQuotedPathRedactor.replacePreKeywordPathRules(scrubbed, preKeywordPathRules)
-            scrubbed = CoreTelemetryScanners.redactQuotedFilenames(scrubbed)
-            scrubbed = keywordQuotedPathRegex.replace(scrubbed, "$1[redacted-path]")
+            scrubbed = CoreTelemetryQuotedFilenameRedactor.redactQuotedFilenames(scrubbed)
+            scrubbed = CoreTelemetryQuotedFilenameRedactor.replaceKeywordQuotedPaths(scrubbed, keywordQuotedPathRegex)
             scrubbed = redactKeywordUnquotedFilenames(scrubbed)
             scrubbed = CoreTelemetryQuotedPathRedactor.replaceKeywordAssignedPaths(scrubbed, keywordAssignedPathRegex)
             scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)
-            if (scrubbed.indexOf('.') >= 0) {
-                scrubbed = bareFilenameRegex.replace(scrubbed, "$1$2[redacted-path]")
+            if (scrubbed.indexOf('.') >= 0 || scrubbed.contains("\\u")) {
+                scrubbed = CoreTelemetryQuotedFilenameRedactor.replaceBareFilenames(scrubbed, bareFilenameRegex)
             }
             scrubbed = restoreVaultedUrls(scrubbed, VAULT_PREFIX, vaultedUrls)
             if (vaultedUrls.isNotEmpty()) {
@@ -545,36 +545,13 @@ class CoreTelemetryService(
         }
 
         private fun redactKeywordUnquotedFilenames(text: String): String {
-            if (text.indexOf('.') < 0) return text
-            val hasAt = CoreTelemetryEmailScanner.hasEmailAt(text)
-            var sb: StringBuilder? = null
-            var copied = 0
-            var segStart = 0
-            while (segStart < text.length) {
-                var segEnd = segStart
-                while (segEnd < text.length && !isSegmentStop(text[segEnd])) segEnd++
-                val extBounds = findLastUnquotedFilenameExt(text, segStart, segEnd)
-                if (extBounds != null) {
-                    val kwMatch = keywordFilenamePrefixRegex.find(text.substring(segStart, extBounds.first))
-                    if (kwMatch != null) {
-                        val kwEnd = segStart + kwMatch.range.last + 1
-                        val emailEnd = if (hasAt) CoreTelemetryEmailScanner.findEmailTailEnd(text, extBounds.second) else -1
-                        val isSingleEmailToken =
-                            emailEnd > 0 && !CoreTelemetryEmailScanner.containsWhitespace(text, kwEnd, extBounds.first)
-                        if (!isSingleEmailToken) {
-                            val out = sb ?: StringBuilder(text.length).also { sb = it }
-                            out.append(text, copied, kwEnd).append("[redacted-path]")
-                            copied = maxOf(extBounds.second, emailEnd)
-                        }
-                    }
-                }
-                segStart = maxOf(segEnd + 1, copied)
-            }
-            val out = sb ?: return text
-            return out.append(text, copied, text.length).toString()
+            if (text.indexOf('.') < 0 && !text.contains("\\u")) return text
+            return CoreTelemetryQuotedFilenameRedactor.redactKeywordUnquotedFilenamesRespectingQuotes(
+                text,
+                keywordFilenamePrefixRegex,
+                ::findLastUnquotedFilenameExt
+            )
         }
-
-        private fun isSegmentStop(ch: Char): Boolean = ch in "\r\n\u001E\u001F\""
 
         private fun findLastUnquotedFilenameExt(text: String, segStart: Int, segEnd: Int): Pair<Int, Int>? {
             for (dot in segEnd - 1 downTo segStart) {

@@ -2,7 +2,7 @@ package net.alummahnow.core.bridge.telemetry
 
 @Suppress("TooManyFunctions")
 internal object CoreTelemetryQuotedPathRedactor {
-    private data class QuotedPathSpan(
+    internal data class QuotedPathSpan(
         val open: Int,
         val close: Int,
         val hasVault: Boolean,
@@ -155,7 +155,7 @@ internal object CoreTelemetryQuotedPathRedactor {
         return false
     }
 
-    private fun decodeQuotedSpanWithOffsets(text: String, start: Int, end: Int): Pair<String, IntArray> {
+    fun decodeQuotedSpanWithOffsets(text: String, start: Int, end: Int): Pair<String, IntArray> {
         val cap = end - start
         val chars = CharArray(cap)
         val offsets = IntArray(cap + 1)
@@ -164,14 +164,14 @@ internal object CoreTelemetryQuotedPathRedactor {
         while (pos < end) {
             offsets[count] = pos
             val dec = decodeJsonCharAt(text, pos, end)
-            chars[count++] = dec.ch
+            chars[count++] = if (dec.len > 1 && (dec.ch == '\u001E' || dec.ch == '\u001F')) '_' else dec.ch
             pos += dec.len
         }
         offsets[count] = end
         return String(chars, 0, count) to offsets
     }
 
-    private fun buildMaskedDoubleQuotes(text: String, spans: List<QuotedPathSpan>): String {
+    fun buildMaskedDoubleQuotes(text: String, spans: List<QuotedPathSpan>): String {
         val chars = text.toCharArray()
         for (span in spans) {
             for (k in (span.open + 1) until span.close) {
@@ -181,7 +181,7 @@ internal object CoreTelemetryQuotedPathRedactor {
         return String(chars)
     }
 
-    private fun applyMaskedPathRegex(text: String, masked: String, regex: Regex, hasPrefix: Boolean): String {
+    fun applyMaskedPathRegex(text: String, masked: String, regex: Regex, hasPrefix: Boolean): String {
         var match = regex.find(masked) ?: return text
         val sb = StringBuilder(text.length)
         var copied = 0
@@ -200,7 +200,7 @@ internal object CoreTelemetryQuotedPathRedactor {
         return sb.append(text, copied, text.length).toString()
     }
 
-    private fun collectBalancedDoubleQuoteSpans(text: String): List<QuotedPathSpan> {
+    fun collectBalancedDoubleQuoteSpans(text: String): List<QuotedPathSpan> {
         val spans = ArrayList<QuotedPathSpan>()
         var idx = 0
         while (idx < text.length) {

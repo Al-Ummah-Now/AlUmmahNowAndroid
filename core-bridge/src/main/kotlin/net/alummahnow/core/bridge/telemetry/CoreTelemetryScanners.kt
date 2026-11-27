@@ -497,100 +497,9 @@ internal object CoreTelemetryScanners {
         return boundaryChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
-    fun redactQuotedFilenames(text: String): String {
-        if (text.indexOf('.') < 0) return text
-        val afterDouble = if (text.indexOf('"') >= 0) redactDoubleQuotedFilenames(text) else text
-        return if (afterDouble.indexOf('\'') >= 0) redactSingleQuotedFilenames(afterDouble) else afterDouble
-    }
+    fun isQuotedSegStop(ch: Char): Boolean = ch in QUOTED_SEG_STOP
 
-    private fun redactDoubleQuotedFilenames(text: String): String {
-        var sb: StringBuilder? = null
-        var copied = 0
-        var i = 0
-        while (i < text.length) {
-            if (text[i] != '"') {
-                i++
-            } else {
-                val close = scanDoubleQuoteEnd(text, i + 1)
-                val followedByEmailAt = close + 1 < text.length && CoreTelemetryEmailScanner.emailAtLength(text, close + 1) > 0
-                val matched = close < text.length && text[close] == '"' && !followedByEmailAt && endsWithFilenameExt(text, i + 1, close)
-                if (matched) {
-                    val out = sb ?: StringBuilder(text.length).also { sb = it }
-                    out.append(text, copied, i).append("\"[redacted-path]\"")
-                    copied = close + 1
-                    i = close + 1
-                } else {
-                    i = if (close < text.length && text[close] == '"') close else close + 1
-                }
-            }
-        }
-        val out = sb ?: return text
-        return out.append(text, copied, text.length).toString()
-    }
-
-    private fun scanDoubleQuoteEnd(text: String, start: Int): Int {
-        var j = start
-        while (j < text.length && text[j] != '"' && !isQuotedSegStop(text[j])) j++
-        return j
-    }
-
-    private fun redactSingleQuotedFilenames(text: String): String {
-        val hasAt = CoreTelemetryEmailScanner.hasEmailAt(text)
-        var sb: StringBuilder? = null
-        var copied = 0
-        var segStart = 0
-        while (segStart < text.length) {
-            var segEnd = segStart
-            while (segEnd < text.length && text[segEnd] != '"' && !isQuotedSegStop(text[segEnd])) segEnd++
-            copied = redactSingleQuotesInSegment(text, segStart, segEnd, copied, hasAt) { open, endPos ->
-                val out = sb ?: StringBuilder(text.length).also { sb = it }
-                out.append(text, copied, open).append("[redacted-path]")
-                copied = endPos
-            }
-            segStart = maxOf(segEnd + 1, copied)
-        }
-        val out = sb ?: return text
-        return out.append(text, copied, text.length).toString()
-    }
-
-    private fun redactSingleQuotesInSegment(
-        text: String,
-        segStart: Int,
-        segEnd: Int,
-        initialCopied: Int,
-        hasAt: Boolean,
-        onMatch: (Int, Int) -> Unit
-    ): Int {
-        var copied = initialCopied
-        var open = -1
-        var candidateClose = -1
-        for (pos in segStart until segEnd) {
-            if (pos < copied || text[pos] != '\'') continue
-            val isOpener = pos == segStart || !text[pos - 1].isLetterOrDigit()
-            if (isOpener) {
-                if (open < 0 || candidateClose >= 0) {
-                    open = pos
-                    candidateClose = -1
-                }
-            } else if (open >= 0 && (pos + 1 == segEnd || !text[pos + 1].isLetterOrDigit())) {
-                if (endsWithFilenameExt(text, open + 1, pos)) {
-                    val emailEnd = if (hasAt) CoreTelemetryEmailScanner.findEmailTailEnd(text, pos + 1) else -1
-                    val endPos = maxOf(pos + 1, emailEnd)
-                    onMatch(open, endPos)
-                    copied = endPos
-                    open = -1
-                    candidateClose = -1
-                } else {
-                    candidateClose = pos
-                }
-            }
-        }
-        return copied
-    }
-
-    private fun isQuotedSegStop(ch: Char): Boolean = ch in QUOTED_SEG_STOP
-
-    private fun endsWithFilenameExt(text: String, start: Int, end: Int): Boolean {
+    fun endsWithFilenameExt(text: String, start: Int, end: Int): Boolean {
         var extStart = end
         while (extStart > start && end - extStart < MAX_EXT_CHECK && isAsciiAlphaNum(text[extStart - 1])) {
             extStart--
@@ -633,53 +542,6 @@ internal object CoreTelemetryScanners {
             if (isOpeningWrapper(prev) || isSpace(prev)) trimmedEnd-- else break
         }
         return trimmedEnd
-    }
-
-    fun replaceUnquotedParenPaths(text: String, regex: Regex): String {
-        if (text.indexOf('(') < 0) return text
-        val state = QuoteCursorState()
-        return regex.replace(text) { match ->
-            state.advanceTo(text, match.range.first)
-            if (state.openQuote != '\u0000') match.value else "([redacted-path])"
-        }
-    }
-
-    private class QuoteCursorState {
-        var cursor = 0
-        var openQuote = '\u0000'
-        var escapedBackslash = false
-
-        fun advanceTo(text: String, target: Int) {
-            while (cursor < target) {
-                step(text, text[cursor])
-                cursor++
-            }
-        }
-
-        private fun step(text: String, ch: Char) {
-            when {
-                ch == '\r' || ch == '\n' -> {
-                    openQuote = '\u0000'
-                    escapedBackslash = false
-                    return
-                }
-                isClosingQuote(text, ch) -> openQuote = '\u0000'
-                isOpeningQuote(text, ch) -> openQuote = ch
-            }
-            escapedBackslash = ch == '\\' && !escapedBackslash
-        }
-
-        private fun isClosingQuote(text: String, ch: Char): Boolean {
-            if (escapedBackslash || openQuote == '\u0000' || ch != openQuote) return false
-            val hasNeighbors = ch == '\'' && cursor > 0 && cursor + 1 < text.length
-            val isInnerApos = hasNeighbors && text[cursor - 1].isLetterOrDigit() && text[cursor + 1].isLetter()
-            return !isInnerApos
-        }
-
-        private fun isOpeningQuote(text: String, ch: Char): Boolean {
-            if (escapedBackslash || openQuote != '\u0000') return false
-            return ch == '"' || (ch == '\'' && (cursor == 0 || !text[cursor - 1].isLetterOrDigit()))
-        }
     }
 
     fun isFileSchemeAt(text: String, pos: Int): Boolean {

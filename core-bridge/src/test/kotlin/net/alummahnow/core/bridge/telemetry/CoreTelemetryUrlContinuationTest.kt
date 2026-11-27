@@ -333,6 +333,26 @@ class CoreTelemetryUrlContinuationTest {
             "[\"\\\\Secret\"]" to "[\"[redacted-path]\"]",
             "[\"\\u005CSecret\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
             "[\"\\\\\",\"public\"]" to "[\"\\\\\",\"public\"]",
+            "[\"path=Project\\u005EAcquisition\"]" to "[\"path=[redacted-path]\"]",
+            "[\"path=alpha\\u001fAcquisition\"]" to "[\"path=[redacted-path]\"]",
+            "[\"path=alpha\\u001eAcquisition\"]" to "[\"path=[redacted-path]\"]",
+            "{\"file \":\"Acquisition\"}" to "{\"file \":\"Acquisition\"}",
+            "{\"path \":\"public\"}" to "{\"path \":\"public\"}",
+            "[\"file 'Secret'\",\"public\"]" to "[\"file [redacted-path]\",\"public\"]",
+            "read 'Top \"Secret\" file.pdf'" to "read [redacted-path]",
+            "[\"secret\\u002epdf pending\"]" to "[\"[redacted-path] pending\"]",
+            "[\"secret\\u002epdf\"]" to "[\"[redacted-path]\"]",
+            "[\"read Private\\\"Merger.custom pending\"]" to "[\"read [redacted-path] pending\"]",
+            "[\"file \\u0027Acquisition\\u0027\"]" to "[\"file [redacted-path]\"]",
+            "[\"file \\\"Acquisition\\\"\"]" to "[\"file [redacted-path]\"]",
+            "[\"file \\u0022Acquisition\\u0022\"]" to "[\"file [redacted-path]\"]",
+            "[\"file \\\"Acquisition\\\"\",\"public\"]" to "[\"file [redacted-path]\",\"public\"]",
+            "[\"file \\\"Acquisition\\\" and path \\\"Secret\\\"\"]" to
+                "[\"file [redacted-path] and path [redacted-path]\"]",
+            "[\"\\u0027Secret.custom\\u0027 pending\"]" to "[\"[redacted-path] pending\"]",
+            "[\"\\\"Secret.custom\\\" pending\"]" to "[\"\\\"[redacted-path]\\\" pending\"]",
+            "[\"\\u0022Secret.custom\\u0022 pending\"]" to "[\"\\u0022[redacted-path]\\u0022 pending\"]",
+            "[\"Secret\\\"file.custom\"]" to "[\"[redacted-path]\"]",
             "Failed reading /Users/alice/My \"Secret\" Folder/file.mov" to "Failed reading [redacted-path]"
         )
         for ((input, expected) in cases) {
