@@ -992,7 +992,7 @@ class CoreTelemetryService(
             failedContMax: IntArray
         ): UrlContinuationResult? {
             val eligible = !span.hasQf && span.totalEnd >= failedContMax[0] && span.totalEnd < text.length
-            if (!eligible || text[span.totalEnd] !in ",([])") return null
+            if (!eligible || text[span.totalEnd] !in ",([]){}") return null
             val pathEnd = CoreTelemetryScanners.scanUrlContinuation(text, span.totalEnd)
             val result = extendUrlContinuationQuery(text, span, rawUrl, baseTail, pathEnd)
                 ?: extendUrlContinuationSecret(text, span, rawUrl, baseTail, pathEnd)

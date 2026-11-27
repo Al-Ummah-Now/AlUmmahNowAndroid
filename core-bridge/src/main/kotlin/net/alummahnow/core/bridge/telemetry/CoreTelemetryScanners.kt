@@ -13,6 +13,7 @@ internal object CoreTelemetryScanners {
     private const val PERCENT_ENC_LEN = 3
     private const val URL_HOST_PUNCT = "._~!$&'*+;=-"
     private const val URL_PATH_STOP = "\"<>\\{}?#\r\n"
+    private const val URL_CONT_STOP = "\"<>\\?#\r\n"
     private const val URL_END_BOUNDARY = "\"'<>\\{},;()[]"
     private const val DECODED_ASCII_MIN = 0x21
     private const val DECODED_ASCII_MAX = 0x7E
@@ -221,12 +222,17 @@ internal object CoreTelemetryScanners {
         return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
     }
 
+    private fun isContStopChar(text: String, pos: Int, ch: Char): Boolean {
+        val stopChar = ch.isWhitespace() || ch in URL_CONT_STOP
+        return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
+    }
+
     fun scanUrlContinuation(text: String, start: Int): Int {
         var p = start
         while (p < text.length) {
             val ch = text[p]
-            val startsScheme = p > start && text[p - 1] in ",;()[]'" && isUrlSchemeAt(text, p)
-            if (isPathStopChar(text, p, ch) || startsScheme) break
+            val startsScheme = p > start && text[p - 1] in ",;()[]{}'" && isUrlSchemeAt(text, p)
+            if (isContStopChar(text, p, ch) || startsScheme) break
             p++
         }
         return p
@@ -250,13 +256,15 @@ internal object CoreTelemetryScanners {
     }
 
     private fun countExcessGroupClosers(text: String, start: Int, end: Int): IntArray {
-        val excess = IntArray(2)
+        val excess = IntArray(3)
         for (i in start until end) {
             when (text[i]) {
                 '(' -> excess[0]--
                 ')' -> excess[0]++
                 '[' -> excess[1]--
                 ']' -> excess[1]++
+                '{' -> excess[2]--
+                '}' -> excess[2]++
             }
         }
         return excess
@@ -271,6 +279,10 @@ internal object CoreTelemetryScanners {
         }
         ch == ']' && excess[1] > 0 -> {
             excess[1]--
+            true
+        }
+        ch == '}' && excess[2] > 0 -> {
+            excess[2]--
             true
         }
         else -> false
