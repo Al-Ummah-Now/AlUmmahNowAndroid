@@ -430,6 +430,22 @@ class CoreTelemetryServiceTest {
             "{\"Authorization\":\"Bearer [redacted]\",\"status\":401}",
             CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":\"Bearer testSecret\",\"status\":401}")
         )
+        assertEquals(
+            "{\"Authorization\":[\"Bearer [redacted]\"],\"status\":401}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":[\"Bearer testSecret\"],\"status\":401}")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\",\"status\":401}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"\\u0041uthorization\":\"opaqueSecret123\",\"status\":401}")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authoriz\\u0061tion\":\"opaqueSecret123\"}")
+        )
+        assertEquals(
+            "{\"Authorization\": \n \"[redacted]\",\"status\":401}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\": \n \"opaqueSecret123\",\"status\":401}")
+        )
     }
 
     @Test
@@ -449,9 +465,11 @@ class CoreTelemetryServiceTest {
         assertEquals("Basic [redacted]", CoreTelemetryService.sanitizeLocalPaths("Basic YTpi"))
         assertEquals("Basic [redacted].", CoreTelemetryService.sanitizeLocalPaths("Basic YTpi."))
         assertEquals("Basic [redacted]", CoreTelemetryService.sanitizeLocalPaths("Basic YTo="))
+        assertEquals("Basic YTp=", CoreTelemetryService.sanitizeLocalPaths("Basic YTp="))
         assertEquals("Basic [redacted]", CoreTelemetryService.sanitizeLocalPaths("Basic Og=="))
         assertEquals("Basic [redacted]", CoreTelemetryService.sanitizeLocalPaths("Basic ajpqampq"))
         assertEquals("BASIC [redacted]", CoreTelemetryService.sanitizeLocalPaths("BASIC YWxpY2U6c2VjcmV0"))
+        assertEquals("Basic [redacted]", CoreTelemetryService.sanitizeLocalPaths("Basic YWxpY2U6Y2Fm6Q=="))
         assertEquals("Basic YWJjZGU=", CoreTelemetryService.sanitizeLocalPaths("Basic YWJjZGU="))
         assertEquals("Basic YTpiCQ", CoreTelemetryService.sanitizeLocalPaths("Basic YTpiCQ"))
         assertEquals("Basic auth failed", CoreTelemetryService.sanitizeLocalPaths("Basic auth failed"))

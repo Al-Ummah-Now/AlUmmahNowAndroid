@@ -518,7 +518,7 @@ class CoreTelemetryService(
         fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
             val (escaped, hadSentinels) = escapeSentinels(text)
-            val preAuth = CoreTelemetryEmailScanner.redactAuthCredentials(CoreTelemetryEmailScanner.redactQuotedEmails(escaped))
+            val preAuth = CoreTelemetryAuthScanner.redactAuthCredentials(CoreTelemetryEmailScanner.redactQuotedEmails(escaped))
             val (vaulted, vaultedUrls) = vaultNonFileUrls(preAuth, VAULT_PREFIX)
             var scrubbed = redactFileUris(vaulted, VAULT_PREFIX)
             for (regex in parenPathRegexes) {
