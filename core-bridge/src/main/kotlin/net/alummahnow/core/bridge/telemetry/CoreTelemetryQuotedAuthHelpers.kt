@@ -22,27 +22,22 @@ internal object CoreTelemetryQuotedAuthHelpers {
         return if (code == ':'.code || code == '='.code) HEX_ESCAPE_LEN to (code == ':'.code) else null
     }
 
-    fun findBalancedJsonStringEnd(text: String, open: Int): Int {
+    fun isJsonStringStartBoundary(text: String, open: Int): Boolean {
         val prev = skipJsonWhitespaceBackward(text, open - 1)
-        if (prev >= 0 && text[prev] !in ":=[,{(") return -1
+        return prev < 0 || text[prev] in ":=[,{("
+    }
+
+    fun findDoubleQuotedSpanEnd(text: String, open: Int): Int {
         var pos = open + 1
         var escaped = false
         while (pos < text.length) {
             val ch = text[pos]
             if (ch == '\r' || ch == '\n') return -1
-            if (ch == '"' && !escaped) {
-                return if (isQuotedSpanEndBoundary(text, pos + 1)) pos else -1
-            }
+            if (ch == '"' && !escaped) return pos
             escaped = ch == '\\' && !escaped
             pos++
         }
         return -1
-    }
-
-    private fun isQuotedSpanEndBoundary(text: String, afterPos: Int): Boolean {
-        if (afterPos >= text.length || CoreTelemetryScanners.isSpace(text[afterPos])) return true
-        val after = CoreTelemetryAuthJsonHelpers.skipJsonWhitespace(text, afterPos)
-        return after >= text.length || text[after] in ",}]:;)"
     }
 
     private fun skipJsonWhitespaceBackward(text: String, start: Int): Int {
@@ -109,20 +104,46 @@ internal object CoreTelemetryQuotedAuthHelpers {
 
     private fun findBearerTokenRanges(text: String): List<Pair<Int, Int>> {
         val ranges = ArrayList<Pair<Int, Int>>()
+        var inEscapedQuote = false
         var i = 0
-        while (i + BEARER_LEN < text.length) {
-            if (!matchesBearerPrefix(text, i)) {
+        while (i < text.length) {
+            val ch = text[i]
+            val stepped = stepBearerQuoteState(text, i, ch, inEscapedQuote)
+            if (stepped != null) {
+                i = stepped.first
+                inEscapedQuote = stepped.second
+            } else if (!matchesBearerPrefix(text, i)) {
                 i++
             } else {
                 var wsEnd = i + BEARER_LEN
                 while (wsEnd < text.length && CoreTelemetryScanners.isSpace(text[wsEnd])) wsEnd++
-                i = advanceAfterBearerPrefix(text, i, wsEnd, ranges)
+                i = advanceAfterBearerPrefix(text, i, wsEnd, inEscapedQuote, ranges)
             }
         }
         return ranges
     }
 
+    private fun stepBearerQuoteState(text: String, pos: Int, ch: Char, inEscapedQuote: Boolean): Pair<Int, Boolean>? =
+        when {
+            ch == '\\' && pos + 1 < text.length -> stepBearerBackslash(text, pos, inEscapedQuote)
+            ch == '"' || ch == '\r' || ch == '\n' -> (pos + 1) to false
+            else -> null
+        }
+
+    private fun stepBearerBackslash(text: String, pos: Int, inEscapedQuote: Boolean): Pair<Int, Boolean> {
+        val next = text[pos + 1]
+        if (next == '"') return (pos + 2) to !inEscapedQuote
+        if (next == 'u' && pos + HEX_ESCAPE_LEN <= text.length) {
+            val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2)
+            if (code >= 0) {
+                return (pos + HEX_ESCAPE_LEN) to (if (code == '"'.code) !inEscapedQuote else inEscapedQuote)
+            }
+        }
+        return (pos + 2) to inEscapedQuote
+    }
+
     private fun matchesBearerPrefix(text: String, pos: Int): Boolean {
+        if (pos + BEARER_LEN >= text.length) return false
         val wordBefore = pos > 0 && CoreTelemetryScanners.isAsciiWordChar(text[pos - 1])
         return !wordBefore &&
             text.regionMatches(pos, "bearer", 0, BEARER_LEN, ignoreCase = true) &&
@@ -133,11 +154,12 @@ internal object CoreTelemetryQuotedAuthHelpers {
         text: String,
         prefixStart: Int,
         wsEnd: Int,
+        stopAtEscapedQuote: Boolean,
         ranges: MutableList<Pair<Int, Int>>
     ): Int {
         if (wsEnd >= text.length) return text.length
-        if (isRedactedBearerPlaceholder(text, wsEnd)) return wsEnd + REDACTED_LEN
-        val tokEnd = scanBearerTokenEnd(text, wsEnd)
+        if (isRedactedBearerPlaceholder(text, wsEnd, stopAtEscapedQuote)) return wsEnd + REDACTED_LEN
+        val tokEnd = scanBearerTokenEnd(text, wsEnd, stopAtEscapedQuote)
         if (tokEnd > wsEnd) {
             ranges += prefixStart to tokEnd
             return tokEnd
@@ -145,42 +167,60 @@ internal object CoreTelemetryQuotedAuthHelpers {
         return wsEnd
     }
 
-    private fun isRedactedBearerPlaceholder(text: String, pos: Int): Boolean {
+    private fun isBearerStopPunct(ch: Char): Boolean = ch in "\"',;)]}"
+
+    private fun isRedactedBearerPlaceholder(text: String, pos: Int, stopAtEscapedQuote: Boolean): Boolean {
         if (!text.regionMatches(pos, "[redacted]", 0, REDACTED_LEN)) return false
         val after = pos + REDACTED_LEN
         if (after >= text.length) return true
         val ch = text[after]
-        if (CoreTelemetryScanners.isSpace(ch) || ch in "\"',;)]}") return true
-        return isJsonEscapeBoundaryAfterRedacted(text, after)
+        if (CoreTelemetryScanners.isSpace(ch) || isBearerStopPunct(ch)) return true
+        return isJsonEscapeBoundaryAfterRedacted(text, after, stopAtEscapedQuote)
     }
 
-    private fun isJsonEscapeBoundaryAfterRedacted(text: String, pos: Int): Boolean {
+    private fun isJsonEscapeBoundaryAfterRedacted(text: String, pos: Int, stopAtEscapedQuote: Boolean): Boolean {
         if (text[pos] != '\\' || pos + 1 >= text.length) return false
         val esc = text[pos + 1]
-        if (esc in "nrtbf\"") return true
+        if (esc in "nrtbf" || (stopAtEscapedQuote && esc == '"')) return true
         if (esc == 'u' && pos + HEX_ESCAPE_LEN <= text.length) {
             val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2)
-            return code >= 0 && CoreTelemetryScanners.isSpace(code.toChar())
+            if (code >= 0) {
+                val decoded = code.toChar()
+                return CoreTelemetryScanners.isSpace(decoded) || (stopAtEscapedQuote && decoded == '"')
+            }
         }
         return false
     }
 
-    private fun scanBearerTokenEnd(text: String, start: Int): Int {
+    private fun scanBearerTokenEnd(text: String, start: Int, stopAtEscapedQuote: Boolean): Int {
         var p = start
         var done = false
         while (p < text.length && !done) {
             val ch = text[p]
             if (ch == '\\') {
-                val atTrailing = p + 1 >= text.length || CoreTelemetryScanners.isSpace(text[p + 1])
-                p += if (atTrailing) 1 else 2
-                if (atTrailing) done = true
-            } else if (CoreTelemetryScanners.isSpace(ch) || ch in "\"',;)]}") {
+                val step = scanBearerEscapeStep(text, p, stopAtEscapedQuote)
+                if (step <= 0) {
+                    if (step < 0) p++
+                    done = true
+                } else {
+                    p += step
+                }
+            } else if (CoreTelemetryScanners.isSpace(ch) || isBearerStopPunct(ch)) {
                 done = true
             } else {
                 p++
             }
         }
         return p
+    }
+
+    private fun scanBearerEscapeStep(text: String, pos: Int, stopAtEscapedQuote: Boolean): Int {
+        if (pos + 1 >= text.length || CoreTelemetryScanners.isSpace(text[pos + 1])) return -1
+        if (isJsonEscapeBoundaryAfterRedacted(text, pos, stopAtEscapedQuote)) return 0
+        val isValidHex = text[pos + 1] == 'u' &&
+            pos + HEX_ESCAPE_LEN <= text.length &&
+            CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2) >= 0
+        return if (isValidHex) HEX_ESCAPE_LEN else 2
     }
 
     fun redactEscapedBearerInBalancedQuotes(text: String): String {

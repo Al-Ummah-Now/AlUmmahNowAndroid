@@ -170,7 +170,7 @@ class CoreTelemetryService(
     }
 
     override fun track(name: String, properties: Map<String, Any?>) {
-        if (name.isBlank()) return
+        if (name.isBlank() || consent != TelemetryConsent.FULL) return
         val safeName = sanitizeLocalPaths(name)
         if (safeName.isBlank()) return
         val json = serializeProperties(properties)
@@ -185,7 +185,7 @@ class CoreTelemetryService(
     }
 
     override fun trackError(code: String, properties: Map<String, Any?>) {
-        if (code.isBlank()) return
+        if (code.isBlank() || consent != TelemetryConsent.FULL) return
         val safeCode = sanitizeLocalPaths(code)
         if (safeCode.isBlank()) return
         val json = serializeProperties(properties)
@@ -1034,23 +1034,31 @@ class CoreTelemetryService(
         private fun isAuthHeaderPropertyKey(key: String): Boolean {
             val trimmed = key.trim()
             return trimmed.equals("authorization", ignoreCase = true) ||
-                trimmed.equals("proxy-authorization", ignoreCase = true)
+                trimmed.equals("proxy-authorization", ignoreCase = true) ||
+                trimmed.equals("cookie", ignoreCase = true) ||
+                trimmed.equals("set-cookie", ignoreCase = true)
         }
 
-        private fun resolveUniquePropertyKey(usedKeys: MutableSet<String>, base: String): String {
+        private fun resolveUniquePropertyKey(
+            usedKeys: MutableSet<String>,
+            nextSuffixByBase: MutableMap<String, Int>,
+            base: String
+        ): String {
             if (usedKeys.add(base)) return base
-            var suffix = 2
+            var suffix = nextSuffixByBase[base] ?: 2
             while (!usedKeys.add("$base#$suffix")) suffix++
+            nextSuffixByBase[base] = suffix + 1
             return "$base#$suffix"
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {
             if (properties.isEmpty()) return null
             val usedKeys = HashSet<String>(properties.size)
+            val nextSuffixByBase = HashMap<String, Int>()
             val obj = buildJsonObject {
                 for ((key, value) in properties) {
                     if (key.isNotBlank() && value != null) {
-                        putSanitizedProperty(key, value, usedKeys)
+                        putSanitizedProperty(key, value, usedKeys, nextSuffixByBase)
                     }
                 }
             }
@@ -1060,15 +1068,16 @@ class CoreTelemetryService(
         private fun kotlinx.serialization.json.JsonObjectBuilder.putSanitizedProperty(
             key: String,
             value: Any,
-            usedKeys: MutableSet<String>
+            usedKeys: MutableSet<String>,
+            nextSuffixByBase: MutableMap<String, Int>
         ) {
             if (isAuthHeaderPropertyKey(key)) {
-                put(resolveUniquePropertyKey(usedKeys, key), JsonPrimitive("[redacted]"))
+                put(resolveUniquePropertyKey(usedKeys, nextSuffixByBase, key), JsonPrimitive("[redacted]"))
                 return
             }
             val safeKey = sanitizeLocalPaths(key)
             if (safeKey.isBlank()) return
-            val uniqueKey = resolveUniquePropertyKey(usedKeys, safeKey)
+            val uniqueKey = resolveUniquePropertyKey(usedKeys, nextSuffixByBase, safeKey)
             when (value) {
                 is String -> put(uniqueKey, JsonPrimitive(sanitizeLocalPaths(value)))
                 is Boolean -> put(uniqueKey, JsonPrimitive(value))

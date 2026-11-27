@@ -502,7 +502,15 @@ class CoreTelemetryUrlContinuationTest {
             "{\"m\":\"literal=\\\"test\\\\stuff\\\"tail\",\"next\":1}" to
                 "{\"m\":\"literal=\\\"[redacted-path]\\\"tail\",\"next\":1}",
             "{\"m\":\"{\\\"path\\\":\\\"/Users/Alice/Secret.mov\\\"}\",\"next\":1}" to
-                "{\"m\":\"{\\\"path\\\":\\\"[redacted-path]\\\"}\",\"next\":1}"
+                "{\"m\":\"{\\\"path\\\":\\\"[redacted-path]\\\"}\",\"next\":1}",
+            "received \"Authorizatio\\u006e: opaqueSecret123\"" to "received \"Authorizatio\\u006e: [redacted]\"",
+            "Cookie: session=opaqueSecret123" to "Cookie: [redacted]",
+            "Set-Cookie: session=opaqueSecret123; HttpOnly\r\nNext: ok" to "Set-Cookie: [redacted]\r\nNext: ok",
+            "{\"Cooki\\u0065\":\"session=opaqueSecret123\",\"status\":\"ok\"}" to
+                "{\"Cookie\":\"[redacted]\",\"status\":\"ok\"}",
+            "{\"m\":\"\\\"Bearer opaqueSecret123\\\"tail\",\"next\":1}" to
+                "{\"m\":\"\\\"Bearer [redacted]\\\"tail\",\"next\":1}",
+            "{\"m\":\"Bearer secret\\nX-Public: ok\"}" to "{\"m\":\"Bearer [redacted]\\nX-Public: ok\"}"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
@@ -525,6 +533,8 @@ class CoreTelemetryUrlContinuationTest {
                 "/Users/Alice/Acquisition.mov" to 1,
                 "/Users/Bob/Merger.mov" to 2,
                 "Authorization" to "opaqueSecret123",
+                "Cookie" to "session=opaqueSecret123",
+                "Set-Cookie" to "sid=opaqueSecret456",
                 "uri" to java.net.URI("https://example.com/api?token=secret"),
                 "count" to 2,
                 "ok" to true
@@ -532,6 +542,7 @@ class CoreTelemetryUrlContinuationTest {
         )
         assertTrue(props != null)
         assertTrue(!props!!.contains("secret", ignoreCase = true))
+        assertTrue(!props.contains("session=", ignoreCase = true))
         assertTrue(!props.contains("Alice"))
         assertTrue(!props.contains("Bob"))
         assertTrue(!props.contains("Acquisition"))
@@ -541,8 +552,17 @@ class CoreTelemetryUrlContinuationTest {
         assertTrue(props.contains("\"detail\":\"Authorization: Bearer [redacted]\""))
         assertTrue(props.contains("\"path\":\"[redacted-path]\""))
         assertTrue(props.contains("\"Authorization\":\"[redacted]\""))
+        assertTrue(props.contains("\"Cookie\":\"[redacted]\""))
+        assertTrue(props.contains("\"Set-Cookie\":\"[redacted]\""))
         assertTrue(props.contains("\"uri\":\"https://example.com/api?[redacted]\""))
         assertTrue(props.contains("\"count\":2"))
         assertTrue(props.contains("\"ok\":true"))
+
+        val manyColliding = LinkedHashMap<String, Any?>(5000)
+        for (idx in 0 until 5000) manyColliding["/home/alice/private-$idx"] = idx
+        val manyJson = CoreTelemetryService.serializeProperties(manyColliding)
+        assertTrue(manyJson != null)
+        assertTrue(!manyJson!!.contains("alice", ignoreCase = true))
+        assertTrue(manyJson.contains("\"[redacted-path]#5000\":4999"))
     }
 }

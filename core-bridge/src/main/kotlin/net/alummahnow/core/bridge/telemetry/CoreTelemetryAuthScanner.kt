@@ -10,8 +10,6 @@ import java.nio.charset.StandardCharsets
 internal object CoreTelemetryAuthScanner {
     private const val MAX_QUOTED_KEY_RAW_LEN = 129
     private const val MAX_AUTH_KEY_LEN = 19
-    private const val AUTH_LEN = 13
-    private const val PROXY_AUTH_LEN = 19
     private const val HEX_ESCAPE_LEN = 6
     private const val BASE64_CHUNK_LEN = 4
     private const val BASE64_PAD_TWO = 2
@@ -107,13 +105,16 @@ internal object CoreTelemetryAuthScanner {
                 i = advanceAfterHeaderKey(text, keyMatch, builder)
             } else {
                 val close = if (maxDepth > 0 && isUnescapedDoubleQuote(text, i, builder.copied)) {
-                    CoreTelemetryQuotedAuthHelpers.findBalancedJsonStringEnd(text, i)
+                    CoreTelemetryQuotedAuthHelpers.findDoubleQuotedSpanEnd(text, i)
                 } else {
                     -1
                 }
                 if (close > i) {
-                    redactAuthHeadersInBalancedSpan(text, i + 1, close, maxDepth - 1, builder)
-                    i = close + 1
+                    val changed = redactAuthHeadersInBalancedSpan(text, i + 1, close, maxDepth - 1, builder)
+                    val reenterClose = !changed &&
+                        !CoreTelemetryQuotedAuthHelpers.isJsonStringStartBoundary(text, i) &&
+                        CoreTelemetryQuotedAuthHelpers.isJsonStringStartBoundary(text, close)
+                    i = if (reenterClose) close else close + 1
                 } else {
                     i++
                 }
@@ -130,9 +131,9 @@ internal object CoreTelemetryAuthScanner {
         close: Int,
         nextDepth: Int,
         builder: HeaderBuilder
-    ) {
+    ): Boolean {
         if (innerStart >= close || !CoreTelemetryQuotedAuthHelpers.containsAuthHeaderCandidate(text, innerStart, close)) {
-            return
+            return false
         }
         val hasBackslash = (innerStart until close).any { text[it] == '\\' }
         val (decoded, rawOffsets) = if (hasBackslash) {
@@ -140,14 +141,16 @@ internal object CoreTelemetryAuthScanner {
         } else {
             text.substring(innerStart, close) to null
         }
-        if (decoded.indexOf(':') < 0 && decoded.indexOf('=') < 0) return
+        if (decoded.indexOf(':') < 0 && decoded.indexOf('=') < 0) return false
         val edits = ArrayList<Triple<Int, Int, String>>()
         scanAuthHeaders(decoded, nextDepth, HeaderBuilder(decoded, edits))
+        if (edits.isEmpty()) return false
         for ((eStart, eEnd, eRepl) in edits) {
             val rawStart = rawOffsets?.get(eStart) ?: (innerStart + eStart)
             val rawEnd = rawOffsets?.get(eEnd) ?: (innerStart + eEnd)
             builder.appendRedacted(rawStart, rawEnd, CoreTelemetryQuotedAuthHelpers.escapeJsonStringContent(eRepl))
         }
+        return true
     }
 
     private fun advanceAfterHeaderKey(
@@ -173,6 +176,8 @@ internal object CoreTelemetryAuthScanner {
         return redactAuthHeaderValue(text, valStart, ctx, builder)
     }
 
+    private val unquotedAuthHeaders = listOf("proxy-authorization", "authorization", "set-cookie", "cookie")
+
     private fun matchAuthHeaderKey(
         text: String,
         pos: Int,
@@ -181,13 +186,8 @@ internal object CoreTelemetryAuthScanner {
         val ch = text[pos]
         if (ch == '"' || ch == '\'') return matchQuotedAuthKey(text, pos, ch, cache)
         if (pos > 0 && isAuthKeyWordChar(text[pos - 1])) return null
-        return when {
-            matchesUnquotedKey(text, pos, "proxy-authorization", PROXY_AUTH_LEN) ->
-                AuthKeyMatch(pos, pos + PROXY_AUTH_LEN, false, false, -1, null)
-            matchesUnquotedKey(text, pos, "authorization", AUTH_LEN) ->
-                AuthKeyMatch(pos, pos + AUTH_LEN, false, false, -1, null)
-            else -> null
-        }
+        val matched = unquotedAuthHeaders.firstOrNull { matchesUnquotedKey(text, pos, it, it.length) }
+        return matched?.let { AuthKeyMatch(pos, pos + it.length, false, false, -1, null) }
     }
 
     private fun matchesUnquotedKey(text: String, pos: Int, literal: String, len: Int): Boolean {
@@ -266,6 +266,8 @@ internal object CoreTelemetryAuthScanner {
     private fun canonicalAuthKeyName(key: String): String? = when {
         key.equals("authorization", ignoreCase = true) -> "Authorization"
         key.equals("proxy-authorization", ignoreCase = true) -> "Proxy-Authorization"
+        key.equals("cookie", ignoreCase = true) -> "Cookie"
+        key.equals("set-cookie", ignoreCase = true) -> "Set-Cookie"
         else -> null
     }
 
