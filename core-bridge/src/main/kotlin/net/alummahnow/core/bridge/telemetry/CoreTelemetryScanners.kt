@@ -326,9 +326,9 @@ internal object CoreTelemetryScanners {
             if (atLen == 0) {
                 i++
             } else {
-                val localStart = scanEmailLocalStart(text, i, copied)
-                val domEnd = if (localStart < i) findEmailDomainEnd(text, i + atLen) else -1
-                if (domEnd > 0) {
+                val domEnd = findEmailDomainEnd(text, i + atLen)
+                val localStart = if (domEnd > 0) scanEmailLocalStart(text, i, copied) else i
+                if (domEnd > 0 && localStart < i) {
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, localStart).append("[redacted-email]")
                     copied = domEnd
@@ -352,11 +352,35 @@ internal object CoreTelemetryScanners {
         text.regionMatches(pos, "%40", 0, ENCODED_AT_LEN)
 
     private fun scanEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
+        if (atPos > minPos && text[atPos - 1] == '"' && !isPrecededByOddBackslashes(text, atPos - 1, minPos)) {
+            return findQuotedEmailLocalStart(text, atPos, minPos)
+        }
         var localStart = atPos
         while (localStart > minPos && isEmailLocalChar(text, localStart - 1)) localStart--
         var trimmedStart = localStart
         while (trimmedStart < atPos && isEmailLeadingWrapper(text[trimmedStart])) trimmedStart++
         return if (trimmedStart < atPos) trimmedStart else localStart
+    }
+
+    private fun findQuotedEmailLocalStart(text: String, atPos: Int, minPos: Int): Int {
+        var q = atPos - 2
+        while (q >= minPos) {
+            val ch = text[q]
+            if (ch == '\r' || ch == '\n') return atPos
+            if (ch == '"' && !isPrecededByOddBackslashes(text, q, minPos)) return q
+            q--
+        }
+        return atPos
+    }
+
+    private fun isPrecededByOddBackslashes(text: String, pos: Int, minPos: Int): Boolean {
+        var count = 0
+        var p = pos - 1
+        while (p >= minPos && text[p] == '\\') {
+            count++
+            p--
+        }
+        return (count and 1) == 1
     }
 
     private fun isEmailLeadingWrapper(ch: Char): Boolean {
@@ -448,7 +472,35 @@ internal object CoreTelemetryScanners {
         return tldOk && (k == text.length || !isEmailBoundaryBlocked(text[k]))
     }
 
-    private fun findEmailDomainEnd(text: String, domStart: Int): Int {
+    private fun findIpLiteralDomainEnd(text: String, domStart: Int): Int {
+        var close = domStart + 1
+        while (close < text.length && text[close] != ']' && !isForbiddenIpv6Char(text[close])) close++
+        if (close >= text.length || text[close] != ']' || close <= domStart + 1) return -1
+        val inner = text.substring(domStart + 1, close)
+        val valid = if (inner.startsWith("IPv6:", ignoreCase = true)) {
+            runCatching { URI("http://[${inner.substring(5)}]") }.isSuccess
+        } else {
+            isStrictIpv4(inner)
+        }
+        return if (valid) close + 1 else -1
+    }
+
+    private fun isStrictIpv4(text: String): Boolean {
+        val parts = text.split('.')
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            part.length in 1..3 && part.all { it in '0'..'9' } && part.toInt() <= 255
+        }
+    }
+
+    private fun findEmailDomainEnd(text: String, domStart: Int): Int =
+        if (domStart < text.length && text[domStart] == '[') {
+            findIpLiteralDomainEnd(text, domStart)
+        } else {
+            findNamedEmailDomainEnd(text, domStart)
+        }
+
+    private fun findNamedEmailDomainEnd(text: String, domStart: Int): Int {
         var k = domStart
         var lastDot = -1
         var lettersSinceDot = 0

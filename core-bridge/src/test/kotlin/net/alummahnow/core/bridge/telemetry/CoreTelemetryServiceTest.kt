@@ -335,13 +335,16 @@ class CoreTelemetryServiceTest {
         assertEquals(
             "Failed for [redacted-email], [redacted-email], [redacted-email], 「[redacted-email]」, " +
                 "[redacted-email], [redacted-email], [redacted-email], [redacted-email], " +
-                "'[redacted-email], [redacted-email], [redacted-email], [redacted-email]",
+                "'[redacted-email], [redacted-email], [redacted-email], [redacted-email], " +
+                "[redacted-email], [redacted-email], [redacted-email], [redacted-email]",
             CoreTelemetryService.sanitizeLocalPaths(
                 "Failed for 李@example.com, محمد@مثال.مصر, user@bücher.example, 「李·明@例え.jp」, " +
                     "李@例え.xn--p1ai, 李!明@example.com, mary'ann@example.com, 李·明@example.com, " +
-                    "'o'brien@example.com, {@example.com, 李，@example.com, 李，明@example.com"
+                    "'o'brien@example.com, {@example.com, 李，@example.com, 李，明@example.com, " +
+                    "\"李·明\"@example.com, \"john doe\"@example.com, user@[192.0.2.1], user@[IPv6:2001:db8::1]"
             )
         )
+        assertFalse(CoreTelemetryService.sanitizeLocalPaths("Failed for \"a\\\"b\"@example.com").contains("example.com"))
         assertEquals(
             "status 'ready' (https://example.com/api)",
             CoreTelemetryService.sanitizeLocalPaths("status 'ready' (https://example.com/api)")
