@@ -343,6 +343,7 @@ internal object CoreTelemetryQuotedPathRedactor {
     }
 
     private fun findLocalPathStartInQuoted(text: String, start: Int, end: Int): Int {
+        if (isExactProtocolVersion(text, start, end)) return -1
         var tokenStart = -1
         var pos = start
         var found = -1
@@ -370,6 +371,43 @@ internal object CoreTelemetryQuotedPathRedactor {
             homeAfter >= 0 -> checkTrailingNonWs(text, pos, homeAfter, end)
             else -> stepPlainQuotedChar(pos, dec0, tokenStart)
         }
+    }
+
+    private fun isExactProtocolVersion(text: String, start: Int, end: Int): Boolean {
+        var pos = decodeProtocolPrefix(text, start, end)
+        if (pos < 0 || pos >= end) return false
+        val slash = decodeJsonCharAt(text, pos, end)
+        if (slash.ch != '/') return false
+        pos += slash.len
+        var hasDigit = false
+        var expectDigit = true
+        while (pos < end) {
+            val dec = decodeJsonCharAt(text, pos, end)
+            if (dec.ch in '0'..'9') {
+                hasDigit = true
+                expectDigit = false
+            } else if (dec.ch == '.' && !expectDigit) {
+                expectDigit = true
+            } else {
+                return false
+            }
+            pos += dec.len
+        }
+        return hasDigit && !expectDigit
+    }
+
+    private fun decodeProtocolPrefix(text: String, start: Int, end: Int): Int {
+        var pos = start
+        val buf = CharArray(4)
+        var count = 0
+        while (pos < end && count < 4) {
+            val dec = decodeJsonCharAt(text, pos, end)
+            if (dec.ch == '/') break
+            buf[count++] = dec.ch.lowercaseChar()
+            pos += dec.len
+        }
+        val prefix = String(buf, 0, count)
+        return if (prefix == "http" || prefix == "tls" || prefix == "ssl") pos else -1
     }
 
     private fun matchDecodedFileScheme(text: String, pos: Int, end: Int): Boolean {
@@ -492,7 +530,11 @@ internal object CoreTelemetryQuotedPathRedactor {
         return false
     }
 
-    private fun isUrlStructuralEscape(ch: Char): Boolean = ch in ' '..'~' && ch != '"' && ch != '\\'
+    private fun isUrlStructuralEscape(ch: Char): Boolean {
+        val blockedRange = ch <= '\u0020' || ch in '\u007F'..'\u009F' || ch in '\uD800'..'\uDFFF'
+        if (blockedRange || ch.isWhitespace() || Character.isSpaceChar(ch)) return false
+        return ch !in "\"\\<>'()[]{},;"
+    }
 
     private fun decodeUrlEscapesForVault(text: String, start: Int, end: Int): String {
         val sb = StringBuilder(end - start)

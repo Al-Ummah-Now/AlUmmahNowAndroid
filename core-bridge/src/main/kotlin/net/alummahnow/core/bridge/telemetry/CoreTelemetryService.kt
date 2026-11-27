@@ -385,9 +385,7 @@ class CoreTelemetryService(
             "kt", "java", "swift", "cs", "cpp", "cc", "c", "h", "hpp", "rs", "py", "js", "ts", "go", "rb", "m", "mm"
         )
         private val keywordQuotedPathRegex = Regex(
-            """(\b(?:file|path|directory|folder|document)[ \t\p{Zs}]+)""" +
-                """(?:"(?!\u001E)[^"\r\n\u001E\u001F]+"|""" +
-                """'(?!\u001E)[^'\r\n\u001E\u001F]+(?:(?<=[\p{L}\p{N}])'(?=[\p{L}])[^'\r\n\u001E\u001F]+)*')""",
+            """\b(?:file|path|directory|folder|document)[ \t\p{Zs}]+(?=["'])""",
             RegexOption.IGNORE_CASE
         )
         private val keywordFilenamePrefixRegex = Regex(
@@ -532,7 +530,7 @@ class CoreTelemetryService(
             }
             scrubbed = CoreTelemetryQuotedPathRedactor.replacePreKeywordPathRules(scrubbed, preKeywordPathRules)
             scrubbed = CoreTelemetryQuotedFilenameRedactor.redactQuotedFilenames(scrubbed)
-            scrubbed = CoreTelemetryQuotedFilenameRedactor.replaceKeywordQuotedPaths(scrubbed, keywordQuotedPathRegex)
+            scrubbed = CoreTelemetryKeywordQuoteRedactor.replaceKeywordQuotedPaths(scrubbed, keywordQuotedPathRegex)
             scrubbed = redactKeywordUnquotedFilenames(scrubbed)
             scrubbed = CoreTelemetryQuotedPathRedactor.replaceKeywordAssignedPaths(scrubbed, keywordAssignedPathRegex)
             scrubbed = CoreTelemetryEmailScanner.redactEmails(scrubbed)

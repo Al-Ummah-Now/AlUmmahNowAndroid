@@ -384,11 +384,29 @@ class CoreTelemetryUrlContinuationTest {
             "[\"https://example.com/api\\u003ftoken=opaqueSecret123\"]" to
                 "[\"https://example.com/api?[redacted]\"]",
             "[\"https://example.test/webhook/fake\\u0054oken\"]" to
-                "[\"https://example.test/webhook/[redacted]\"]"
+                "[\"https://example.test/webhook/[redacted]\"]",
+            "[\"https://example.com/api\\u003Ftoken=prefix\\u0020opaqueSecret123\"]" to
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/api?token=first\\u0020secondSecret\"]" to
+                "[\"https://example.com/api?[redacted]\"]",
+            "[\"https://example.com/api\\u0023prefix\\u0020opaqueSecret123\"]" to
+                "[\"https://example.com/api#[redacted]\"]",
+            "[\"https://example.test/webhook/\\u00e9PrivateToken\"]" to
+                "[\"https://example.test/webhook/[redacted]\"]",
+            "[\"HTTP/2\"]" to "[\"HTTP/2\"]",
+            "[\"HTTP/1.1\"]" to "[\"HTTP/1.1\"]",
+            "[\"HTTP\\/2\"]" to "[\"HTTP\\/2\"]",
+            "[\"TLS/1.3\"]" to "[\"TLS/1.3\"]",
+            "[\"SSL/3.0\"]" to "[\"SSL/3.0\"]",
+            "[\"HTTP/2/Secret.mov\"]" to "[\"[redacted-path]\"]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
+        val manyApostrophes = "file '${"a'".repeat(5000)}end'"
+        assertEquals("file [redacted-path]", CoreTelemetryService.sanitizeLocalPaths(manyApostrophes))
+        val manyUnclosedApostrophes = "file '${"a'".repeat(5000)}end"
+        assertEquals(manyUnclosedApostrophes, CoreTelemetryService.sanitizeLocalPaths(manyUnclosedApostrophes))
         val manyFileUris = List(2000) { "open file:///Users/Alice/Secret.mov" }.joinToString("\n")
         val expectedFileUris = List(2000) { "open [redacted-path]" }.joinToString("\n")
         assertEquals(expectedFileUris, CoreTelemetryService.sanitizeLocalPaths(manyFileUris))

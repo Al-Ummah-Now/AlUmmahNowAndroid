@@ -2,76 +2,6 @@ package net.alummahnow.core.bridge.telemetry
 
 @Suppress("TooManyFunctions")
 internal object CoreTelemetryQuotedFilenameRedactor {
-    fun replaceKeywordQuotedPaths(text: String, regex: Regex): String {
-        if (text.indexOf('"') < 0) return regex.replace(text, "$1[redacted-path]")
-        var spans = CoreTelemetryQuotedPathRedactor.collectBalancedDoubleQuoteSpans(text)
-        if (spans.isEmpty()) return regex.replace(text, "$1[redacted-path]")
-        val masked = CoreTelemetryQuotedPathRedactor.buildMaskedDoubleQuotes(text, spans)
-        val afterUnquoted = CoreTelemetryQuotedPathRedactor.applyMaskedPathRegex(text, masked, regex, hasPrefix = true)
-        if (afterUnquoted !== text) {
-            if (afterUnquoted.indexOf('"') < 0) return afterUnquoted
-            spans = CoreTelemetryQuotedPathRedactor.collectBalancedDoubleQuoteSpans(afterUnquoted)
-        }
-        return replaceKeywordQuotedInSpans(afterUnquoted, spans, regex)
-    }
-
-    private fun replaceKeywordQuotedInSpans(
-        current: String,
-        spans: List<CoreTelemetryQuotedPathRedactor.QuotedPathSpan>,
-        regex: Regex
-    ): String {
-        var sb: StringBuilder? = null
-        var copied = 0
-        for (span in spans) {
-            val innerStart = span.open + 1
-            if (innerStart < span.close && containsQuoteOrQuoteEscape(current, innerStart, span.close)) {
-                val (decoded, rawOffsets) = CoreTelemetryQuotedPathRedactor.decodeQuotedSpanWithOffsets(
-                    current,
-                    innerStart,
-                    span.close
-                )
-                if (decoded.indexOf('\'') >= 0 || decoded.indexOf('"') >= 0) {
-                    val (nextSb, nextCopied) = applyKeywordQuotedDecoded(
-                        current,
-                        decoded,
-                        rawOffsets,
-                        regex,
-                        sb,
-                        copied
-                    )
-                    sb = nextSb
-                    copied = nextCopied
-                }
-            }
-        }
-        val out = sb ?: return current
-        return out.append(current, copied, current.length).toString()
-    }
-
-    @Suppress("LongParameterList")
-    private fun applyKeywordQuotedDecoded(
-        current: String,
-        decoded: String,
-        rawOffsets: IntArray,
-        regex: Regex,
-        initialSb: StringBuilder?,
-        initialCopied: Int
-    ): Pair<StringBuilder?, Int> {
-        var match = regex.find(decoded) ?: return initialSb to initialCopied
-        var sb = initialSb
-        var copied = initialCopied
-        while (true) {
-            val g1 = match.groups[1]
-            val rawPrefixEnd = rawOffsets[if (g1 != null) g1.range.last + 1 else match.range.first]
-            val rawEnd = rawOffsets[match.range.last + 1]
-            val out = sb ?: StringBuilder(current.length).also { sb = it }
-            out.append(current, copied, rawPrefixEnd).append("[redacted-path]")
-            copied = rawEnd
-            match = match.next() ?: break
-        }
-        return sb to copied
-    }
-
     fun replaceBareFilenames(text: String, regex: Regex): String {
         if (text.indexOf('"') < 0) return regex.replace(text, "$1$2[redacted-path]")
         var spans = CoreTelemetryQuotedPathRedactor.collectBalancedDoubleQuoteSpans(text)
@@ -621,22 +551,6 @@ internal object CoreTelemetryQuotedFilenameRedactor {
             if (ch == '.') return true
             if (ch == '\\' && i + 1 < end) {
                 if (text[i + 1] == 'u' && i + 5 < end) return true
-                i += 2
-            } else {
-                i++
-            }
-        }
-        return false
-    }
-
-    private fun containsQuoteOrQuoteEscape(text: String, start: Int, end: Int): Boolean {
-        var i = start
-        while (i < end) {
-            val ch = text[i]
-            if (ch == '\'') return true
-            if (ch == '\\' && i + 1 < end) {
-                val next = text[i + 1]
-                if (next == '"' || (next == 'u' && i + 5 < end)) return true
                 i += 2
             } else {
                 i++
