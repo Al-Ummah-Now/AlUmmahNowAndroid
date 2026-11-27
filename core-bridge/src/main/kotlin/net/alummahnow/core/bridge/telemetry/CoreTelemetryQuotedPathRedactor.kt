@@ -5,6 +5,7 @@ internal object CoreTelemetryQuotedPathRedactor {
     private data class QuotedPathSpan(
         val open: Int,
         val close: Int,
+        val hasVault: Boolean,
         val stopPos: Int
     )
 
@@ -32,10 +33,9 @@ internal object CoreTelemetryQuotedPathRedactor {
                 if (span.close < 0) {
                     idx = span.stopPos + 1
                 } else {
-                    val out = sb ?: StringBuilder(text.length)
-                    val prevCopied = copied
-                    copied = redactQuotedNonVaultSegments(text, idx + 1, span.close, out, copied)
-                    if (copied != prevCopied) sb = out
+                    val (nextSb, nextCopied) = redactSingleQuotedSpan(text, span, sb, copied)
+                    sb = nextSb
+                    copied = nextCopied
                     idx = span.close + 1
                 }
             }
@@ -44,49 +44,121 @@ internal object CoreTelemetryQuotedPathRedactor {
         return out.append(text, copied, text.length).toString()
     }
 
-    fun replaceOutsideBalancedDoubleQuotes(text: String, regex: Regex, template: String): String {
-        if (text.indexOf('"') < 0) return regex.replace(text, template)
-        val spans = collectBalancedDoubleQuoteSpans(text)
-        if (spans.isEmpty()) return regex.replace(text, template)
-        val hasPrefix = template.startsWith("$1")
-        var spanIdx = 0
-        return regex.replace(text) { match ->
-            val checkPos = matchContentCheckPos(text, match, hasPrefix)
-            while (spanIdx < spans.size && spans[spanIdx].close <= checkPos) spanIdx++
-            val inside = spanIdx < spans.size && spans[spanIdx].open < checkPos && checkPos < spans[spanIdx].close
-            if (inside) {
-                match.value
-            } else if (hasPrefix) {
-                "${match.groupValues[1]}[redacted-path]"
+    private fun redactSingleQuotedSpan(
+        text: String,
+        span: QuotedPathSpan,
+        sb: StringBuilder?,
+        copied: Int
+    ): Pair<StringBuilder?, Int> {
+        if (!span.hasVault) {
+            val pathPos = findAdjustedPathPos(text, span.open + 1, span.close)
+            if (pathPos < 0) return sb to copied
+            val out = sb ?: StringBuilder(text.length)
+            out.append(text, copied, pathPos).append("[redacted-path]")
+            return out to span.close
+        }
+        return redactQuotedNonVaultSegments(text, span.open + 1, span.close, sb, copied)
+    }
+
+    fun replacePreKeywordPathRules(text: String, rules: List<Pair<Regex, String>>): String {
+        var current = text
+        var masked: String? = null
+        var hasMask = false
+        for ((regex, template) in rules) {
+            if (current.indexOf('"') < 0) {
+                current = regex.replace(current, template)
             } else {
-                "[redacted-path]"
+                if (!hasMask) {
+                    val spans = collectBalancedDoubleQuoteSpans(current)
+                    masked = if (spans.isEmpty()) null else buildMaskedDoubleQuotes(current, spans)
+                    hasMask = true
+                }
+                val hasPrefix = template.startsWith("$1")
+                val mask = masked
+                val next = if (mask != null) {
+                    applyMaskedPathRegex(current, mask, regex, hasPrefix)
+                } else {
+                    regex.replace(current, template)
+                }
+                if (next !== current) {
+                    current = next
+                    hasMask = false
+                }
             }
         }
+        return current
     }
 
     fun replaceKeywordAssignedPaths(text: String, regex: Regex): String {
         if (text.indexOf('"') < 0) return regex.replace(text, "$1[redacted-path]")
-        val spans = collectBalancedDoubleQuoteSpans(text)
+        var spans = collectBalancedDoubleQuoteSpans(text)
         if (spans.isEmpty()) return regex.replace(text, "$1[redacted-path]")
-        var spanIdx = 0
-        return regex.replace(text) { match ->
-            val pos = match.range.first
-            while (spanIdx < spans.size && spans[spanIdx].close <= pos) spanIdx++
-            val end = match.range.last + 1
-            val insideSpan = spanIdx < spans.size && spans[spanIdx].open < pos && pos < spans[spanIdx].close
-            if (insideSpan && end > spans[spanIdx].close) {
-                val tail = match.value.substring(spans[spanIdx].close - pos)
-                "${match.groupValues[1]}[redacted-path]$tail"
-            } else {
-                "${match.groupValues[1]}[redacted-path]"
-            }
+        val masked = buildMaskedDoubleQuotes(text, spans)
+        val afterUnquoted = applyMaskedPathRegex(text, masked, regex, hasPrefix = true)
+        if (afterUnquoted !== text) {
+            if (afterUnquoted.indexOf('"') < 0) return afterUnquoted
+            spans = collectBalancedDoubleQuoteSpans(afterUnquoted)
         }
+        return replaceKeywordAssignedInSpans(afterUnquoted, spans, regex)
     }
 
-    private fun matchContentCheckPos(text: String, match: MatchResult, hasPrefix: Boolean): Int {
-        if (hasPrefix) return match.range.first + match.groupValues[1].length
-        val loc = match.range.first
-        return if (text[loc] == '"' && loc + 1 < text.length) loc + 1 else loc
+    private fun replaceKeywordAssignedInSpans(
+        current: String,
+        spans: List<QuotedPathSpan>,
+        regex: Regex
+    ): String {
+        var sb: StringBuilder? = null
+        var copied = 0
+        for (span in spans) {
+            val innerStart = span.open + 1
+            if (innerStart < span.close && containsAssignDelimiter(current, innerStart, span.close)) {
+                val inner = current.substring(innerStart, span.close)
+                val scrubbed = regex.replace(inner, "$1[redacted-path]")
+                if (scrubbed != inner) {
+                    val out = sb ?: StringBuilder(current.length).also { sb = it }
+                    out.append(current, copied, innerStart).append(scrubbed)
+                    copied = span.close
+                }
+            }
+        }
+        val out = sb ?: return current
+        return out.append(current, copied, current.length).toString()
+    }
+
+    private fun containsAssignDelimiter(text: String, start: Int, end: Int): Boolean {
+        for (i in start until end) {
+            if (text[i] == ':' || text[i] == '=') return true
+        }
+        return false
+    }
+
+    private fun buildMaskedDoubleQuotes(text: String, spans: List<QuotedPathSpan>): String {
+        val chars = text.toCharArray()
+        for (span in spans) {
+            for (k in (span.open + 1) until span.close) {
+                if (chars[k] != '\u001E' && chars[k] != '\u001F') chars[k] = 'a'
+            }
+        }
+        return String(chars)
+    }
+
+    private fun applyMaskedPathRegex(text: String, masked: String, regex: Regex, hasPrefix: Boolean): String {
+        var match = regex.find(masked) ?: return text
+        val sb = StringBuilder(text.length)
+        var copied = 0
+        while (true) {
+            val start = match.range.first
+            val end = match.range.last + 1
+            sb.append(text, copied, start)
+            if (hasPrefix) {
+                val g1 = match.groups[1]
+                if (g1 != null) sb.append(text, g1.range.first, g1.range.last + 1)
+            }
+            sb.append("[redacted-path]")
+            copied = end
+            match = match.next() ?: break
+        }
+        return sb.append(text, copied, text.length).toString()
     }
 
     private fun collectBalancedDoubleQuoteSpans(text: String): List<QuotedPathSpan> {
@@ -112,30 +184,38 @@ internal object CoreTelemetryQuotedPathRedactor {
         text: String,
         start: Int,
         close: Int,
-        out: StringBuilder,
+        initialSb: StringBuilder?,
         initialCopied: Int
-    ): Int {
+    ): Pair<StringBuilder?, Int> {
+        var sb = initialSb
         var copied = initialCopied
         var segStart = start
         var done = false
         while (segStart < close && !done) {
-            val rawVault = text.indexOf('\u001E', segStart)
-            val vaultStart = if (rawVault in segStart until close) rawVault else -1
+            val vaultStart = findCharInRange(text, '\u001E', segStart, close)
             val segEnd = if (vaultStart >= 0) vaultStart else close
             val pathPos = findAdjustedPathPos(text, segStart, segEnd)
             if (pathPos >= 0) {
                 val redactEnd = trimVaultLeadingSpace(text, pathPos, segEnd, vaultStart >= 0)
+                val out = sb ?: StringBuilder(text.length).also { sb = it }
                 out.append(text, copied, pathPos).append("[redacted-path]")
                 copied = redactEnd
             }
-            val rawEnd = if (vaultStart >= 0) text.indexOf('\u001F', vaultStart + 1) else -1
-            if (rawEnd in (vaultStart + 1) until close) {
-                segStart = rawEnd + 1
+            val vaultEnd = if (vaultStart >= 0) findCharInRange(text, '\u001F', vaultStart + 1, close) else -1
+            if (vaultEnd >= 0) {
+                segStart = vaultEnd + 1
             } else {
                 done = true
             }
         }
-        return copied
+        return sb to copied
+    }
+
+    private fun findCharInRange(text: String, target: Char, start: Int, end: Int): Int {
+        for (i in start until end) {
+            if (text[i] == target) return i
+        }
+        return -1
     }
 
     private fun trimVaultLeadingSpace(text: String, pathPos: Int, segEnd: Int, beforeVault: Boolean): Int {
@@ -158,25 +238,27 @@ internal object CoreTelemetryQuotedPathRedactor {
     }
 
     private fun findDoubleQuotedPathEnd(text: String, open: Int): QuotedPathSpan {
+        var hasVault = false
         var escaped = false
         var pos = open + 1
         var result: QuotedPathSpan? = null
         while (pos < text.length && result == null) {
             val ch = text[pos]
+            if (ch == '\u001E') hasVault = true
             when {
-                ch == '\r' || ch == '\n' -> result = QuotedPathSpan(open, -1, pos)
+                ch == '\r' || ch == '\n' -> result = QuotedPathSpan(open, -1, hasVault, pos)
                 ch == '\u001F' -> {
                     escaped = false
                     pos++
                 }
-                ch == '"' && !escaped -> result = QuotedPathSpan(open, pos, pos)
+                ch == '"' && !escaped -> result = QuotedPathSpan(open, pos, hasVault, pos)
                 else -> {
                     escaped = ch == '\\' && !escaped
                     pos++
                 }
             }
         }
-        return result ?: QuotedPathSpan(open, -1, text.length)
+        return result ?: QuotedPathSpan(open, -1, hasVault, text.length)
     }
 
     private fun decodeJsonCharAt(text: String, pos: Int, end: Int): DecodedJsonChar {

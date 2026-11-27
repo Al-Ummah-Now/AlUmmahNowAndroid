@@ -431,7 +431,7 @@ class CoreTelemetryService(
             RegexOption.IGNORE_CASE
         )
         private val bareFilenameRegex = Regex(
-            """(^|[\r\n:=;\u001F])([ \t]*)(?=[^\r\n:=;\u001E\u001F \t])[^\r\n:=;\u001E\u001F]*\.""" +
+            """(^|[\r\n:=;\u001F"])([ \t]*)(?=[^\r\n:=;\u001E\u001F" \t])[^\r\n:=;\u001E\u001F"]*\.""" +
                 """(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
             RegexOption.IGNORE_CASE
         )
@@ -528,9 +528,7 @@ class CoreTelemetryService(
             for (regex in parenPathRegexes) {
                 scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
             }
-            for ((regex, template) in preKeywordPathRules) {
-                scrubbed = CoreTelemetryQuotedPathRedactor.replaceOutsideBalancedDoubleQuotes(scrubbed, regex, template)
-            }
+            scrubbed = CoreTelemetryQuotedPathRedactor.replacePreKeywordPathRules(scrubbed, preKeywordPathRules)
             scrubbed = CoreTelemetryScanners.redactQuotedFilenames(scrubbed)
             scrubbed = keywordQuotedPathRegex.replace(scrubbed, "$1[redacted-path]")
             scrubbed = redactKeywordUnquotedFilenames(scrubbed)

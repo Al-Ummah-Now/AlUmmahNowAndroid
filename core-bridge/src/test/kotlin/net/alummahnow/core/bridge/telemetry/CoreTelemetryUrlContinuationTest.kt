@@ -315,10 +315,21 @@ class CoreTelemetryUrlContinuationTest {
             "[\"\\u005C\\u005CServer\\u005CShare\",\"public\"]" to "[\"[redacted-path]\",\"public\"]",
             "[\"hello\\nworld\",\"public\"]" to "[\"hello\\nworld\",\"public\"]",
             "[\"path=secret\",\"public\"]" to "[\"path=[redacted-path]\",\"public\"]",
+            "[\"path=alpha\",\"path=beta\"]" to "[\"path=[redacted-path]\",\"path=[redacted-path]\"]",
+            "[\"hello\\nworld\"] relative\\secret" to "[\"hello\\nworld\"] [redacted-path]",
+            "[\"hello\\nworld\",\"public\"] relative\\Secret" to "[\"hello\\nworld\",\"public\"] [redacted-path]",
+            "[\"public\",\"report.pdf attached\"]" to "[\"public\",\"[redacted-path] attached\"]",
+            "{\"message\":\"see report.pdf now\",\"keep\":\"public\"}" to
+                "{\"message\":\"[redacted-path] now\",\"keep\":\"public\"}",
+            "{\"status\":\"secret.mov pending\"}" to "{\"status\":\"[redacted-path] pending\"}",
             "Failed reading /Users/alice/My \"Secret\" Folder/file.mov" to "Failed reading [redacted-path]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
+        val manyPublic = "[${List(2000) { "\"public\"" }.joinToString(",")}]"
+        assertEquals(manyPublic, CoreTelemetryService.sanitizeLocalPaths(manyPublic))
+        val manyNewlines = "[${List(2000) { "\"hello\\nworld\"" }.joinToString(",")}]"
+        assertEquals(manyNewlines, CoreTelemetryService.sanitizeLocalPaths(manyNewlines))
     }
 }
