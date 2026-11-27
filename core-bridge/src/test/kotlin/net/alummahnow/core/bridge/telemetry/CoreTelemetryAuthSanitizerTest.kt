@@ -458,9 +458,25 @@ class CoreTelemetryAuthSanitizerTest {
             "https://example.com/api,public#[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,public#token=opaqueSecret123")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scrubs local paths emails and path secrets inside URL continuations`() {
         assertEquals(
-            "https://example.com/api,/public?[redacted]",
+            "https://example.com/api,[redacted-path]?[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,/public?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/api,[redacted-path]?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,private/Secret.mov?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com([redacted-path])?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com(/Users/alice/Secret.mov)?token=opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com/api,[redacted-email]?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,alice@example.com?token=opaqueSecret123")
         )
         assertEquals(
             "https://example.com/api)public?[redacted]",
@@ -471,8 +487,16 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api(tag:val)?token=opaqueSecret123")
         )
         assertEquals(
-            "https://example.com/api,public/webhook/[redacted]",
+            "https://example.com/api,[redacted-path]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/api,public/webhook/opaqueSecret123")
+        )
+        assertEquals(
+            "https://example.com([redacted-path])[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com(/Users/alice/Secret.mov)/webhook/opaqueSecret123")
+        )
+        assertEquals(
+            "https://api.telegram.org/bot123:[redacted][redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("https://api.telegram." + "org/bot123:opaqueSecret123,/Users/alice/Secret.mov")
         )
         assertEquals(
             "https://example.com/api,https://other.com/x?[redacted]",

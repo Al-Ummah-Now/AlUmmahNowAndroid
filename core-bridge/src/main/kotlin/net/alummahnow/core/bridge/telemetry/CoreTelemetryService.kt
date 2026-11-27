@@ -899,23 +899,20 @@ class CoreTelemetryService(
                 } else {
                     val (url, baseTail) = formatVaultedUrl(span, text)
                     val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
-                    var endPos = span.totalEnd
-                    var tail = baseTail
                     val rawUrl = text.substring(span.start, span.baseEnd)
-                    val extended = extendUrlContinuation(text, span, rawUrl, failedContMax)
-                    val redactedUrl = if (extended != null) {
-                        endPos = extended.second
-                        tail = extended.third
-                        extended.first
-                    } else {
-                        baseRedacted
-                    }
+                    val extended = extendUrlContinuation(text, span, rawUrl, baseTail, failedContMax)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, span.start)
-                    val idx = vaultedUrls.size
-                    vaultedUrls += redactedUrl
+                    val endPos = if (extended != null) {
+                        emitUrlContinuation(out, prefix, vaultedUrls, baseRedacted, baseTail, extended)
+                        extended.endPos
+                    } else {
+                        val idx = vaultedUrls.size
+                        vaultedUrls += baseRedacted
+                        out.append(prefix).append(idx).append('\u001F').append(baseTail)
+                        span.totalEnd
+                    }
                     tracker.onVaultedUrl(endPos)
-                    out.append(prefix).append(idx).append('\u001F').append(tail)
                     copied = endPos
                     searchFrom = endPos
                 }
@@ -949,17 +946,56 @@ class CoreTelemetryService(
             return sb.toString()
         }
 
+        private class UrlContinuationResult(
+            val replaceBase: Boolean,
+            val baseUrl: String,
+            val keepBaseTail: Boolean,
+            val middle: String,
+            val qfToken: String,
+            val tail: String,
+            val endPos: Int
+        )
+
+        @Suppress("LongParameterList")
+        private fun emitUrlContinuation(
+            out: StringBuilder,
+            prefix: String,
+            vaultedUrls: MutableList<String>,
+            baseRedacted: String,
+            baseTail: String,
+            ext: UrlContinuationResult
+        ) {
+            if (ext.replaceBase) {
+                val idx = vaultedUrls.size
+                vaultedUrls += ext.baseUrl
+                out.append(prefix).append(idx).append('\u001F').append(ext.tail)
+                return
+            }
+            val baseIdx = vaultedUrls.size
+            vaultedUrls += baseRedacted
+            out.append(prefix).append(baseIdx).append('\u001F')
+            if (ext.keepBaseTail) out.append(baseTail)
+            out.append(ext.middle)
+            if (ext.qfToken.isNotEmpty()) {
+                val qfIdx = vaultedUrls.size
+                vaultedUrls += ext.qfToken
+                out.append(prefix).append(qfIdx).append('\u001F')
+            }
+            out.append(ext.tail)
+        }
+
         private fun extendUrlContinuation(
             text: String,
             span: CoreTelemetryScanners.UrlSpan,
             rawUrl: String,
+            baseTail: String,
             failedContMax: IntArray
-        ): Triple<String, Int, String>? {
+        ): UrlContinuationResult? {
             val eligible = !span.hasQf && span.totalEnd >= failedContMax[0] && span.totalEnd < text.length
             if (!eligible || text[span.totalEnd] !in ",([])") return null
             val pathEnd = CoreTelemetryScanners.scanUrlContinuation(text, span.totalEnd)
-            val result = extendUrlContinuationQuery(text, span, pathEnd)
-                ?: extendUrlContinuationSecret(text, span, rawUrl, pathEnd)
+            val result = extendUrlContinuationQuery(text, span, rawUrl, baseTail, pathEnd)
+                ?: extendUrlContinuationSecret(text, span, rawUrl, baseTail, pathEnd)
             if (result == null && pathEnd > failedContMax[0]) failedContMax[0] = pathEnd
             return result
         }
@@ -967,29 +1003,60 @@ class CoreTelemetryService(
         private fun extendUrlContinuationQuery(
             text: String,
             span: CoreTelemetryScanners.UrlSpan,
+            rawUrl: String,
+            baseTail: String,
             pathEnd: Int
-        ): Triple<String, Int, String>? {
+        ): UrlContinuationResult? {
             val hasNext = pathEnd > span.totalEnd && pathEnd < text.length
             if (!hasNext || (text[pathEnd] != '?' && text[pathEnd] != '#')) return null
             val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, pathEnd)
-            val (cleanQf, tail) = trimQueryOrFragmentDelimiters(text.substring(pathEnd, qfEnd), text, span.start)
-            val prefix = CoreTelemetryScanners.redactUrlPathSecrets(text.substring(span.start, pathEnd))
-            return Triple("$prefix${cleanQf.first()}[redacted]", qfEnd, tail)
+            val (cleanQf, qfTail) = trimQueryOrFragmentDelimiters(text.substring(pathEnd, qfEnd), text, span.start)
+            val qfToken = "${cleanQf.first()}[redacted]"
+            val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(rawUrl)
+            val prefixRedacted = CoreTelemetryScanners.redactUrlPathSecrets(text.substring(span.start, pathEnd))
+            val swallowed = prefixRedacted == baseRedacted || prefixRedacted == "$baseRedacted[redacted]"
+            return if (swallowed) {
+                UrlContinuationResult(true, "$prefixRedacted$qfToken", false, "", "", qfTail, qfEnd)
+            } else {
+                val middle = extractContinuationMiddle(prefixRedacted, baseRedacted, text, span.totalEnd, pathEnd)
+                val keepTail = baseTail.isNotEmpty() && baseRedacted.endsWith(baseTail)
+                UrlContinuationResult(false, "", keepTail, middle, qfToken, qfTail, qfEnd)
+            }
         }
 
         private fun extendUrlContinuationSecret(
             text: String,
             span: CoreTelemetryScanners.UrlSpan,
             rawUrl: String,
+            baseTail: String,
             pathEnd: Int
-        ): Triple<String, Int, String>? {
+        ): UrlContinuationResult? {
             val end = CoreTelemetryScanners.trimWebhookContinuationEnd(text, span.start, span.totalEnd, pathEnd)
             if (end <= span.totalEnd) return null
             val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(rawUrl)
             val extRedacted = CoreTelemetryScanners.redactUrlPathSecrets(text.substring(span.start, end))
-            val addedRaw = text.substring(span.totalEnd, end)
-            if (extRedacted == "$baseRedacted$addedRaw") return null
-            return Triple(extRedacted, pathEnd, text.substring(end, pathEnd))
+            if (extRedacted == "$baseRedacted${text.substring(span.totalEnd, end)}") return null
+            val extTail = text.substring(end, pathEnd)
+            val swallowed = extRedacted == baseRedacted || extRedacted == "$baseRedacted[redacted]"
+            return if (swallowed) {
+                UrlContinuationResult(true, extRedacted, false, "", "", extTail, pathEnd)
+            } else {
+                val middle = extractContinuationMiddle(extRedacted, baseRedacted, text, span.totalEnd, end)
+                val keepTail = baseTail.isNotEmpty() && baseRedacted.endsWith(baseTail)
+                UrlContinuationResult(false, "", keepTail, middle, "", extTail, pathEnd)
+            }
+        }
+
+        private fun extractContinuationMiddle(
+            redacted: String,
+            baseRedacted: String,
+            text: String,
+            start: Int,
+            end: Int
+        ): String = if (redacted.startsWith(baseRedacted)) {
+            redacted.substring(baseRedacted.length)
+        } else {
+            text.substring(start, end)
         }
 
         private fun formatVaultedUrl(span: CoreTelemetryScanners.UrlSpan, text: String): Pair<String, String> {
