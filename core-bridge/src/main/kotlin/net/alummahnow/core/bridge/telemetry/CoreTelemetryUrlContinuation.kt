@@ -67,7 +67,7 @@ internal object CoreTelemetryUrlContinuation {
         if (span.hasQf || span.totalEnd >= text.length || text[span.totalEnd] !in ",([]){}") return null
         val webhookProbe = probeWebhookPrefix(input.rawUrl)
         if (webhookProbe == null && span.totalEnd < contLimits[0]) return null
-        val outerQuote = resolveOuterQuote(text, span.start, input.inSingleQuote)
+        val outerQuote = resolveOuterQuote(text, span.start)
         val initial = CoreTelemetryScanners.ContScanState(
             span.totalEnd >= contLimits[1],
             span.totalEnd >= contLimits[2],
@@ -82,11 +82,8 @@ internal object CoreTelemetryUrlContinuation {
         return result
     }
 
-    private fun resolveOuterQuote(text: String, spanStart: Int, inSingleQuote: Boolean): Char = when {
-        inSingleQuote || (spanStart > 0 && text[spanStart - 1] == '\'') -> '\''
-        spanStart > 0 && text[spanStart - 1] == '"' -> '"'
-        else -> '\u0000'
-    }
+    private fun resolveOuterQuote(text: String, spanStart: Int): Char =
+        if (spanStart > 0 && (text[spanStart - 1] == '\'' || text[spanStart - 1] == '"')) text[spanStart - 1] else '\u0000'
 
     private fun buildQuoteFlags(state: CoreTelemetryScanners.ContScanState, inSingleQuote: Boolean): Int {
         var flags = 0
@@ -106,17 +103,12 @@ internal object CoreTelemetryUrlContinuation {
     ): Pair<CoreTelemetryScanners.ContScanState, Int> {
         val firstEnd = CoreTelemetryScanners.scanUrlContinuation(text, start, state)
         val hitsQf = firstEnd > start && firstEnd < text.length && (text[firstEnd] == '?' || text[firstEnd] == '#')
-        val retryQuote = when {
-            state.quoteChar != '\u0000' && (state.quoteChar == state.outerQuote || (webhookProbe == null && !hitsQf)) ->
-                state.quoteChar
-            state.sawNestedOuterQuote && state.groupStack.isNotEmpty() -> state.outerQuote
-            else -> '\u0000'
-        }
-        if (retryQuote == '\u0000') return state to firstEnd
-        recordUnclosedQuote(retryQuote, firstEnd, contLimits)
+        val retry = state.quoteChar != '\u0000' && (state.quoteChar == state.outerQuote || (webhookProbe == null && !hitsQf))
+        if (!retry) return state to firstEnd
+        recordUnclosedQuote(state.quoteChar, firstEnd, contLimits)
         val nextState = CoreTelemetryScanners.ContScanState(
-            if (retryQuote == '"') false else state.allowDoubleQuotes,
-            if (retryQuote == '\'') false else state.allowSingleQuotes,
+            if (state.quoteChar == '"') false else state.allowDoubleQuotes,
+            if (state.quoteChar == '\'') false else state.allowSingleQuotes,
             state.outerQuote,
             state.stopAtSchemes
         )

@@ -125,4 +125,32 @@ class CoreTelemetryUrlContinuationTest {
             )
         )
     }
+
+    @Test
+    fun `sanitizeLocalPaths handles balanced outer-quoted webhook schemes and sibling array closers`() {
+        assertEquals(
+            "'https://example.test/webhook/[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken('a)first opaqueSecret123',https://other.test/x)'"
+            )
+        )
+        assertEquals(
+            "'https://example.test/webhook/[redacted]', more)'",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken('a)first opaqueSecret123', more)'"
+            )
+        )
+        assertEquals(
+            "[\"https://example.test/webhook/[redacted]\",\")public-text\"]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "[\"https://example.test/webhook/fakeToken(\",\")public-text\"]"
+            )
+        )
+        assertEquals(
+            "'https://example.test/webhook/[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken(' opaqueSecret123')'"
+            )
+        )
+    }
 }

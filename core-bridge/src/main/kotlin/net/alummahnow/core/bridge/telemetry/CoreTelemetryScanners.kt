@@ -253,7 +253,6 @@ internal object CoreTelemetryScanners {
         val groupStack = ArrayList<Char>()
         var quoteChar: Char = '\u0000'
         var sawInnerQf = false
-        var sawNestedOuterQuote = false
     }
 
     fun scanUrlContinuation(text: String, start: Int, state: ContScanState): Int {
@@ -282,8 +281,7 @@ internal object CoreTelemetryScanners {
 
     private fun stepUnquotedContinuation(text: String, p: Int, start: Int, state: ContScanState): Int {
         val ch = text[p]
-        val stopScheme = state.stopAtSchemes || state.sawNestedOuterQuote
-        val startsScheme = stopScheme && p > start && !isBlockedBeforeScheme(text[p - 1]) && isUrlSchemeAt(text, p)
+        val startsScheme = state.stopAtSchemes && p > start && !isBlockedBeforeScheme(text[p - 1]) && isUrlSchemeAt(text, p)
         if (isContStopChar(text, p, ch) || startsScheme) return -1
         if (ch == '"' || ch == '\'') return stepUnquotedQuoteChar(text, p, start, state)
         updateContGroupStack(ch, state.groupStack)
@@ -295,20 +293,34 @@ internal object CoreTelemetryScanners {
         if (ch == '\'' && CoreTelemetryUrlContinuation.isContractionApostrophe(text, p)) return p + 1
         if (canOpenContinuationQuote(text, p, start, state)) {
             state.quoteChar = ch
-            if (ch == state.outerQuote) state.sawNestedOuterQuote = true
             return p + 1
         }
-        val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
-        val stopsOuter = ch == state.outerQuote && (state.groupStack.isEmpty() || !allowed || state.sawNestedOuterQuote)
-        return if (ch == '"' || stopsOuter) -1 else p + 1
+        return if (ch == '"' || ch == state.outerQuote) -1 else p + 1
     }
 
     private fun canOpenContinuationQuote(text: String, p: Int, start: Int, state: ContScanState): Boolean {
         val ch = text[p]
         val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
         if (!allowed || state.groupStack.isEmpty()) return false
+        if (ch == state.outerQuote && isOuterQuoteCloser(text, p, state.outerQuote)) return false
         val afterNonAlphaNum = p > start && !isAsciiAlphaNum(text[p - 1])
         return if (ch == '"') state.outerQuote != '"' || afterNonAlphaNum else afterNonAlphaNum
+    }
+
+    private fun isOuterQuoteCloser(text: String, quotePos: Int, outerQuote: Char): Boolean {
+        var k = skipHorizontalSpaces(text, quotePos + 1)
+        if (k >= text.length) return true
+        val c = text[k]
+        if (c in "\r\n}]);:") return true
+        if (c != ',') return false
+        k = skipHorizontalSpaces(text, k + 1)
+        return k >= text.length || text[k] == outerQuote || text[k] in "}])\r\n"
+    }
+
+    private fun skipHorizontalSpaces(text: String, start: Int): Int {
+        var k = start
+        while (k < text.length && (text[k] == ' ' || text[k] == '\t')) k++
+        return k
     }
 
     private fun updateContGroupStack(ch: Char, stack: ArrayList<Char>) {
