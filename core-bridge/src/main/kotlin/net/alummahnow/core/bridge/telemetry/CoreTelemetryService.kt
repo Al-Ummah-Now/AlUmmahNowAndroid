@@ -369,7 +369,7 @@ class CoreTelemetryService(
                 """(?:[A-Za-z0-9._~!$&'*+;=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
                 """(?:/(?:(?!(?:file://|[A-Za-z]:[\\/]))(?:[^\s"<>\\{},()\[\]?#\r\n]|""" +
                 """\([^\s"<>\\{},()\[\]/:\\?#]+\)|\[[^\s"<>\\{},()\[\]/:\\?#]+\]))*)?)""" +
-                """([?#][^\s"<>\\{},()\[\]\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
+                """([?#][^\s"<>\\{}\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
             RegexOption.IGNORE_CASE
         )
         private const val ioKeywordVerbs =
@@ -391,13 +391,14 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]$2",
             Regex("""(?:[A-Za-z]:[\\/]|\\\\)(?:(?!\s+\u001E)[^\r\n\u001E])+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
-            Regex("""(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>(),;\u001E\u001F]+\\[^\r\n\u001E\u001F]+""") to "$1[redacted-path]",
+            Regex("""(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>(),;\u001E\u001F]+\\(?:(?!\s+\u001E)[^\r\n\u001E\u001F])+""") to "$1[redacted-path]",
             Regex("""["']/[ \t]+[^\r\n\u001E]+""") to "[redacted-path]",
             Regex(
                 """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|//+(?=[ \t]*[^\s/])|/(?=[ \t]*[^\s/]))(?:(?!\s+\u001E)[^\r\n\u001E])+"""
             ) to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{"'=,:;\u001F])(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^\r\n\u001E\u001F]+""",
+                """(^|[\s(\[{"'=,:;\u001F])(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)""" +
+                    """[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/(?:(?!\s+\u001E)[^\r\n\u001E\u001F])+""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(""""[^"\r\n/\\]*\.[A-Za-z0-9]{1,16}"""") to "[redacted-path]",
@@ -418,9 +419,11 @@ class CoreTelemetryService(
             Regex(
                 """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?!ts:\d+)(?:$bareFilenameExtensions)\b(?!\()""",
                 RegexOption.IGNORE_CASE
-            ) to "$1$2[redacted-path]",
+            ) to "$1$2[redacted-path]"
+        )
+        private val postRestoreRedactionRules: List<Pair<Regex, String>> = listOf(
             Regex("""\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b""") to "[redacted-email]",
-            Regex("""\bBearer\s+[A-Za-z0-9._~+/=-]{8,}""", RegexOption.IGNORE_CASE) to "Bearer [redacted]"
+            Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE) to "Bearer [redacted]"
         )
 
         /**
@@ -522,15 +525,8 @@ class CoreTelemetryService(
                     val qf = match.groups[3]?.value
                     var tail = ""
                     val url = if (!qf.isNullOrEmpty()) {
-                        var cleanQf = qf
-                        if (cleanQf.endsWith(';')) {
-                            cleanQf = cleanQf.dropLast(1)
-                            tail = ";"
-                        }
-                        if (match.range.first > 0 && text[match.range.first - 1] == '\'' && cleanQf.endsWith('\'')) {
-                            cleanQf = cleanQf.dropLast(1)
-                            tail = "'$tail"
-                        }
+                        val (cleanQf, trimmedTail) = trimQueryOrFragmentDelimiters(qf, text, match.range.first)
+                        tail = trimmedTail
                         "$baseUrl${cleanQf.first()}[redacted]"
                     } else {
                         var cleanBase = baseUrl
@@ -555,7 +551,38 @@ class CoreTelemetryService(
             for (idx in vaultedUrls.indices) {
                 scrubbed = scrubbed.replace("$prefix$idx\u001F", vaultedUrls[idx])
             }
+            for ((regex, template) in postRestoreRedactionRules) {
+                scrubbed = regex.replace(scrubbed, template)
+            }
             return scrubbed
+        }
+
+        private fun trimQueryOrFragmentDelimiters(qf: String, text: String, matchStart: Int): Pair<String, String> {
+            var value = qf
+            var tail = ""
+            while (value.length > 1) {
+                val last = value.last()
+                when {
+                    last == ';' || last == ',' -> {
+                        value = value.dropLast(1)
+                        tail = "$last$tail"
+                    }
+                    last == '\'' && matchStart > 0 && text[matchStart - 1] == '\'' -> {
+                        value = value.dropLast(1)
+                        tail = "'$tail"
+                    }
+                    last == ')' && value.count { it == ')' } > value.count { it == '(' } -> {
+                        value = value.dropLast(1)
+                        tail = ")$tail"
+                    }
+                    last == ']' && value.count { it == ']' } > value.count { it == '[' } -> {
+                        value = value.dropLast(1)
+                        tail = "]$tail"
+                    }
+                    else -> break
+                }
+            }
+            return value to tail
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {

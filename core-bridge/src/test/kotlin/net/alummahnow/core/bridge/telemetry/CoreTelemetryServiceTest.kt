@@ -197,12 +197,25 @@ class CoreTelemetryServiceTest {
             "[redacted-path] https://example.com/api",
             CoreTelemetryService.sanitizeLocalPaths("file:///storage/emulated/0/Secret.mov and https://example.com/api")
         )
-        assertEquals(
-            "Failed for [redacted-email] with Bearer [redacted]",
-            CoreTelemetryService.sanitizeLocalPaths("Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig")
-        )
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://[:::]/api") == "https://[:::]/api")
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("https://bad%zz/api") == "https://bad%zz/api")
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scrubs url queries fragments emails bearer tokens and relative paths`() {
+        val cases = listOf(
+            "https://example.com/api?token=abc[secret]&next=private" to "https://example.com/api?[redacted]",
+            "https://example.com/api?q=(PrivateProject)" to "https://example.com/api?[redacted]",
+            "(https://example.com/api?q=(PrivateProject))" to "(https://example.com/api?[redacted])",
+            "https://example.com/api#first,PrivateProject" to "https://example.com/api#[redacted]",
+            "https://example.com/users/alice@example.com" to "https://example.com/users/[redacted-email]",
+            "(relative/Secret.mov and https://example.com/api)" to "([redacted-path] https://example.com/api)",
+            "Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and Bearer abcdefg" to
+                "Failed for [redacted-email] with Bearer [redacted] and Bearer [redacted]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
     }
 
     @Test
