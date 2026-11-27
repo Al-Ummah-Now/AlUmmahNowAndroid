@@ -40,10 +40,10 @@ class UserFeaturesTest {
     }
 
     @Test fun `404 feature_off maps to FeatureOff, any other 404 stays NotFound`() {
-        val off = AunException.NotFound("""{"success":false,"code":"feature_off"}""")
+        val off = AunException.NotFound(null, """{"success":false,"code":"feature_off"}""")
         assertTrue(isFeatureOff(off))
         assertTrue(mapCoreError(off) is StudioError.FeatureOff)
-        val missing = AunException.NotFound("Video not found")
+        val missing = AunException.NotFound(null, "Video not found")
         assertFalse(isFeatureOff(missing))
         assertTrue(mapCoreError(missing) is CoreError.NotFound)
     }

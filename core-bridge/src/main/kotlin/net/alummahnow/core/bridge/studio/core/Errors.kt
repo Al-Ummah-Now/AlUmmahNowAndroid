@@ -33,7 +33,7 @@ private fun mapHttp(e: AunException.Http): Throwable = when (e.status.toInt()) {
  * `error`/`message` in the body the message is the body itself, so the code is in it.
  */
 internal fun isFeatureOff(e: Throwable): Boolean = when (e) {
-    is AunException.NotFound -> e.detail.contains(FEATURE_OFF)
+    is AunException.NotFound -> e.code == FEATURE_OFF || e.detail.contains(FEATURE_OFF)
     is AunException.Http -> e.code == FEATURE_OFF
     else -> false
 }
@@ -59,7 +59,7 @@ private const val HTTP_TOO_MANY = 429
  * the server sends the code as the message too (NAT-REL contract: `{code, error: "native_proof_required"}`).
  */
 internal fun isNativeProofRequired(e: Throwable): Boolean = when (e) {
-    is AunException.Forbidden -> e.detail.contains(NATIVE_PROOF_REQUIRED)
+    is AunException.Forbidden -> e.code == NATIVE_PROOF_REQUIRED || e.detail.contains(NATIVE_PROOF_REQUIRED)
     is AunException.Http -> e.code == NATIVE_PROOF_REQUIRED
     else -> false
 }

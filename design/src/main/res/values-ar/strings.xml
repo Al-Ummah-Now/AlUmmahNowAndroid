@@ -65,4 +65,10 @@
     <string name="aun_size_gb">%1$s\u00A0ج.ب</string>
     <string name="aun_size_tb">%1$s\u00A0ت.ب</string>
     <string name="aun_more">المزيد</string>
+    <string name="aun_diagnostics_toggle">التشخيص وتقارير الأعطال</string>
+    <string name="aun_diagnostics_description">مُعطّل افتراضيًا. يشارك تقارير الأعطال المنقّاة ومقاييس الاستخدام الأساسية للمساعدة في إصلاح الأخطاء، ولا يتضمن أبدًا بيانات شخصية أو سجل المشاهدة.</string>
+    <string name="aun_diagnostics_on">مُفعّل</string>
+    <string name="aun_diagnostics_off">مُعطّل</string>
+    <string name="aun_diagnostics_purge_warning">تم إيقاف التشخيص، لكن تعذّر حذف ملفات التشخيص المخزّنة مؤقتًا من الجهاز.</string>
+    <string name="aun_diagnostics_enable_error">تعذّر تفعيل التشخيص على هذا الجهاز.</string>
 </resources>

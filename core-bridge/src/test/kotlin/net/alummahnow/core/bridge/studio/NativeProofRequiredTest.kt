@@ -8,8 +8,8 @@ import org.junit.Test
 
 class NativeProofRequiredTest {
     @Test fun `aun-core's 403 with the code as message is recognised`() {
-        assertTrue(isNativeProofRequired(AunException.Forbidden("native_proof_required")))
-        assertFalse(isNativeProofRequired(AunException.Forbidden("forbidden")))
+        assertTrue(isNativeProofRequired(AunException.Forbidden(null, "native_proof_required")))
+        assertFalse(isNativeProofRequired(AunException.Forbidden(null, "forbidden")))
         assertFalse(isNativeProofRequired(IllegalStateException("native_proof_required")))
     }
 }

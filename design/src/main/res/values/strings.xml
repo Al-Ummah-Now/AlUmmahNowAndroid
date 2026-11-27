@@ -61,4 +61,10 @@
     <string name="aun_size_gb">%1$s\u00A0GB</string>
     <string name="aun_size_tb">%1$s\u00A0TB</string>
     <string name="aun_more">More</string>
+    <string name="aun_diagnostics_toggle">Diagnostics &amp; crash reports</string>
+    <string name="aun_diagnostics_description">Off by default. Shares scrubbed crash reports and basic usage metrics to help fix bugs. Never includes personal data or viewing history.</string>
+    <string name="aun_diagnostics_on">On</string>
+    <string name="aun_diagnostics_off">Off</string>
+    <string name="aun_diagnostics_purge_warning">Diagnostics turned off, but cached diagnostic files could not be removed from disk.</string>
+    <string name="aun_diagnostics_enable_error">Couldn\'t enable diagnostics on this device.</string>
 </resources>

@@ -1,6 +1,7 @@
 package net.alummahnow.admin
 
 import android.content.Context
+import java.io.File
 import net.alummahnow.admin.security.AppLock
 import net.alummahnow.admin.security.StepUp
 import net.alummahnow.core.bridge.AunClient
@@ -14,6 +15,9 @@ import net.alummahnow.core.bridge.studio.AccountSession
 import net.alummahnow.core.bridge.studio.core.CoreAccountSession
 import net.alummahnow.core.bridge.studio.core.KeystoreSecureStorage
 import net.alummahnow.core.bridge.studio.core.OAuthClientSettings
+import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
+import net.alummahnow.core.bridge.telemetry.NullTelemetryService
+import net.alummahnow.core.bridge.telemetry.TelemetryService
 import net.alummahnow.integrity.PlayIntegrityTokenSource
 
 /** What the Admin UI needs. Tests pass fixtures (no network, no pushes, no AI). */
@@ -24,6 +28,7 @@ interface AdminServices {
     val prefs: AdminPrefs
     val lock: AppLock
     val stepUp: StepUp
+    val telemetry: TelemetryService get() = NullTelemetryService
 }
 
 /** Manual DI. Sign-in and tokens go through aun-core (the Studio sign-in); admin-api through the private client. */
@@ -52,6 +57,15 @@ class AdminContainer(context: Context) : AdminServices {
     override val prefs = AdminPrefs(context)
     override val lock = AppLock()
     override val stepUp = StepUp()
+    override val telemetry: TelemetryService = CoreTelemetryService.createOrNull(
+        appVersion = BuildConfig.VERSION_NAME,
+        deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
+        videosApiBaseUrl = BuildConfig.API_BASE_URL,
+        userAgent = "AlUmmahNow-Admin-Android/${BuildConfig.VERSION_NAME}",
+        clientHeader = AunClient.value("admin", BuildConfig.VERSION_NAME),
+        bufferPath = File(context.applicationContext.noBackupFilesDir, "admin-telemetry-buffer.json").absolutePath,
+        initialEnabled = prefs.telemetryEnabled
+    ).also { CoreTelemetryService.installUncaughtExceptionHandler(it) }
 
     companion object {
         const val REDIRECT_URI = "alummahnow-admin://auth/callback"

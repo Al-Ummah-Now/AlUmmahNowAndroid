@@ -52,6 +52,7 @@ import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.core.bridge.links.ShortLinks
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.safety.ViewerReportUrls
+import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.home.HomeScreen
@@ -208,7 +209,15 @@ internal fun ViewerNavHost(
     var settingsOpen by remember { mutableStateOf(false) }
     var blockedListOpen by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
+    val telemetryEnabled by container.displayPrefs.telemetryEnabled.collectAsState(initial = false)
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
+    LaunchedEffect(telemetryEnabled) {
+        container.telemetry.setConsent(if (telemetryEnabled) TelemetryConsent.FULL else TelemetryConsent.OFF)
+        if (telemetryEnabled) container.telemetry.flush()
+    }
+    DisposableEffect(Unit) {
+        onDispose { container.telemetry.persist() }
+    }
     val openPage: (String) -> Unit = { url ->
         if (!openInBrowser(url)) Toast.makeText(context, R.string.settings_no_browser, Toast.LENGTH_SHORT).show()
     }
@@ -343,6 +352,22 @@ internal fun ViewerNavHost(
             onDismiss = { settingsOpen = false },
             onOpenUrl = openPage,
             webHost = BuildConfig.WEB_HOST,
+            telemetryEnabled = telemetryEnabled,
+            onTelemetryChanged = { enabled ->
+                scope.launch {
+                    if (enabled) {
+                        if (container.telemetry.setConsent(TelemetryConsent.FULL)) {
+                            container.displayPrefs.setTelemetryEnabled(true)
+                        } else {
+                            container.telemetry.setConsent(TelemetryConsent.OFF)
+                            container.displayPrefs.setTelemetryEnabled(false)
+                        }
+                    } else {
+                        container.telemetry.setConsent(TelemetryConsent.OFF)
+                        container.displayPrefs.setTelemetryEnabled(false)
+                    }
+                }
+            },
             onOpenBlockedList = {
                 settingsOpen = false
                 blockedListOpen = true

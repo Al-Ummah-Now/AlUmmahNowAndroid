@@ -590,6 +590,8 @@ class CoreUploadQueueTest {
                 videoId = null,
                 sha256 = null,
                 lastError = next.second,
+                lastErrorKind = null,
+                lastErrorCode = null,
                 priority = 0,
                 createdAtMs = 0,
                 updatedAtMs = 0

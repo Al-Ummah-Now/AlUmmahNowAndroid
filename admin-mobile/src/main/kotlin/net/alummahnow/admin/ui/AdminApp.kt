@@ -67,6 +67,7 @@ import net.alummahnow.core.bridge.admin.ReviewDecision
 import net.alummahnow.core.bridge.admin.ReviewError
 import net.alummahnow.core.bridge.admin.ReviewItem
 import net.alummahnow.core.bridge.admin.StaffProfile
+import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.passkey.PasskeyHost
@@ -160,7 +161,9 @@ private fun AdminContent(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         session.browserClosed()
         secure = deviceSecure()
+        scope.launch { services.telemetry.flush() }
     }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { services.telemetry.persist() }
 
     fun open(url: String?) {
         if (url != null && !openInBrowser(url)) session.noBrowser()
@@ -248,6 +251,7 @@ private fun StaffHome(
     val notice by session.notice.collectAsStateWithLifecycle()
     val account by services.session.active.collectAsStateWithLifecycle()
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    var telemetryEnabled by remember { mutableStateOf(services.prefs.telemetryEnabled) }
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     var reblurTick by remember { mutableLongStateOf(0L) }
     val queue: QueueViewModel =
@@ -384,6 +388,23 @@ private fun StaffHome(
                 {
                     settingsOpen = false
                     add()
+                }
+            },
+            telemetryEnabled = telemetryEnabled,
+            onTelemetryChanged = { enabled ->
+                if (enabled) {
+                    if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
+                        services.prefs.telemetryEnabled = true
+                        telemetryEnabled = true
+                    } else {
+                        services.telemetry.setConsent(TelemetryConsent.OFF)
+                        services.prefs.telemetryEnabled = false
+                        telemetryEnabled = false
+                    }
+                } else {
+                    services.telemetry.setConsent(TelemetryConsent.OFF)
+                    services.prefs.telemetryEnabled = false
+                    telemetryEnabled = false
                 }
             }
         )

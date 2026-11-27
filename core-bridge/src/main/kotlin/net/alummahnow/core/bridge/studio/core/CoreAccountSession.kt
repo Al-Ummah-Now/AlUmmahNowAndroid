@@ -74,15 +74,15 @@ class CoreAccountSession(
 
     override fun beginSignIn(mode: SignInMode): String = coreCall {
         val prompt = when (mode) {
-            SignInMode.DEFAULT -> LoginPrompt.DEFAULT
-            SignInMode.ADD_ACCOUNT -> LoginPrompt.LOGIN
-            SignInMode.SILENT -> LoginPrompt.SILENT
+            SignInMode.DEFAULT -> LoginPrompt.Default
+            SignInMode.ADD_ACCOUNT -> LoginPrompt.Login
+            SignInMode.SILENT -> LoginPrompt.Silent
         }
         manager.beginLoginWithPrompt(prompt).url
     }
 
     override fun beginStepUp(maxAgeSeconds: Int): String = coreCall {
-        val url = manager.beginLoginWithPrompt(LoginPrompt.LOGIN).url.toHttpUrl()
+        val url = manager.beginLoginWithPrompt(LoginPrompt.Login).url.toHttpUrl()
         url.newBuilder().removeAllQueryParameters("max_age").addQueryParameter("max_age", maxAgeSeconds.toString()).build().toString()
     }
 
@@ -125,7 +125,7 @@ class CoreAccountSession(
         clientId = settings.clientId,
         redirectUri = settings.redirectUri,
         // `prompt` is irrelevant here: the URL is never opened, only its code_challenge and state are used.
-        beginAuthorization = { coreCall { manager.beginLoginWithPrompt(LoginPrompt.LOGIN).url } },
+        beginAuthorization = { coreCall { manager.beginLoginWithPrompt(LoginPrompt.Login).url } },
         completeRedirect = ::completeSignIn,
         accessToken = ::accessToken
     )
