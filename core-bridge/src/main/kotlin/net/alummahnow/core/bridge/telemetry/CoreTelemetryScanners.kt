@@ -248,6 +248,7 @@ internal object CoreTelemetryScanners {
         val allowDoubleQuotes: Boolean,
         val allowSingleQuotes: Boolean,
         val outerQuote: Char,
+        val isContainerValue: Boolean,
         val stopAtSchemes: Boolean
     ) {
         val groupStack = ArrayList<Char>()
@@ -302,25 +303,11 @@ internal object CoreTelemetryScanners {
         val ch = text[p]
         val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
         if (!allowed || state.groupStack.isEmpty()) return false
-        if (ch == state.outerQuote && isOuterQuoteCloser(text, p, state.outerQuote)) return false
+        val isOuterCloser = ch == state.outerQuote &&
+            CoreTelemetryUrlContinuation.isOuterQuoteCloser(text, p, state.outerQuote, state.isContainerValue)
+        if (isOuterCloser) return false
         val afterNonAlphaNum = p > start && !isAsciiAlphaNum(text[p - 1])
         return if (ch == '"') state.outerQuote != '"' || afterNonAlphaNum else afterNonAlphaNum
-    }
-
-    private fun isOuterQuoteCloser(text: String, quotePos: Int, outerQuote: Char): Boolean {
-        var k = skipHorizontalSpaces(text, quotePos + 1)
-        if (k >= text.length) return true
-        val c = text[k]
-        if (c in "\r\n}]);:") return true
-        if (c != ',') return false
-        k = skipHorizontalSpaces(text, k + 1)
-        return k >= text.length || text[k] == outerQuote || text[k] in "}])\r\n"
-    }
-
-    private fun skipHorizontalSpaces(text: String, start: Int): Int {
-        var k = start
-        while (k < text.length && (text[k] == ' ' || text[k] == '\t')) k++
-        return k
     }
 
     private fun updateContGroupStack(ch: Char, stack: ArrayList<Char>) {

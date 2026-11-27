@@ -68,10 +68,12 @@ internal object CoreTelemetryUrlContinuation {
         val webhookProbe = probeWebhookPrefix(input.rawUrl)
         if (webhookProbe == null && span.totalEnd < contLimits[0]) return null
         val outerQuote = resolveOuterQuote(text, span.start)
+        val isContainerValue = outerQuote != '\u0000' && isContainerValueStart(text, span.start - 1)
         val initial = CoreTelemetryScanners.ContScanState(
             span.totalEnd >= contLimits[1],
             span.totalEnd >= contLimits[2],
             outerQuote,
+            isContainerValue,
             webhookProbe == null
         )
         val (scanState, pathEnd) = scanWithUnclosedFallback(text, span.totalEnd, webhookProbe, initial, contLimits)
@@ -84,6 +86,84 @@ internal object CoreTelemetryUrlContinuation {
 
     private fun resolveOuterQuote(text: String, spanStart: Int): Char =
         if (spanStart > 0 && (text[spanStart - 1] == '\'' || text[spanStart - 1] == '"')) text[spanStart - 1] else '\u0000'
+
+    private fun isContainerValueStart(text: String, quotePos: Int): Boolean {
+        var k = quotePos - 1
+        while (k >= 0 && (text[k] == ' ' || text[k] == '\t')) k--
+        return k >= 0 && text[k] in "[{,:"
+    }
+
+    fun isOuterQuoteCloser(text: String, quotePos: Int, outerQuote: Char, isContainerValue: Boolean): Boolean {
+        var k = quotePos + 1
+        if (k >= text.length || text[k] in "\r\n") return true
+        if (!isContainerValue) return false
+        while (k < text.length && text[k] in "}] \t") k++
+        return when {
+            k >= text.length || text[k] in "\r\n" -> true
+            text[k] == ',' -> hasContainerSiblingAfterComma(text, k, outerQuote)
+            else -> false
+        }
+    }
+
+    private fun hasContainerSiblingAfterComma(text: String, commaPos: Int, outerQuote: Char): Boolean {
+        var k = skipHorizontalSpaces(text, commaPos + 1)
+        var result: Boolean? = null
+        while (k < text.length && result == null) {
+            val c = text[k]
+            if (c == outerQuote || c in "{[]}\r\n") {
+                result = true
+            } else {
+                val next = scanContainerScalar(text, k)
+                val after = if (next > k) skipHorizontalSpaces(text, next) else -1
+                when {
+                    after < 0 -> result = false
+                    after >= text.length || text[after] in "]}\r\n" -> result = true
+                    text[after] != ',' -> result = false
+                    else -> k = skipHorizontalSpaces(text, after + 1)
+                }
+            }
+        }
+        return result ?: true
+    }
+
+    private fun skipHorizontalSpaces(text: String, start: Int): Int {
+        var k = start
+        while (k < text.length && (text[k] == ' ' || text[k] == '\t')) k++
+        return k
+    }
+
+    private fun scanContainerScalar(text: String, pos: Int): Int {
+        val end = scanContainerNumber(text, pos).let { if (it < 0) matchContainerKeyword(text, pos) else it }
+        val bounded = end > pos && (end >= text.length || text[end] in ",]} \t\r\n")
+        return if (bounded) end else -1
+    }
+
+    private fun scanContainerNumber(text: String, pos: Int): Int {
+        var i = scanDigits(text, if (text[pos] == '-') pos + 1 else pos)
+        if (i < 0) return -1
+        if (i < text.length && text[i] == '.') {
+            i = scanDigits(text, i + 1)
+            if (i < 0) return -1
+        }
+        if (i < text.length && (text[i] == 'e' || text[i] == 'E')) {
+            val expStart = i + 1 + if (i + 1 < text.length && (text[i + 1] == '+' || text[i + 1] == '-')) 1 else 0
+            i = scanDigits(text, expStart)
+        }
+        return i
+    }
+
+    private fun scanDigits(text: String, start: Int): Int {
+        var i = start
+        while (i < text.length && text[i] in '0'..'9') i++
+        return if (i > start) i else -1
+    }
+
+    private fun matchContainerKeyword(text: String, pos: Int): Int = when {
+        text.startsWith("true", pos) || text.startsWith("null", pos) -> pos + 4
+        text.startsWith("True", pos) || text.startsWith("None", pos) -> pos + 4
+        text.startsWith("false", pos) || text.startsWith("False", pos) -> pos + 5
+        else -> -1
+    }
 
     private fun buildQuoteFlags(state: CoreTelemetryScanners.ContScanState, inSingleQuote: Boolean): Int {
         var flags = 0
@@ -110,6 +190,7 @@ internal object CoreTelemetryUrlContinuation {
             if (state.quoteChar == '"') false else state.allowDoubleQuotes,
             if (state.quoteChar == '\'') false else state.allowSingleQuotes,
             state.outerQuote,
+            state.isContainerValue,
             state.stopAtSchemes
         )
         return nextState to CoreTelemetryScanners.scanUrlContinuation(text, start, nextState)

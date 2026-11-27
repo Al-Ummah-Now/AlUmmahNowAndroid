@@ -153,4 +153,50 @@ class CoreTelemetryUrlContinuationTest {
             )
         )
     }
+
+    @Test
+    fun `sanitizeLocalPaths handles container-aware quote closers and punctuation-leading secrets`() {
+        assertEquals(
+            "'https://example.test/webhook/[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken(' )opaqueSecret123')'"
+            )
+        )
+        assertEquals(
+            "'https://example.test/webhook/[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken(') opaqueSecret123')'"
+            )
+        )
+        assertEquals(
+            "'https://example.test/webhook/[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken(')first opaqueSecret123')'"
+            )
+        )
+        assertEquals(
+            "'https://example.test/webhook/[redacted]'",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken('} opaqueSecret123')'"
+            )
+        )
+        assertEquals(
+            "[\"https://example.test/webhook/[redacted]\",123,\")public-text\"]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "[\"https://example.test/webhook/fakeToken(\",123,\")public-text\"]"
+            )
+        )
+        assertEquals(
+            "[{\"a\":\"https://example.test/webhook/[redacted]\"},\")public\"]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "[{\"a\":\"https://example.test/webhook/fakeToken(\"},\")public\"]"
+            )
+        )
+        assertEquals(
+            "['https://example.test/webhook/[redacted]']",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "['https://example.test/webhook/fakeToken(',123, opaqueSecret123')']"
+            )
+        )
+    }
 }
