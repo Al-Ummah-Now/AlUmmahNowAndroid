@@ -31,8 +31,10 @@ internal object CoreTelemetryScanners {
     fun findNonFileSchemeStart(text: String, sep: Int, minStart: Int): Int? {
         var start = sep
         while (start > minStart && isUrlSchemeChar(text[start - 1])) start--
+        val (adjusted, stepped) = CoreTelemetryUrlContinuation.stepJsonEscapeBeforeScheme(text, start, sep, minStart)
+        start = adjusted
         val validPrefix = sep - start >= 2 && isAsciiLetter(text[start])
-        val prevBlocked = start > 0 && isBlockedBeforeScheme(text[start - 1])
+        val prevBlocked = !stepped && start > 0 && isBlockedBeforeScheme(text[start - 1])
         val isFile = sep - start == 4 && text.regionMatches(start, "file", 0, 4, ignoreCase = true)
         return if (validPrefix && !prevBlocked && !isFile) start else null
     }
@@ -43,42 +45,17 @@ internal object CoreTelemetryScanners {
         inDoubleQuote: Boolean,
         rawUrl: String,
         redactedUrl: String
-    ): Pair<String, Int>? {
-        val wrapped = span.start > 0 && text[span.start - 1] == '<'
-        val canExtend = !span.hasQf &&
-            inDoubleQuote &&
-            !wrapped &&
-            span.totalEnd < text.length &&
-            text[span.totalEnd] !in "\"\r\n"
-        if (!canExtend) return null
-        val secretUrl = when {
-            redactedUrl != rawUrl && redactedUrl.endsWith("[redacted]") -> redactedUrl
-            else -> {
-                val probeInput = rawUrl + "x"
-                redactUrlPathSecrets(probeInput).takeIf { it != probeInput && it.endsWith("[redacted]") }
-            }
-        } ?: return null
-        return secretUrl to scanToClosingDoubleQuote(text, span.totalEnd)
-    }
-
-    private fun scanToClosingDoubleQuote(text: String, start: Int): Int {
-        var p = start
-        var escaped = false
-        while (p < text.length) {
-            val ch = text[p]
-            val atEnd = ch == '\r' || ch == '\n'
-            if (atEnd || (ch == '"' && !escaped)) break
-            escaped = ch == '\\' && !escaped
-            p++
-        }
-        return p
-    }
+    ): Pair<String, Int>? =
+        CoreTelemetryUrlContinuation.resolveQuotedSecretUrlTail(text, span, inDoubleQuote, rawUrl, redactedUrl)
 
     fun computeQueryAngleStopMask(text: String, urlStart: Int, inDoubleQuote: Boolean): Int {
-        val wrappedInAngle = urlStart > 0 && text[urlStart - 1] == '<'
+        val wrappedInAngle = CoreTelemetryUrlContinuation.isAngleWrappedBefore(text, urlStart)
         val stopOnLess = !inDoubleQuote && !wrappedInAngle
         val stopOnGreater = !inDoubleQuote || wrappedInAngle
-        return (if (stopOnLess) 1 else 0) or (if (stopOnGreater) 2 else 0) or (if (inDoubleQuote) 4 else 0)
+        return (if (stopOnLess) 1 else 0) or
+            (if (stopOnGreater) 2 else 0) or
+            (if (inDoubleQuote) 4 else 0) or
+            (if (wrappedInAngle) 8 else 0)
     }
 
     fun scanUrlAfterScheme(
@@ -506,21 +483,24 @@ internal object CoreTelemetryScanners {
 
     fun scanQueryOrFragment(text: String, start: Int, angleStopMask: Int = 3): Int {
         var p = start + 1
-        var stopped = false
-        while (p < text.length && !stopped) {
-            val ch = text[p]
-            val isLessStop = ch == '<' && (angleStopMask and 1) != 0
-            val isGreaterStop = ch == '>' && (angleStopMask and 2) != 0
-            val isSpaceStop = ch == '\r' || ch == '\n' || ((angleStopMask and 4) == 0 && isSpace(ch))
-            if (isSpaceStop || isLessStop || isGreaterStop) {
-                stopped = true
-            } else if (ch == '"' && isUnescapedQueryQuote(text, start, p)) {
-                stopped = true
-            } else {
-                p++
-            }
+        while (p < text.length && !isQueryOrFragmentStopAt(text, start, p, angleStopMask)) {
+            p++
         }
         return p
+    }
+
+    private fun isQueryOrFragmentStopAt(text: String, start: Int, p: Int, angleStopMask: Int): Boolean {
+        val ch = text[p]
+        val spaceStop = ch == '\r' || ch == '\n' || ((angleStopMask and 4) == 0 && isSpace(ch))
+        if (spaceStop) return true
+        val angleStop = isQueryAngleStopAt(text, p, ch, angleStopMask)
+        return angleStop || (ch == '"' && isUnescapedQueryQuote(text, start, p))
+    }
+
+    private fun isQueryAngleStopAt(text: String, p: Int, ch: Char, angleStopMask: Int): Boolean {
+        val literalAngle = (ch == '<' && (angleStopMask and 1) != 0) || (ch == '>' && (angleStopMask and 2) != 0)
+        if (literalAngle) return true
+        return (angleStopMask and 8) != 0 && ch == '\\' && CoreTelemetryUrlContinuation.isEscapedGreaterAt(text, p)
     }
 
     private fun isUnescapedQueryQuote(text: String, start: Int, quotePos: Int): Boolean {

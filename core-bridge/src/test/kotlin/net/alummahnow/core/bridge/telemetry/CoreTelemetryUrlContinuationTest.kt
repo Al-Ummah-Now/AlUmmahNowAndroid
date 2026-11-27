@@ -455,4 +455,44 @@ class CoreTelemetryUrlContinuationTest {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
     }
+
+    @Test
+    fun `sanitizeLocalPaths scrubs JSON-embedded auth headers escaped tokens quoted emails and spaced URLs`() {
+        val cases = listOf(
+            "[\"alice\\u0040exa\\u0301mple.com ok\"]" to "[\"[redacted-email] ok\"]",
+            "{\"detail\":\"alice@exa\\u0301mple.test failed\"}" to "{\"detail\":\"[redacted-email] failed\"}",
+            "{\"detail\":\"\\\"Jane Doe\\\"@example.test failed\"}" to "{\"detail\":\"[redacted-email] failed\"}",
+            "{\"detail\":\"\\u0022Jane Doe\\u0022\\u0040exa\\u0301mple.test failed\"}" to
+                "{\"detail\":\"[redacted-email] failed\"}",
+            "[\"see \\u003chttps://example.com/api?token=first secondSecret\\u003e public\"]" to
+                "[\"see \\u003chttps://example.com/api?[redacted]\\u003e public\"]",
+            "{\"detail\":\"<https://example.test/webhook/SECRET TAIL>\"}" to
+                "{\"detail\":\"<https://example.test/webhook/[redacted]>\"}",
+            "{\"detail\":\"see <https://example.test/webhook/SECRET TAIL> public\"}" to
+                "{\"detail\":\"see <https://example.test/webhook/[redacted]> public\"}",
+            "{\"detail\":\"see \\u003chttps://example.test/webhook/SECRET TAIL\\u003e public\"}" to
+                "{\"detail\":\"see \\u003chttps://example.test/webhook/[redacted]\\u003e public\"}",
+            "{\"message\":\"Authorization: Bearer secret\",\"status\":\"ok\"}" to
+                "{\"message\":\"Authorization: Bearer [redacted]\",\"status\":\"ok\"}",
+            "{\"message\":\"Authorization:\\u0020Bearer\\u0020secret\",\"status\":\"ok\"}" to
+                "{\"message\":\"Authorization:\\u0020Bearer [redacted]\",\"status\":\"ok\"}",
+            "{\"message\":\"Authorization: Bearer secret\\nX-Public: ok\",\"status\":\"ok\"}" to
+                "{\"message\":\"Authorization: Bearer [redacted]\\nX-Public: ok\",\"status\":\"ok\"}",
+            "{\"message\":\"Bearer\\u0020secret\"}" to "{\"message\":\"Bearer [redacted]\"}",
+            "{\"message\":\"Bearer\\tsecret\"}" to "{\"message\":\"Bearer [redacted]\"}",
+            "{\"message\":\"Bearer\\u00A0secret\"}" to "{\"message\":\"Bearer [redacted]\"}",
+            "{\"message\":\"Basic\\u0020dXNlcjpwYXNz\"}" to "{\"message\":\"Basic [redacted]\"}",
+            "{\"message\":\"https://example.com/path name?token=private\"}" to
+                "{\"message\":\"https://example.com/path name?[redacted]\"}",
+            "{\"message\":\"https://example.com/path\\u0020name?token=private\"}" to
+                "{\"message\":\"https://example.com/path\\u0020name?[redacted]\"}",
+            "{\"message\":\"see https://example.com/public Why did it fail?\"}" to
+                "{\"message\":\"see https://example.com/public Why did it fail?\"}",
+            "{\"message\":\"see https://example.com/public issue #123\"}" to
+                "{\"message\":\"see https://example.com/public issue #123\"}"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+    }
 }

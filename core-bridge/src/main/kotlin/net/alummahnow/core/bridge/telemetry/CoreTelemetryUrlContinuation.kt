@@ -342,4 +342,296 @@ internal object CoreTelemetryUrlContinuation {
         }
         return ch == '.' || ch == ';' || ch == ',' || (ch == '\'' && precededByQuote)
     }
+
+    fun isAngleWrappedBefore(text: String, urlStart: Int): Boolean {
+        if (urlStart > 0 && text[urlStart - 1] == '<') return true
+        if (urlStart < 6) return false
+        val matchesEsc = text[urlStart - 6] == '\\' &&
+            text[urlStart - 5] == 'u' &&
+            text[urlStart - 4] == '0' &&
+            text[urlStart - 3] == '0' &&
+            text[urlStart - 2] == '3' &&
+            (text[urlStart - 1] == 'c' || text[urlStart - 1] == 'C')
+        return matchesEsc && !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, urlStart - 6, 0)
+    }
+
+    fun isEscapedGreaterAt(text: String, pos: Int): Boolean {
+        if (pos + 5 >= text.length) return false
+        val matchesEsc = text[pos] == '\\' &&
+            text[pos + 1] == 'u' &&
+            text[pos + 2] == '0' &&
+            text[pos + 3] == '0' &&
+            text[pos + 4] == '3' &&
+            (text[pos + 5] == 'e' || text[pos + 5] == 'E')
+        return matchesEsc && !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, pos, 0)
+    }
+
+    fun stepJsonEscapeBeforeScheme(text: String, start: Int, sep: Int, minStart: Int): Pair<Int, Boolean> {
+        var cur = start
+        var stepped = false
+        while (cur < sep && cur > minStart && isUnescapedBackslashBefore(text, cur, minStart)) {
+            val next = stepSingleSchemePrefixEscape(text, cur, sep)
+            if (next > cur) {
+                cur = next
+                stepped = true
+            } else {
+                break
+            }
+        }
+        return cur to stepped
+    }
+
+    private fun isUnescapedBackslashBefore(text: String, pos: Int, minStart: Int): Boolean =
+        text[pos - 1] == '\\' && !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, pos - 1, minStart)
+
+    private fun stepSingleSchemePrefixEscape(text: String, cur: Int, sep: Int): Int {
+        val esc = text[cur]
+        if (esc in "nrtbf") return cur + 1
+        if (esc == 'u' && cur + 5 <= sep) {
+            val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, cur + 1)
+            if (code >= 0) {
+                val decoded = code.toChar()
+                if (!CoreTelemetryScanners.isUrlSchemeChar(decoded) && decoded != '/' && decoded != '\\') {
+                    return cur + 5
+                }
+            }
+        }
+        return cur
+    }
+
+    fun resolveQuotedSecretUrlTail(
+        text: String,
+        span: CoreTelemetryScanners.UrlSpan,
+        inDoubleQuote: Boolean,
+        rawUrl: String,
+        redactedUrl: String
+    ): Pair<String, Int>? {
+        val wrappedInAngle = isAngleWrappedBefore(text, span.start)
+        val inContext = inDoubleQuote || wrappedInAngle
+        if (span.hasQf || !inContext || span.totalEnd >= text.length) return null
+        if (isQuotedUrlTailBoundary(text, span.totalEnd, inDoubleQuote, wrappedInAngle)) return null
+        val secretUrl = resolveSecretUrlPrefix(rawUrl, redactedUrl) ?: return null
+        val (endPos, stoppedAtAngle) = scanQuotedUrlTailEnd(text, span.totalEnd, inDoubleQuote, wrappedInAngle)
+        return if (inDoubleQuote || stoppedAtAngle) secretUrl to endPos else null
+    }
+
+    private fun isQuotedUrlTailBoundary(text: String, pos: Int, inDoubleQuote: Boolean, wrappedInAngle: Boolean): Boolean {
+        val ch = text[pos]
+        if (ch == '\r' || ch == '\n') return true
+        if (inDoubleQuote && ch == '"') return true
+        return wrappedInAngle && (ch == '>' || isEscapedGreaterAt(text, pos))
+    }
+
+    private fun resolveSecretUrlPrefix(rawUrl: String, redactedUrl: String): String? {
+        if (redactedUrl != rawUrl && redactedUrl.endsWith("[redacted]")) return redactedUrl
+        return probeWebhookPrefix(rawUrl)
+    }
+
+    private fun scanQuotedUrlTailEnd(
+        text: String,
+        start: Int,
+        inDoubleQuote: Boolean,
+        wrappedInAngle: Boolean
+    ): Pair<Int, Boolean> {
+        var p = start
+        var escaped = false
+        var stoppedAtAngle = false
+        var done = false
+        while (p < text.length && !done) {
+            val ch = text[p]
+            val atAngle = isAngleCloseAt(text, p, wrappedInAngle, escaped)
+            val atEnd = isQuoteOrNewlineStop(ch, inDoubleQuote, escaped)
+            if (atEnd || atAngle) {
+                stoppedAtAngle = atAngle
+                done = true
+            } else {
+                escaped = inDoubleQuote && ch == '\\' && !escaped
+                p++
+            }
+        }
+        return p to stoppedAtAngle
+    }
+
+    private fun isAngleCloseAt(text: String, pos: Int, wrappedInAngle: Boolean, escaped: Boolean): Boolean {
+        if (!wrappedInAngle || escaped) return false
+        return text[pos] == '>' || isEscapedGreaterAt(text, pos)
+    }
+
+    private fun isQuoteOrNewlineStop(ch: Char, inDoubleQuote: Boolean, escaped: Boolean): Boolean {
+        if (ch == '\r' || ch == '\n') return true
+        return inDoubleQuote && ch == '"' && !escaped
+    }
+
+    fun extendSpacedQuotedUrlQuery(
+        text: String,
+        input: ContinuationInput,
+        contLimits: IntArray
+    ): UrlContinuationResult? {
+        val span = input.span
+        val inDoubleQuote = input.inDoubleQuote
+        val wrappedInAngle = isAngleWrappedBefore(text, span.start)
+        val eligible = !span.hasQf &&
+            (inDoubleQuote || wrappedInAngle) &&
+            span.totalEnd < text.length &&
+            span.totalEnd >= contLimits[3] &&
+            !isQuotedUrlTailBoundary(text, span.totalEnd, inDoubleQuote, wrappedInAngle)
+        if (!eligible) return null
+        var p = span.totalEnd
+        while (p < text.length) {
+            val next = stepSpacedQuotedUrlPos(text, p, span, inDoubleQuote, wrappedInAngle)
+            if (next == -1) break
+            if (next == -2) return buildSpacedUrlQueryResult(text, input, p)
+            p = next
+        }
+        if (p > contLimits[3]) contLimits[3] = p
+        return null
+    }
+
+    private fun stepSpacedQuotedUrlPos(
+        text: String,
+        p: Int,
+        span: CoreTelemetryScanners.UrlSpan,
+        inDoubleQuote: Boolean,
+        wrappedInAngle: Boolean
+    ): Int {
+        val ch = text[p]
+        val stops = isQuotedUrlTailBoundary(text, p, inDoubleQuote, wrappedInAngle) ||
+            CoreTelemetryScanners.isFileSchemeAt(text, p) ||
+            isDriveBoundary(text, p) ||
+            (p > span.totalEnd && isSpacedUrlSchemeStart(text, p))
+        if (stops) return -1
+        if (inDoubleQuote && ch == '\\' && p + 1 < text.length) {
+            return stepSpacedQuotedEscape(text, p, wrappedInAngle)
+        }
+        val isValidQf = (ch == '?' || ch == '#') &&
+            isValidSpacedUrlQueryStart(text, p, span.start, span.totalEnd, inDoubleQuote, wrappedInAngle)
+        return if (isValidQf) -2 else p + 1
+    }
+
+    private fun isDriveBoundary(text: String, p: Int): Boolean =
+        (p == 0 || !CoreTelemetryScanners.isAsciiAlphaNum(text[p - 1])) &&
+            CoreTelemetryScanners.isWindowsDriveAt(text, p)
+
+    private fun stepSpacedQuotedEscape(text: String, p: Int, wrappedInAngle: Boolean): Int {
+        val esc = text[p + 1]
+        if (esc == 'r' || esc == 'n') return -1
+        if (esc == 'u' && p + 5 < text.length) {
+            val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, p + 2)
+            if (code >= 0) {
+                val ch = code.toChar()
+                val isNl = ch == '\r' || ch == '\n'
+                val stopEscape = isNl || (wrappedInAngle && ch == '>')
+                return if (stopEscape) -1 else p + 6
+            }
+        }
+        return p + 2
+    }
+
+    private fun isSpacedUrlSchemeStart(text: String, pos: Int): Boolean {
+        val prev = text[pos - 1]
+        if (CoreTelemetryScanners.isUrlSchemeChar(prev) || prev == '/' || prev == '\\') return false
+        if (!CoreTelemetryScanners.isAsciiLetter(text[pos])) return false
+        var i = pos + 1
+        while (i < text.length && CoreTelemetryScanners.isUrlSchemeChar(text[i])) i++
+        return i - pos >= 2 && text.startsWith("://", i)
+    }
+
+    @Suppress("LongParameterList")
+    private fun isValidSpacedUrlQueryStart(
+        text: String,
+        qfPos: Int,
+        urlStart: Int,
+        minPos: Int,
+        inDoubleQuote: Boolean,
+        wrappedInAngle: Boolean
+    ): Boolean {
+        val nextPos = qfPos + 1
+        if (nextPos >= text.length || isQuotedUrlTailBoundary(text, nextPos, inDoubleQuote, wrappedInAngle)) {
+            return false
+        }
+        val urlStartsSpan = wrappedInAngle || isUrlAtDoubleQuoteStart(text, urlStart)
+        val nextIsWs = CoreTelemetryScanners.isSpace(text[nextPos]) ||
+            (inDoubleQuote && isJsonWhitespaceEscapeAt(text, nextPos))
+        if (text[qfPos] == '?') return !nextIsWs || urlStartsSpan
+        return !nextIsWs && (urlStartsSpan || !isPrecededBySpaceOrEscape(text, qfPos, minPos, inDoubleQuote))
+    }
+
+    private fun isUrlAtDoubleQuoteStart(text: String, urlStart: Int): Boolean {
+        var p = urlStart
+        while (p > 0) {
+            val stepBack = horizontalSpaceOrEscapeStepBack(text, p, 0)
+            if (stepBack > 0) {
+                p -= stepBack
+            } else {
+                return text[p - 1] == '"' && !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, p - 1, 0)
+            }
+        }
+        return false
+    }
+
+    private fun horizontalSpaceOrEscapeStepBack(text: String, pos: Int, minPos: Int): Int {
+        val prev = text[pos - 1]
+        if (isHorizSpaceChar(prev)) return 1
+        if (isTabEscapeEndingAt(text, pos, minPos)) return 2
+        if (isUnicodeHorizSpaceEscapeEndingAt(text, pos, minPos)) return 6
+        return 0
+    }
+
+    private fun isHorizSpaceChar(ch: Char): Boolean =
+        CoreTelemetryScanners.isSpace(ch) && ch != '\r' && ch != '\n'
+
+    private fun isTabEscapeEndingAt(text: String, pos: Int, minPos: Int): Boolean {
+        if (pos - 2 < minPos || text[pos - 2] != '\\' || text[pos - 1] != 't') return false
+        return !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, pos - 2, minPos)
+    }
+
+    private fun isUnicodeHorizSpaceEscapeEndingAt(text: String, pos: Int, minPos: Int): Boolean {
+        if (pos - 6 < minPos || text[pos - 6] != '\\' || text[pos - 5] != 'u') return false
+        if (CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, pos - 6, minPos)) return false
+        val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos - 4)
+        return code >= 0 && isHorizSpaceChar(code.toChar())
+    }
+
+    private fun isJsonWhitespaceEscapeAt(text: String, pos: Int): Boolean {
+        if (text[pos] != '\\' || pos + 1 >= text.length) return false
+        val esc = text[pos + 1]
+        if (esc == 't' || esc == 'r' || esc == 'n') return true
+        if (esc == 'u' && pos + 5 < text.length) {
+            val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2)
+            return code >= 0 && CoreTelemetryScanners.isSpace(code.toChar())
+        }
+        return false
+    }
+
+    private fun isPrecededBySpaceOrEscape(text: String, pos: Int, minPos: Int, inDoubleQuote: Boolean): Boolean {
+        if (pos <= minPos) return false
+        if (CoreTelemetryScanners.isSpace(text[pos - 1])) return true
+        return inDoubleQuote && horizontalSpaceOrEscapeStepBack(text, pos, minPos) > 0
+    }
+
+    private fun buildSpacedUrlQueryResult(text: String, input: ContinuationInput, qfPos: Int): UrlContinuationResult {
+        val span = input.span
+        val angleMask = CoreTelemetryScanners.computeQueryAngleStopMask(text, span.start, input.inDoubleQuote)
+        val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, qfPos, angleMask)
+        val (cleanQf, qfTail) = trimQueryOrFragmentDelimiters(
+            text.substring(qfPos, qfEnd),
+            text,
+            span.start,
+            input.inSingleQuote
+        )
+        val qfToken = "${cleanQf.first()}[redacted]"
+        val secretPrefix = resolveSecretUrlPrefix(input.rawUrl, CoreTelemetryScanners.redactUrlPathSecrets(input.rawUrl))
+        if (secretPrefix != null) {
+            return UrlContinuationResult(true, "$secretPrefix$qfToken", false, "", "", qfTail, qfEnd)
+        }
+        return UrlContinuationResult(
+            false,
+            "",
+            input.baseTail.isNotEmpty(),
+            text.substring(span.totalEnd, qfPos),
+            qfToken,
+            qfTail,
+            qfEnd
+        )
+    }
 }

@@ -756,14 +756,21 @@ class CoreTelemetryService(
                 }
             }
 
-            private fun isLeadingEscapedQuote(text: String): Boolean {
+            private fun isNonPathJsonEscape(text: String): Boolean {
                 val inDouble = openQuote == '"' && !escapedBackslash
-                return inDouble && cursor + 1 < text.length && text[cursor + 1] == '"'
+                if (!inDouble || cursor + 1 >= text.length) return false
+                val next = text[cursor + 1]
+                if (next in "\"nrtbf") return true
+                if (next == 'u' && cursor + 5 < text.length) {
+                    val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, cursor + 2)
+                    return code >= 0 && code != '\\'.code && code != '/'.code
+                }
+                return false
             }
 
             private fun trackTokenChar(text: String, ch: Char) {
                 when {
-                    ch == '\\' -> if (!isLeadingEscapedQuote(text)) tokenHasBackslash = true
+                    ch == '\\' -> if (!isNonPathJsonEscape(text)) tokenHasBackslash = true
                     ch == '/' -> {
                         if (tokenSlashCount == 0) tokenFirstSlash = cursor
                         tokenSlashCount++
@@ -904,7 +911,7 @@ class CoreTelemetryService(
             var searchFrom = 0
             var quoteCursor = 0
             var quoteState = 0
-            val contLimits = IntArray(3)
+            val contLimits = IntArray(4)
             while (searchFrom < text.length) {
                 val sep = text.indexOf("://", searchFrom)
                 if (sep < 0) break
@@ -927,6 +934,7 @@ class CoreTelemetryService(
                     val rawUrl = text.substring(span.start, span.baseEnd)
                     val contInput = CoreTelemetryUrlContinuation.ContinuationInput(span, rawUrl, baseTail, quoteState)
                     val extended = cont.extendUrlContinuation(text, contInput, contLimits)
+                        ?: cont.extendSpacedQuotedUrlQuery(text, contInput, contLimits)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, span.start)
                     val finalTail: String

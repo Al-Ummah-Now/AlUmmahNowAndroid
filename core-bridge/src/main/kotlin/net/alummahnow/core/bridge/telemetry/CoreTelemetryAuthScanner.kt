@@ -27,20 +27,30 @@ internal object CoreTelemetryAuthScanner {
         "OAuth", "Negotiate", "Mutual", "HOBA", "Vapid", "SCRAM-SHA-256", "AWS4-HMAC-SHA256"
     )
     private val bearerTokenRegex = Regex(
-        """\b(Bearer)\s+(?!\[redacted\](?=$|[\s"',;)\]}]))(?:\\[^\r\n\s]|[^\s\\"',;)\]}]|\\(?=$|[\s\r\n]))+""",
+        """\b(Bearer)[\s\p{Zs}]+""" +
+            """(?!\[redacted\](?=$|[\s\p{Zs}"',;)\]}]|\\(?:[nrtbf"]|u00(?:20|09|0[aAdD]|[aA]0))))""" +
+            """(?:\\[^\r\n\s\p{Zs}]|[^\s\p{Zs}\\"',;)\]}]|\\(?=$|[\s\p{Zs}\r\n]))+""",
         RegexOption.IGNORE_CASE
     )
     private val basicTokenRegex = Regex(
-        """\b(Basic)\s+([A-Za-z0-9+/_-]{2,}={0,2})(?![A-Za-z0-9+/_=-])""",
+        """\b(Basic)[\s\p{Zs}]+([A-Za-z0-9+/_-]{2,}={0,2})(?![A-Za-z0-9+/_=-])""",
         RegexOption.IGNORE_CASE
     )
 
-    private class HeaderBuilder(private val text: String) {
+    private class HeaderBuilder(
+        private val text: String,
+        val edits: MutableList<Triple<Int, Int, String>>? = null
+    ) {
         var sb: StringBuilder? = null
         var copied = 0
         val jsonCache = CoreTelemetryAuthJsonHelpers.JsonScanCache()
 
         fun appendRedacted(start: Int, end: Int, replacement: String) {
+            if (edits != null) {
+                edits += Triple(start, end, replacement)
+                copied = end
+                return
+            }
             val out = sb ?: StringBuilder(text.length).also { sb = it }
             out.append(text, copied, start).append(replacement)
             copied = end
@@ -55,13 +65,19 @@ internal object CoreTelemetryAuthScanner {
     fun redactAuthCredentials(text: String): String {
         val headerScrubbed = redactAuthHeaders(text)
         val bearerScrubbed = bearerTokenRegex.replace(headerScrubbed, "$1 [redacted]")
-        return basicTokenRegex.replace(bearerScrubbed) { match ->
+        val basicScrubbed = basicTokenRegex.replace(bearerScrubbed) { match ->
             if (isBasicCredentialToken(match.groupValues[2])) {
                 "${match.groupValues[1]} [redacted]"
             } else {
                 match.value
             }
         }
+        return CoreTelemetryQuotedAuthHelpers.redactEscapedTokensInBalancedQuotes(
+            basicScrubbed,
+            bearerTokenRegex,
+            basicTokenRegex,
+            ::isBasicCredentialToken
+        )
     }
 
     private data class AuthValueContext(
@@ -79,19 +95,62 @@ internal object CoreTelemetryAuthScanner {
         val normalizedKey: String?
     )
 
-    private fun redactAuthHeaders(text: String): String {
+    private fun redactAuthHeaders(text: String, maxDepth: Int = 4): String {
         if (text.indexOf(':') < 0 && text.indexOf('=') < 0) return text
         val builder = HeaderBuilder(text)
+        scanAuthHeaders(text, maxDepth, builder)
+        return builder.finish()
+    }
+
+    private fun scanAuthHeaders(text: String, maxDepth: Int, builder: HeaderBuilder) {
         var i = 0
         while (i < text.length) {
             val keyMatch = matchAuthHeaderKey(text, i, builder.jsonCache)
-            if (keyMatch == null) {
-                i++
-            } else {
+            if (keyMatch != null) {
                 i = advanceAfterHeaderKey(text, keyMatch, builder)
+            } else {
+                val close = if (maxDepth > 0 && isUnescapedDoubleQuote(text, i, builder.copied)) {
+                    CoreTelemetryQuotedAuthHelpers.findBalancedJsonStringEnd(text, i)
+                } else {
+                    -1
+                }
+                if (close > i) {
+                    redactAuthHeadersInBalancedSpan(text, i + 1, close, maxDepth - 1, builder)
+                    i = close + 1
+                } else {
+                    i++
+                }
             }
         }
-        return builder.finish()
+    }
+
+    private fun isUnescapedDoubleQuote(text: String, pos: Int, minPos: Int): Boolean =
+        text[pos] == '"' && !CoreTelemetryEmailScanner.isPrecededByOddBackslashes(text, pos, minPos)
+
+    private fun redactAuthHeadersInBalancedSpan(
+        text: String,
+        innerStart: Int,
+        close: Int,
+        nextDepth: Int,
+        builder: HeaderBuilder
+    ) {
+        if (innerStart >= close || !CoreTelemetryQuotedAuthHelpers.containsAuthHeaderCandidate(text, innerStart, close)) {
+            return
+        }
+        val hasBackslash = (innerStart until close).any { text[it] == '\\' }
+        val (decoded, rawOffsets) = if (hasBackslash) {
+            CoreTelemetryQuotedPathRedactor.decodeQuotedSpanWithOffsets(text, innerStart, close)
+        } else {
+            text.substring(innerStart, close) to null
+        }
+        if (decoded.indexOf(':') < 0 && decoded.indexOf('=') < 0) return
+        val edits = ArrayList<Triple<Int, Int, String>>()
+        scanAuthHeaders(decoded, nextDepth, HeaderBuilder(decoded, edits))
+        for ((eStart, eEnd, eRepl) in edits) {
+            val rawStart = rawOffsets?.get(eStart) ?: (innerStart + eStart)
+            val rawEnd = rawOffsets?.get(eEnd) ?: (innerStart + eEnd)
+            builder.appendRedacted(rawStart, rawEnd, CoreTelemetryQuotedAuthHelpers.escapeJsonStringContent(eRepl))
+        }
     }
 
     private fun advanceAfterHeaderKey(

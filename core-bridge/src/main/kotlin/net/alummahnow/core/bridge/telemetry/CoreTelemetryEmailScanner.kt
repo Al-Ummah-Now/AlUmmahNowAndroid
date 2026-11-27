@@ -62,6 +62,11 @@ internal object CoreTelemetryEmailScanner {
     }
 
     fun redactQuotedEmails(text: String): String {
+        val current = redactQuotedEmailsRaw(text)
+        return redactEmailsInEscapedDoubleQuotes(current, quotedOnly = true)
+    }
+
+    private fun redactQuotedEmailsRaw(text: String): String {
         if (text.indexOf('"') < 0 || !hasEmailAt(text)) return text
         var sb: StringBuilder? = null
         var copied = 0
@@ -84,6 +89,11 @@ internal object CoreTelemetryEmailScanner {
     }
 
     fun redactEmails(text: String): String {
+        val current = redactEmailsRaw(text)
+        return redactEmailsInEscapedDoubleQuotes(current, quotedOnly = false)
+    }
+
+    private fun redactEmailsRaw(text: String): String {
         if (!hasEmailAt(text)) return text
         var sb: StringBuilder? = null
         var copied = 0
@@ -104,6 +114,77 @@ internal object CoreTelemetryEmailScanner {
         }
         val out = sb ?: return text
         return out.append(text, copied, text.length).toString()
+    }
+
+    private fun redactEmailsInEscapedDoubleQuotes(text: String, quotedOnly: Boolean): String {
+        val hasCandidate = text.indexOf('"') >= 0 &&
+            text.indexOf('\\') >= 0 &&
+            (hasEmailAt(text) || text.contains("\\u"))
+        if (!hasCandidate) return text
+        val spans = CoreTelemetryQuotedPathRedactor.collectBalancedDoubleQuoteSpans(text)
+        if (spans.isEmpty()) return text
+        var sb: StringBuilder? = null
+        var copied = 0
+        for (span in spans) {
+            val innerStart = span.open + 1
+            if (innerStart < span.close && (innerStart until span.close).any { text[it] == '\\' }) {
+                val (nextSb, nextCopied) = applyEscapedEmailSpan(text, innerStart, span.close, quotedOnly, sb, copied)
+                sb = nextSb
+                copied = nextCopied
+            }
+        }
+        val out = sb ?: return text
+        return out.append(text, copied, text.length).toString()
+    }
+
+    @Suppress("LongParameterList")
+    private fun applyEscapedEmailSpan(
+        text: String,
+        innerStart: Int,
+        close: Int,
+        quotedOnly: Boolean,
+        initialSb: StringBuilder?,
+        initialCopied: Int
+    ): Pair<StringBuilder?, Int> {
+        val (decoded, rawOffsets) = CoreTelemetryQuotedPathRedactor.decodeQuotedSpanWithOffsets(text, innerStart, close)
+        if (!hasEmailAt(decoded) || (quotedOnly && decoded.indexOf('"') < 0)) return initialSb to initialCopied
+        var sb = initialSb
+        var copied = initialCopied
+        for ((mStart, mEnd) in findEmailMatchRanges(decoded, quotedOnly)) {
+            val rawStart = rawOffsets[mStart]
+            val rawEnd = rawOffsets[mEnd]
+            if (rawStart >= copied) {
+                val out = sb ?: StringBuilder(text.length).also { sb = it }
+                out.append(text, copied, rawStart).append("[redacted-email]")
+                copied = rawEnd
+            }
+        }
+        return sb to copied
+    }
+
+    private fun findEmailMatchRanges(text: String, quotedOnly: Boolean): List<Pair<Int, Int>> {
+        val ranges = ArrayList<Pair<Int, Int>>()
+        var copied = 0
+        var i = 0
+        val quoteCache = EmailQuoteCache()
+        while (i < text.length) {
+            val match = if (quotedOnly) {
+                val qEnd = matchQuotedEmail(text, i, copied, quoteCache)
+                if (qEnd > 0) i to qEnd else null
+            } else {
+                matchEmailAt(text, i, copied, quoteCache)
+            }
+            if (match != null) {
+                ranges += match
+                copied = match.second
+                i = match.second
+                quoteCache.reset()
+            } else {
+                val atLen = if (quotedOnly) 0 else emailAtLength(text, i)
+                i += if (atLen > 0) atLen else 1
+            }
+        }
+        return ranges
     }
 
     private fun matchEmailAt(text: String, i: Int, copied: Int, quoteCache: EmailQuoteCache): Pair<Int, Int>? {
@@ -247,25 +328,37 @@ internal object CoreTelemetryEmailScanner {
         val ch = text[pos]
         if (ch == '\\' && pos + 5 < text.length && text[pos + 1] == 'u') {
             val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2)
-            if (code >= 0) return classifyDecodedDomainChar(code.toChar()) to UNICODE_AT_LEN
+            if (code >= 0) return classifyEscapedDomainChar(text, pos, code.toChar())
         }
         if (ch.code < 0x80) return classifyAsciiDomainChar(ch) to 1
         if (isEmailDomainDot(ch)) return DomainCharKind.DOT to 1
         val cp = Character.codePointAt(text, pos)
         val step = Character.charCount(cp)
-        val kind = when {
-            Character.isLetter(cp) || isUnicodeCombiningMarkCp(cp) -> DomainCharKind.LETTER
-            Character.isDigit(cp) -> DomainCharKind.DIGIT
-            else -> DomainCharKind.OTHER
-        }
-        return kind to step
+        return classifyUnicodeCodePoint(cp) to step
     }
 
-    private fun classifyDecodedDomainChar(ch: Char): DomainCharKind = when {
-        ch.code < 0x80 -> classifyAsciiDomainChar(ch)
-        isEmailDomainDot(ch) -> DomainCharKind.DOT
-        ch.isLetter() -> DomainCharKind.LETTER
-        ch.isDigit() -> DomainCharKind.DIGIT
+    private fun classifyEscapedDomainChar(text: String, pos: Int, ch: Char): Pair<DomainCharKind, Int> {
+        val hasNextUnicodeEsc = pos + 11 < text.length && text[pos + 6] == '\\' && text[pos + 7] == 'u'
+        if (ch.isHighSurrogate() && hasNextUnicodeEsc) {
+            val lowCode = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 8)
+            if (lowCode >= 0 && lowCode.toChar().isLowSurrogate()) {
+                val cp = Character.toCodePoint(ch, lowCode.toChar())
+                return classifyUnicodeCodePoint(cp) to (UNICODE_AT_LEN * 2)
+            }
+            return DomainCharKind.OTHER to UNICODE_AT_LEN
+        }
+        if (ch.isSurrogate()) return DomainCharKind.OTHER to UNICODE_AT_LEN
+        val kind = when {
+            ch.code < 0x80 -> classifyAsciiDomainChar(ch)
+            isEmailDomainDot(ch) -> DomainCharKind.DOT
+            else -> classifyUnicodeCodePoint(ch.code)
+        }
+        return kind to UNICODE_AT_LEN
+    }
+
+    private fun classifyUnicodeCodePoint(cp: Int): DomainCharKind = when {
+        Character.isLetter(cp) || isUnicodeCombiningMarkCp(cp) -> DomainCharKind.LETTER
+        Character.isDigit(cp) -> DomainCharKind.DIGIT
         else -> DomainCharKind.OTHER
     }
 
@@ -300,11 +393,22 @@ internal object CoreTelemetryEmailScanner {
         return kind == DomainCharKind.LETTER || kind == DomainCharKind.DIGIT
     }
 
-    private fun isValidDomainLabelEnd(text: String, labelStart: Int, end: Int, labelHasLetter: Boolean): Boolean {
-        if (end <= labelStart || !labelHasLetter || text[end - 1] == '-') return false
+    private fun isValidDomainLabelEnd(
+        text: String,
+        labelStart: Int,
+        end: Int,
+        labelHasLetter: Boolean,
+        endedHyphen: Boolean
+    ): Boolean {
+        if (end <= labelStart || !labelHasLetter || endedHyphen) return false
         if (end < text.length && isEmailBoundaryBlockedAt(text, end)) return false
-        val continuesDomain = end + 1 < text.length && isEmailDomainDot(text[end]) && isEmailDomainStartAt(text, end + 1)
-        return !continuesDomain
+        if (end < text.length) {
+            val (dotKind, dotStep) = classifyDomainCharAt(text, end)
+            if (dotKind == DomainCharKind.DOT && end + dotStep < text.length && isEmailDomainStartAt(text, end + dotStep)) {
+                return false
+            }
+        }
+        return true
     }
 
     private fun findIpLiteralDomainEnd(text: String, domStart: Int): Int {
@@ -341,16 +445,17 @@ internal object CoreTelemetryEmailScanner {
         var k = domStart
         var labelStart = domStart
         var labelHasLetter = false
+        var lastKind = DomainCharKind.OTHER
         var bestEnd = -1
         var done = false
         while (k < text.length && !done) {
             val (kind, step) = classifyDomainCharAt(text, k)
             when (kind) {
                 DomainCharKind.LETTER -> labelHasLetter = true
-                DomainCharKind.DOT -> if (k == labelStart || text[k - 1] == '-') {
+                DomainCharKind.DOT -> if (k == labelStart || lastKind == DomainCharKind.HYPHEN) {
                     done = true
                 } else {
-                    labelStart = k + 1
+                    labelStart = k + step
                     labelHasLetter = false
                 }
                 DomainCharKind.DIGIT -> Unit
@@ -358,8 +463,11 @@ internal object CoreTelemetryEmailScanner {
                 DomainCharKind.OTHER -> done = true
             }
             if (!done) {
+                lastKind = kind
                 k += step
-                if (isValidDomainLabelEnd(text, labelStart, k, labelHasLetter)) bestEnd = k
+                if (isValidDomainLabelEnd(text, labelStart, k, labelHasLetter, lastKind == DomainCharKind.HYPHEN)) {
+                    bestEnd = k
+                }
             }
         }
         return bestEnd
