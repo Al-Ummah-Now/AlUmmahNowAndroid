@@ -42,6 +42,6 @@ class AppContainer(context: Context) : ViewerContainer {
         userAgent = "AlUmmahNow-Viewer-Android/${BuildConfig.VERSION_NAME}",
         clientHeader = AunClient.value("viewer", BuildConfig.VERSION_NAME),
         bufferPath = File(context.applicationContext.noBackupFilesDir, "viewer-telemetry-buffer.json").absolutePath,
-        initialEnabled = false
+        initialEnabled = displayPrefs.isTelemetryEnabled()
     )
 }

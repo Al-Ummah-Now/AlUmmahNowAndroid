@@ -28,6 +28,7 @@ import java.io.File
 import net.alummahnow.core.bridge.AunClient
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
+import net.alummahnow.core.bridge.telemetry.TelemetryService
 import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
@@ -38,18 +39,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val initialEnabled = prefs.getBoolean(KEY_TELEMETRY, false)
-        val telemetry = CoreTelemetryService.createOrNull(
-            appVersion = BuildConfig.VERSION_NAME,
-            deviceClass = "tv",
-            videosApiBaseUrl = BuildConfig.API_BASE_URL,
-            userAgent = "AlUmmahNow-TV-Android/${BuildConfig.VERSION_NAME}",
-            clientHeader = AunClient.value("tv", BuildConfig.VERSION_NAME),
-            bufferPath = File(applicationContext.noBackupFilesDir, "tv-telemetry-buffer.json").absolutePath,
-            initialEnabled = initialEnabled
-        )
-        CoreTelemetryService.installUncaughtExceptionHandler(telemetry)
+        val telemetry = getTelemetry(applicationContext, initialEnabled)
         setContent {
             var telemetryEnabled by rememberSaveable { mutableStateOf(initialEnabled) }
+            var telemetryWarning by rememberSaveable { mutableStateOf<String?>(null) }
             LaunchedEffect(telemetryEnabled) {
                 if (telemetryEnabled) telemetry.flush()
             }
@@ -58,21 +51,26 @@ class MainActivity : ComponentActivity() {
             }
             TvApp(
                 telemetryEnabled = telemetryEnabled,
+                telemetryWarning = telemetryWarning,
                 onToggleTelemetry = {
                     val next = !telemetryEnabled
                     if (next) {
                         if (telemetry.setConsent(TelemetryConsent.FULL) && prefs.edit().putBoolean(KEY_TELEMETRY, true).commit()) {
                             telemetryEnabled = true
+                            telemetryWarning = null
                         } else {
                             telemetry.setConsent(TelemetryConsent.OFF)
                             prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
                             telemetryEnabled = false
+                            telemetryWarning = getString(DesignR.string.aun_diagnostics_enable_error)
                         }
                     } else {
-                        telemetry.setConsent(TelemetryConsent.OFF)
-                        if (prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()) {
+                        val purged = telemetry.setConsent(TelemetryConsent.OFF)
+                        val saved = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
+                        if (saved) {
                             telemetryEnabled = false
                         }
+                        telemetryWarning = if (purged && saved) null else getString(DesignR.string.aun_diagnostics_purge_warning)
                     }
                 }
             )
@@ -82,6 +80,26 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val PREFS_NAME = "aun_tv_prefs"
         private const val KEY_TELEMETRY = "telemetry_enabled"
+        private val telemetryLock = Any()
+
+        @Volatile
+        private var telemetryInstance: TelemetryService? = null
+
+        private fun getTelemetry(appContext: Context, initialEnabled: Boolean): TelemetryService =
+            telemetryInstance ?: synchronized(telemetryLock) {
+                telemetryInstance ?: CoreTelemetryService.createOrNull(
+                    appVersion = BuildConfig.VERSION_NAME,
+                    deviceClass = "tv",
+                    videosApiBaseUrl = BuildConfig.API_BASE_URL,
+                    userAgent = "AlUmmahNow-TV-Android/${BuildConfig.VERSION_NAME}",
+                    clientHeader = AunClient.value("tv", BuildConfig.VERSION_NAME),
+                    bufferPath = File(appContext.noBackupFilesDir, "tv-telemetry-buffer.json").absolutePath,
+                    initialEnabled = initialEnabled
+                ).also {
+                    telemetryInstance = it
+                    CoreTelemetryService.installUncaughtExceptionHandler(it)
+                }
+            }
     }
 }
 
@@ -90,6 +108,7 @@ class MainActivity : ComponentActivity() {
 fun TvApp(
     mode: ThemeMode? = null,
     telemetryEnabled: Boolean = false,
+    telemetryWarning: String? = null,
     onToggleTelemetry: (() -> Unit)? = null
 ) {
     var screen by rememberSaveable { mutableStateOf(TvScreen.Home) }
@@ -116,6 +135,13 @@ fun TvApp(
                             )
                             TvAction("${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText") {
                                 onToggleTelemetry()
+                            }
+                            if (!telemetryWarning.isNullOrEmpty()) {
+                                Text(
+                                    telemetryWarning,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
                     }

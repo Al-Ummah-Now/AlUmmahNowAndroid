@@ -52,6 +52,7 @@ import net.alummahnow.core.bridge.studio.ChannelRole
 import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.deletion.DeletionStage
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.components.FanousHeaderBar
 import net.alummahnow.design.components.FanousHeaderButton
 import net.alummahnow.design.components.FanousHeaderTitle
@@ -198,6 +199,7 @@ fun StudioApp(
     val resources = LocalResources.current
     var sheetOpen by remember { mutableStateOf(false) }
     var telemetryEnabled by remember { mutableStateOf(container.isTelemetryEnabled()) }
+    var telemetryWarning by remember { mutableStateOf<String?>(null) }
     val termsModel: CreatorTermsViewModel = viewModel(key = "terms-${current.userId}") {
         // Pinned to this account: an acceptance can never be recorded for another one after a switch.
         CreatorTermsViewModel(container.repositoryFor(current.userId))
@@ -439,9 +441,16 @@ fun StudioApp(
             },
             deletionStarted = openDeletions.map { it.userId }.toSet(),
             telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
                 val ok = container.setTelemetryEnabled(enabled)
                 telemetryEnabled = if (ok) enabled else container.isTelemetryEnabled()
+                telemetryWarning = when {
+                    enabled && !ok -> resources.getString(DesignR.string.aun_diagnostics_enable_error)
+                    !enabled && (!ok || container.telemetry.lastPurgeFailed) ->
+                        resources.getString(DesignR.string.aun_diagnostics_purge_warning)
+                    else -> null
+                }
             }
         )
     }

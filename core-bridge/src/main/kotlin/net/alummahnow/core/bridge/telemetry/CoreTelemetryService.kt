@@ -4,10 +4,12 @@ import android.os.Build
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -104,31 +106,12 @@ class CoreTelemetryService(
         val jobsToCancel: List<Job>
         val succeeded: Boolean
         synchronized(gate) {
-            if (closed || clientClosed) {
-                if (consent == TelemetryConsent.OFF) {
-                    revoked = true
-                    if (!clientClosed) {
-                        runCatching { client.setConsent(TelemetryConsentState.DENIED) }
-                    }
-                    _lastPurgeFailed = !tryDeleteBufferFallback()
-                    return !_lastPurgeFailed
-                }
-                return false
-            }
-
             if (consent == TelemetryConsent.OFF) {
-                _consent = TelemetryConsent.OFF
-                revoked = true
-                jobsToCancel = flushJobs.toList()
-                flushJobs.clear()
-                try {
-                    client.setConsent(TelemetryConsentState.DENIED)
-                    _lastPurgeFailed = !tryDeleteSiblingTempFiles()
-                } catch (e: AunException) {
-                    _lastPurgeFailed = !tryDeleteBufferFallback()
-                    AunLog.e("telemetry", "telemetry disk purge failed on opt-out", e)
-                }
-                succeeded = !_lastPurgeFailed
+                val (purged, cancelList) = revokeLocked("telemetry disk purge failed on opt-out")
+                jobsToCancel = cancelList
+                succeeded = purged
+            } else if (closed || clientClosed) {
+                return false
             } else {
                 var cancelOnFail: List<Job> = emptyList()
                 succeeded = try {
@@ -140,15 +123,8 @@ class CoreTelemetryService(
                 } catch (e: AunException) {
                     // Fail closed in both wrapper and native state so an earlier native update
                     // cannot leave collection active for a queued flush.
-                    _consent = TelemetryConsent.OFF
-                    revoked = true
-                    cancelOnFail = flushJobs.toList()
-                    flushJobs.clear()
-                    try {
-                        client.setConsent(TelemetryConsentState.DENIED)
-                    } catch (_: AunException) {
-                        _lastPurgeFailed = !tryDeleteBufferFallback()
-                    }
+                    val (_, cancelList) = revokeLocked("telemetry rollback purge failed")
+                    cancelOnFail = cancelList
                     AunLog.w("telemetry", "failed to update telemetry consent; failing closed", "error" to e.message)
                     false
                 }
@@ -157,6 +133,26 @@ class CoreTelemetryService(
         }
         jobsToCancel.forEach { it.cancel() }
         return succeeded
+    }
+
+    /** Must be called while holding [gate]. */
+    private fun revokeLocked(failureMessage: String): Pair<Boolean, List<Job>> {
+        _consent = TelemetryConsent.OFF
+        revoked = true
+        val jobsToCancel = flushJobs.toList()
+        flushJobs.clear()
+        if (clientClosed) {
+            _lastPurgeFailed = !tryDeleteBufferFallback()
+            return Pair(!_lastPurgeFailed, jobsToCancel)
+        }
+        try {
+            client.setConsent(TelemetryConsentState.DENIED)
+            _lastPurgeFailed = !tryDeleteSiblingTempFiles()
+        } catch (e: AunException) {
+            _lastPurgeFailed = !tryDeleteBufferFallback()
+            AunLog.e("telemetry", failureMessage, e)
+        }
+        return Pair(!_lastPurgeFailed, jobsToCancel)
     }
 
     override fun track(name: String, properties: Map<String, Any?>) {
@@ -239,7 +235,7 @@ class CoreTelemetryService(
         synchronized(gate) {
             if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
             inFlightFlushes++
-            job = flushScope.launch {
+            job = flushScope.launch(start = CoroutineStart.LAZY) {
                 try {
                     client.flush()
                 } catch (_: CancellationException) {
@@ -249,17 +245,14 @@ class CoreTelemetryService(
                     if (!isRevoked) {
                         AunLog.w("telemetry", "telemetry flush skipped", "error" to e.message)
                     }
-                } finally {
-                    releaseInFlightFlush()
                 }
             }
+            // Register completion cleanup before start so even a pre-dispatch cancel releases inFlightFlushes.
+            job.invokeOnCompletion { releaseInFlightFlush(job) }
             flushJobs += job
         }
-        try {
-            job.join()
-        } finally {
-            synchronized(gate) { flushJobs.remove(job) }
-        }
+        job.start()
+        job.join()
     }
 
     override fun close() {
@@ -278,8 +271,9 @@ class CoreTelemetryService(
         jobsToCancel.forEach { it.cancel() }
     }
 
-    private fun releaseInFlightFlush() {
+    private fun releaseInFlightFlush(job: Job) {
         synchronized(gate) {
+            flushJobs.remove(job)
             inFlightFlushes = (inFlightFlushes - 1).coerceAtLeast(0)
             if (revoked && !bufferPath.isNullOrBlank()) {
                 // Clean up any remnant if a flush already in flight before revocation completed
@@ -308,50 +302,65 @@ class CoreTelemetryService(
         } catch (_: Exception) {
             false
         }
-        return mainOk && tryDeleteSiblingTempFiles()
+        val tempsOk = tryDeleteSiblingTempFiles()
+        return mainOk && tempsOk
     }
 
     @Suppress("TooGenericExceptionCaught")
     private fun tryDeleteSiblingTempFiles(): Boolean {
         val path = bufferPath?.takeIf { it.isNotBlank() } ?: return true
-        val nioPath = runCatching { Paths.get(path) }.getOrNull() ?: return false
-        val parent = nioPath.parent ?: return true
-        val name = nioPath.fileName?.toString() ?: return true
-        return try {
-            var allDeleted = true
-            Files.newDirectoryStream(parent, ".$name.*.tmp").use { stream ->
-                for (tmp in stream) {
-                    try {
-                        Files.delete(tmp)
-                    } catch (_: NoSuchFileException) {
-                        // Already removed.
-                    } catch (_: Exception) {
-                        allDeleted = false
-                    }
-                }
-            }
-            allDeleted
-        } catch (_: NoSuchFileException) {
-            true
-        } catch (_: Exception) {
-            false
+        val nioPath = runCatching { Paths.get(path) }.getOrNull()
+        val parent = nioPath?.parent
+        val name = nioPath?.fileName?.toString()
+        return when {
+            nioPath == null -> false
+            parent == null || name == null -> true
+            else -> deleteMatchingTempFiles(parent, ".$name.*.tmp")
         }
     }
 
+    @Suppress("TooGenericExceptionCaught")
+    private fun deleteMatchingTempFiles(parent: Path, glob: String): Boolean = try {
+        var allDeleted = true
+        Files.newDirectoryStream(parent, glob).use { stream ->
+            for (tmp in stream) {
+                try {
+                    Files.delete(tmp)
+                } catch (_: NoSuchFileException) {
+                    // Already removed.
+                } catch (_: Exception) {
+                    allDeleted = false
+                }
+            }
+        }
+        allDeleted
+    } catch (_: NoSuchFileException) {
+        true
+    } catch (_: Exception) {
+        false
+    }
+
     companion object {
+        private val crashHandlerLock = Any()
+
+        @Volatile
+        private var crashHandlerInstalled = false
+
+        @Volatile
+        private var activeCrashService: TelemetryService? = null
+
         private val doubleQuotedPathRegex = Regex(
-            """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/[^"\r\n/]+)[^"\r\n]*${'"'}""",
+            """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/(?=[^\s/"]))[^"\r\n]*${'"'}""",
             RegexOption.IGNORE_CASE
         )
-        private val singleQuotedPathRegex = Regex(
-            """'(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/[^'\r\n/]+)[^'\r\n]*'""",
+        private val fileUriRegex = Regex("""file://[^\r\n"<>|]+""", RegexOption.IGNORE_CASE)
+        private val windowsPathRegex = Regex(
+            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+?(?=(?::line\s+\d+|:\d+(?::\d+)?)[)\]]*(?=\r|\n|$)|[\r\n"<>|]|$)""",
             RegexOption.IGNORE_CASE
         )
-        private val fileUriRegex = Regex("""file://[^\r\n"<>|;]+""", RegexOption.IGNORE_CASE)
-        private val windowsPathRegex = Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|;]+?(?=(?::line\b|:\d+\b|[\r\n"<>|;]|$))""")
         private val unixPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._:/-])(?:~/|/[^\r\n/"<>|;:]+/|/[^\r\n/"<>|;:]+\.[\p{L}\p{N}]{1,10})""" +
-                """[^\r\n"<>|;]*?(?=(?::line\b|:\d+\b|[\r\n"<>|;]|$))"""
+            """(?<![\p{L}\p{M}\p{N}._:/-])(?:~/|/(?=[^\s/"<>|]))""" +
+                """[^\r\n"<>|]+?(?=(?::line\s+\d+|:\d+(?::\d+)?)[)\]]*(?=\r|\n|$)|[\r\n"<>|]|$)"""
         )
 
         /**
@@ -392,21 +401,28 @@ class CoreTelemetryService(
         }
 
         /**
-         * Installs a process-wide uncaught exception hook that records sanitized crashes when
-         * opted in, then chains to any previously installed handler.
+         * Installs a single process-wide uncaught exception hook that records sanitized crashes
+         * through the latest registered [TelemetryService] when opted in, then chains to any
+         * previously installed handler. Subsequent calls swap the active service without chaining
+         * stale instances.
          */
         fun installUncaughtExceptionHandler(service: TelemetryService) {
-            val previous = Thread.getDefaultUncaughtExceptionHandler()
-            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-                runCatching {
-                    service.reportCrash(
-                        kind = throwable.javaClass.name,
-                        message = throwable.message ?: throwable.javaClass.simpleName,
-                        stack = throwable.stackTraceToString(),
-                        fromPreviousSession = false
-                    )
+            synchronized(crashHandlerLock) {
+                activeCrashService = service
+                if (crashHandlerInstalled) return
+                crashHandlerInstalled = true
+                val previous = Thread.getDefaultUncaughtExceptionHandler()
+                Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                    runCatching {
+                        activeCrashService?.reportCrash(
+                            kind = throwable.javaClass.name,
+                            message = throwable.message ?: throwable.javaClass.simpleName,
+                            stack = throwable.stackTraceToString(),
+                            fromPreviousSession = false
+                        )
+                    }
+                    previous?.uncaughtException(thread, throwable)
                 }
-                previous?.uncaughtException(thread, throwable)
             }
         }
 
@@ -431,7 +447,6 @@ class CoreTelemetryService(
         fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
             var scrubbed = doubleQuotedPathRegex.replace(text, "[redacted-path]")
-            scrubbed = singleQuotedPathRegex.replace(scrubbed, "[redacted-path]")
             scrubbed = fileUriRegex.replace(scrubbed, "[redacted-path]")
             scrubbed = windowsPathRegex.replace(scrubbed, "[redacted-path]")
             scrubbed = unixPathRegex.replace(scrubbed, "[redacted-path]")

@@ -208,10 +208,23 @@ fun SettingsSheet(
     onDismiss: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
     telemetryEnabled: Boolean = false,
-    onTelemetryChanged: ((Boolean) -> Unit)? = null
+    onTelemetryChanged: ((Boolean) -> Unit)? = null,
+    telemetryWarning: String? = null
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        SettingsContent(name, dark, language, push, onDark, onLanguage, onSignOut, onAddPasskey, telemetryEnabled, onTelemetryChanged)
+        SettingsContent(
+            name = name,
+            dark = dark,
+            language = language,
+            push = push,
+            onDark = onDark,
+            onLanguage = onLanguage,
+            onSignOut = onSignOut,
+            onAddPasskey = onAddPasskey,
+            telemetryEnabled = telemetryEnabled,
+            onTelemetryChanged = onTelemetryChanged,
+            telemetryWarning = telemetryWarning
+        )
     }
 }
 
@@ -226,7 +239,8 @@ fun SettingsContent(
     onSignOut: () -> Unit,
     onAddPasskey: (() -> Unit)? = null,
     telemetryEnabled: Boolean = false,
-    onTelemetryChanged: ((Boolean) -> Unit)? = null
+    onTelemetryChanged: ((Boolean) -> Unit)? = null,
+    telemetryWarning: String? = null
 ) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(
@@ -297,6 +311,14 @@ fun SettingsContent(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (!telemetryWarning.isNullOrEmpty()) {
+                        Text(
+                            telemetryWarning,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = FanousTokens.Spacing.xs).testTag("admin-diagnostics-warning")
+                        )
+                    }
                 }
                 Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged)
             }

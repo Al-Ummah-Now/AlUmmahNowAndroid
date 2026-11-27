@@ -40,7 +40,8 @@ fun DisplaySettingsSheet(
     onOpenBlockedList: (() -> Unit)? = null,
     webHost: String,
     telemetryEnabled: Boolean = false,
-    onTelemetryChanged: ((Boolean) -> Unit)? = null
+    onTelemetryChanged: ((Boolean) -> Unit)? = null,
+    telemetryWarning: String? = null
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         DisplaySettingsSheetContent(
@@ -54,7 +55,8 @@ fun DisplaySettingsSheet(
             onOpenBlockedList = onOpenBlockedList,
             webHost = webHost,
             telemetryEnabled = telemetryEnabled,
-            onTelemetryChanged = onTelemetryChanged
+            onTelemetryChanged = onTelemetryChanged,
+            telemetryWarning = telemetryWarning
         )
     }
 }
@@ -71,7 +73,8 @@ internal fun DisplaySettingsSheetContent(
     onOpenBlockedList: (() -> Unit)? = null,
     webHost: String,
     telemetryEnabled: Boolean = false,
-    onTelemetryChanged: ((Boolean) -> Unit)? = null
+    onTelemetryChanged: ((Boolean) -> Unit)? = null,
+    telemetryWarning: String? = null
 ) {
     val langCode = language ?: currentLocale().language
     Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -107,6 +110,14 @@ internal fun DisplaySettingsSheetContent(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (!telemetryWarning.isNullOrEmpty()) {
+                        Text(
+                            telemetryWarning,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp).testTag("settings-diagnostics-warning")
+                        )
+                    }
                 }
                 Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged)
             }

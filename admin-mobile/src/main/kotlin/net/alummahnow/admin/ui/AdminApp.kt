@@ -68,6 +68,7 @@ import net.alummahnow.core.bridge.admin.ReviewError
 import net.alummahnow.core.bridge.admin.ReviewItem
 import net.alummahnow.core.bridge.admin.StaffProfile
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.passkey.PasskeyHost
@@ -252,6 +253,7 @@ private fun StaffHome(
     val account by services.session.active.collectAsStateWithLifecycle()
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var telemetryEnabled by remember { mutableStateOf(services.prefs.telemetryEnabled) }
+    var telemetryWarning by remember { mutableStateOf<String?>(null) }
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     var reblurTick by remember { mutableLongStateOf(0L) }
     val queue: QueueViewModel =
@@ -391,20 +393,24 @@ private fun StaffHome(
                 }
             },
             telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
                 if (enabled) {
                     if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
                         services.prefs.telemetryEnabled = true
                         telemetryEnabled = true
+                        telemetryWarning = null
                     } else {
                         services.telemetry.setConsent(TelemetryConsent.OFF)
                         services.prefs.telemetryEnabled = false
                         telemetryEnabled = false
+                        telemetryWarning = resources.getString(DesignR.string.aun_diagnostics_enable_error)
                     }
                 } else {
-                    services.telemetry.setConsent(TelemetryConsent.OFF)
+                    val purged = services.telemetry.setConsent(TelemetryConsent.OFF)
                     services.prefs.telemetryEnabled = false
                     telemetryEnabled = false
+                    telemetryWarning = if (purged) null else resources.getString(DesignR.string.aun_diagnostics_purge_warning)
                 }
             }
         )

@@ -81,7 +81,8 @@ fun AccountSheet(
     /** Accounts whose deletion started and isn't finished. */
     deletionStarted: Set<String> = emptySet(),
     telemetryEnabled: Boolean = false,
-    onTelemetryChanged: ((Boolean) -> Unit)? = null
+    onTelemetryChanged: ((Boolean) -> Unit)? = null,
+    telemetryWarning: String? = null
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
     ModalBottomSheet(
@@ -104,7 +105,8 @@ fun AccountSheet(
             onDeleteAccount = onDeleteAccount,
             deletionStarted = deletionStarted,
             telemetryEnabled = telemetryEnabled,
-            onTelemetryChanged = onTelemetryChanged
+            onTelemetryChanged = onTelemetryChanged,
+            telemetryWarning = telemetryWarning
         )
     }
     confirmSignOut?.let { a ->
@@ -139,7 +141,8 @@ internal fun AccountSheetContent(
     /** Accounts whose deletion started and isn't finished. */
     deletionStarted: Set<String> = emptySet(),
     telemetryEnabled: Boolean = false,
-    onTelemetryChanged: ((Boolean) -> Unit)? = null
+    onTelemetryChanged: ((Boolean) -> Unit)? = null,
+    telemetryWarning: String? = null
 ) {
     val lang = currentLocale().language
     Column(
@@ -220,6 +223,16 @@ internal fun AccountSheetContent(
                     .testTag("studio-diagnostics"),
                 trailing = { Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged) }
             )
+            if (!telemetryWarning.isNullOrEmpty()) {
+                Text(
+                    telemetryWarning,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.xs)
+                        .testTag("studio-diagnostics-warning")
+                )
+            }
         }
         if (onOpenUrl != null) {
             HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.xs))

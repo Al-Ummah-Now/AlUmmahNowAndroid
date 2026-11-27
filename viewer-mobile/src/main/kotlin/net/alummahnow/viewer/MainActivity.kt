@@ -53,6 +53,7 @@ import net.alummahnow.core.bridge.links.ShortLinks
 import net.alummahnow.core.bridge.model.VideoDetail
 import net.alummahnow.core.bridge.safety.ViewerReportUrls
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.feature.home.HomeScreen
@@ -209,10 +210,10 @@ internal fun ViewerNavHost(
     var settingsOpen by remember { mutableStateOf(false) }
     var blockedListOpen by remember { mutableStateOf(false) }
     val theme by container.displayPrefs.theme.collectAsState(initial = null)
-    val telemetryEnabled by container.displayPrefs.telemetryEnabled.collectAsState(initial = false)
+    val telemetryEnabled by container.displayPrefs.telemetryEnabled.collectAsState()
+    var telemetryWarning by remember { mutableStateOf<String?>(null) }
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabled) {
-        container.telemetry.setConsent(if (telemetryEnabled) TelemetryConsent.FULL else TelemetryConsent.OFF)
         if (telemetryEnabled) container.telemetry.flush()
     }
     DisposableEffect(Unit) {
@@ -353,19 +354,22 @@ internal fun ViewerNavHost(
             onOpenUrl = openPage,
             webHost = BuildConfig.WEB_HOST,
             telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
-                scope.launch {
-                    if (enabled) {
-                        if (container.telemetry.setConsent(TelemetryConsent.FULL)) {
-                            container.displayPrefs.setTelemetryEnabled(true)
-                        } else {
-                            container.telemetry.setConsent(TelemetryConsent.OFF)
-                            container.displayPrefs.setTelemetryEnabled(false)
-                        }
+                if (enabled) {
+                    if (container.telemetry.setConsent(TelemetryConsent.FULL) &&
+                        container.displayPrefs.setTelemetryEnabled(true)
+                    ) {
+                        telemetryWarning = null
                     } else {
                         container.telemetry.setConsent(TelemetryConsent.OFF)
                         container.displayPrefs.setTelemetryEnabled(false)
+                        telemetryWarning = context.getString(DesignR.string.aun_diagnostics_enable_error)
                     }
+                } else {
+                    val purged = container.telemetry.setConsent(TelemetryConsent.OFF)
+                    val saved = container.displayPrefs.setTelemetryEnabled(false)
+                    telemetryWarning = if (purged && saved) null else context.getString(DesignR.string.aun_diagnostics_purge_warning)
                 }
             },
             onOpenBlockedList = {
