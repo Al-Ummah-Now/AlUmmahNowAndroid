@@ -187,12 +187,53 @@ internal object CoreTelemetryAuthScanner {
         builder: HeaderBuilder
     ): Int {
         val ch = text[valStart]
-        if (ch == '"' || ch == '\'') return redactQuotedAuthString(text, valStart, ch, builder)
-        if (ch == '[') return redactAuthArrayValue(text, valStart + 1, allowNewlines, builder)
+        if (ch == '"' || ch == '\'') {
+            val afterQuote = redactQuotedAuthString(text, valStart, ch, builder)
+            return redactTrailingPlainAuthContinuation(text, afterQuote, allowNewlines, builder)
+        }
+        if (ch == '[') {
+            val afterArray = redactAuthArrayValue(text, valStart + 1, allowNewlines, builder)
+            return redactTrailingPlainAuthContinuation(text, afterArray, allowNewlines, builder)
+        }
+        return redactPlainAuthSpan(text, valStart, builder)
+    }
+
+    private fun redactPlainAuthSpan(text: String, valStart: Int, builder: HeaderBuilder): Int {
         val lineEnd = scanPlainAuthValueEnd(text, valStart)
         val redacted = redactAuthValueBody(text, valStart, lineEnd)
         if (redacted != null) builder.appendRedacted(valStart, lineEnd, redacted)
         return lineEnd
+    }
+
+    private fun redactTrailingPlainAuthContinuation(
+        text: String,
+        afterPos: Int,
+        allowNewlines: Boolean,
+        builder: HeaderBuilder
+    ): Int {
+        val tailStart = findTrailingPlainAuthStart(text, afterPos, allowNewlines)
+        return if (tailStart < 0) afterPos else redactPlainAuthSpan(text, tailStart, builder)
+    }
+
+    private fun findTrailingPlainAuthStart(text: String, afterPos: Int, allowNewlines: Boolean): Int {
+        var pos = afterPos
+        var sawFold = false
+        var advancing = true
+        while (pos < text.length && advancing) {
+            while (pos < text.length && isHorizSpace(text[pos])) pos++
+            val fold = advanceObsFold(text, pos)
+            if (fold > pos) {
+                sawFold = true
+                pos = fold
+            } else {
+                advancing = false
+            }
+        }
+        if (pos >= text.length || isNewline(text[pos])) return -1
+        val next = text[pos]
+        val isCloser = next == '}' || next == ']'
+        val stopsAtDelimiter = if (sawFold) allowNewlines && isCloser else isCloser || (allowNewlines && next == ',')
+        return if (stopsAtDelimiter) -1 else pos
     }
 
     private fun scanPlainAuthValueEnd(text: String, start: Int): Int {
@@ -398,6 +439,7 @@ internal object CoreTelemetryAuthScanner {
     }
 
     private fun advanceObsFold(text: String, nlPos: Int): Int {
+        if (nlPos >= text.length || !isNewline(text[nlPos])) return -1
         val afterNl = if (text[nlPos] == '\r' && nlPos + 1 < text.length && text[nlPos + 1] == '\n') {
             nlPos + 2
         } else {
