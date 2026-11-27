@@ -162,7 +162,8 @@ class CoreTelemetryService(
             client.setConsent(TelemetryConsentState.DENIED)
             _lastPurgeFailedFlow.value = !tryDeleteSiblingTempFiles()
         } catch (e: AunException) {
-            _lastPurgeFailedFlow.value = !tryDeleteBufferFallback()
+            tryDeleteBufferFallback()
+            _lastPurgeFailedFlow.value = true
             AunLog.e("telemetry", failureMessage, e)
         }
         return Pair(!_lastPurgeFailedFlow.value, jobsToCancel)
@@ -295,7 +296,8 @@ class CoreTelemetryService(
                     // Clean up any remnant if a flush already in flight before revocation completed
                     // its final persist rename after setConsent(DENIED) deleted the buffer file.
                     // Ordinary close() without revocation does not advance consentEpoch, keeping retryable buffers.
-                    _lastPurgeFailedFlow.value = !tryDeleteBufferFallback()
+                    val deleted = tryDeleteBufferFallback()
+                    _lastPurgeFailedFlow.value = _lastPurgeFailedFlow.value || !deleted
                 }
             }
             if (closed && inFlightFlushes == 0 && !clientClosed) {
@@ -372,6 +374,7 @@ class CoreTelemetryService(
                 """([?#][^\s"<>\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
             RegexOption.IGNORE_CASE
         )
+        private const val FILE_SCHEME_PREFIX = "file://"
         private const val IO_KEYWORD_VERBS =
             "open|opening|read|reading|write|writing|delete|deleting|remove|removing|rename|stat|" +
                 "create|creating|load|loading|save|saving|access|accessing|unlink|" +
@@ -425,7 +428,7 @@ class CoreTelemetryService(
         )
         private val postRestoreRedactionRules: List<Pair<Regex, String>> = listOf(
             Regex(
-                """(?:[A-Za-z0-9._+-]|%(?!40)[0-9A-Fa-f]{2})+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b""",
+                """(?:[A-Za-z0-9._+-]|%(?!40))+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b""",
                 RegexOption.IGNORE_CASE
             ) to "[redacted-email]",
             Regex("""\bBearer\s+\S+""", RegexOption.IGNORE_CASE) to "Bearer [redacted]"
@@ -523,23 +526,67 @@ class CoreTelemetryService(
             for ((regex, template) in pathRedactionRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
-            for (idx in vaultedUrls.indices) {
-                scrubbed = scrubbed.replace("$prefix$idx\u001F", vaultedUrls[idx])
-            }
+            scrubbed = restoreVaultedUrls(scrubbed, prefix, vaultedUrls)
             for ((regex, template) in postRestoreRedactionRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
             return scrubbed
         }
 
+        private class VaultLineTracker {
+            private var cursor = 0
+            private var hasFileUriOnLine = false
+            private var lastNonWsChar = '\u0000'
+            private var lastNonWrapperChar = '\u0000'
+
+            fun isEmbeddedInPath(text: String, matchStart: Int): Boolean {
+                advanceTo(text, matchStart)
+                val precededByWs = matchStart > 0 && text[matchStart - 1].isWhitespace()
+                val insideFileUri = hasFileUriOnLine && (!precededByWs || isPathSep(lastNonWsChar))
+                return insideFileUri || isPathSep(lastNonWrapperChar)
+            }
+
+            private fun advanceTo(text: String, target: Int) {
+                while (cursor < target) {
+                    val ch = text[cursor]
+                    if (ch == '\r' || ch == '\n') {
+                        hasFileUriOnLine = false
+                        lastNonWsChar = '\u0000'
+                        lastNonWrapperChar = '\u0000'
+                    } else {
+                        if (!hasFileUriOnLine && isFileSchemeAt(text, cursor)) {
+                            hasFileUriOnLine = true
+                        }
+                        if (!ch.isWhitespace()) lastNonWsChar = ch
+                        if (!isOpeningWrapper(ch)) lastNonWrapperChar = ch
+                    }
+                    cursor++
+                }
+            }
+
+            private fun isFileSchemeAt(text: String, pos: Int): Boolean {
+                val boundaryOk = pos == 0 || !isUrlSchemeChar(text[pos - 1])
+                return boundaryOk && text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true)
+            }
+
+            private fun isUrlSchemeChar(ch: Char): Boolean =
+                ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '+' || ch == '.' || ch == '-'
+
+            private fun isOpeningWrapper(ch: Char): Boolean =
+                ch == '(' || ch == '[' || ch == '{' || ch == '"' || ch == '\''
+
+            private fun isPathSep(ch: Char): Boolean = ch == '/' || ch == '\\'
+        }
+
         private fun vaultNonFileUrls(text: String, prefix: String): Pair<String, List<String>> {
             val vaultedUrls = mutableListOf<String>()
+            val tracker = VaultLineTracker()
             val scrubbed = urlVaultRegex.replace(text) { match ->
                 val raw = match.value
                 val ipv6 = match.groups[2]?.value
                 val validAuthority = ipv6 == null || runCatching { URI("http://[$ipv6]") }.isSuccess
                 val skip = raw.startsWith("file://", ignoreCase = true) ||
-                    isInsideFileUriToken(text, match.range.first) ||
+                    tracker.isEmbeddedInPath(text, match.range.first) ||
                     !validAuthority
                 if (skip) {
                     raw
@@ -551,6 +598,31 @@ class CoreTelemetryService(
                 }
             }
             return scrubbed to vaultedUrls
+        }
+
+        private fun restoreVaultedUrls(text: String, prefix: String, vaultedUrls: List<String>): String {
+            if (vaultedUrls.isEmpty()) return text
+            val sb = StringBuilder(text.length)
+            var pos = 0
+            while (pos < text.length) {
+                val idx = text.indexOf(prefix, pos)
+                if (idx < 0) {
+                    sb.append(text, pos, text.length)
+                    break
+                }
+                sb.append(text, pos, idx)
+                val numStart = idx + prefix.length
+                val numEnd = text.indexOf('\u001F', numStart)
+                val urlIndex = if (numEnd > numStart) text.substring(numStart, numEnd).toIntOrNull() else null
+                if (urlIndex != null && urlIndex in vaultedUrls.indices) {
+                    sb.append(vaultedUrls[urlIndex])
+                    pos = numEnd + 1
+                } else {
+                    sb.append(prefix)
+                    pos = numStart
+                }
+            }
+            return sb.toString()
         }
 
         private fun formatVaultedUrl(match: MatchResult, text: String): Pair<String, String> {
@@ -571,14 +643,6 @@ class CoreTelemetryService(
                 tail = "'$tail"
             }
             return cleanBase to tail
-        }
-
-        private fun isInsideFileUriToken(text: String, matchStart: Int): Boolean {
-            var tokenStart = matchStart
-            while (tokenStart > 0 && !text[tokenStart - 1].isWhitespace()) {
-                tokenStart--
-            }
-            return tokenStart < matchStart && text.substring(tokenStart, matchStart).contains("file://", ignoreCase = true)
         }
 
         private fun trimQueryOrFragmentDelimiters(qf: String, text: String, matchStart: Int): Pair<String, String> {
@@ -618,7 +682,7 @@ class CoreTelemetryService(
                 excess[slot]--
                 return true
             }
-            return ch == ';' || ch == ',' || (ch == '\'' && precededByQuote)
+            return ch == '.' || ch == ';' || ch == ',' || (ch == '\'' && precededByQuote)
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {

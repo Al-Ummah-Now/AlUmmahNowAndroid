@@ -210,8 +210,13 @@ class CoreTelemetryServiceTest {
             "https://example.com/api#first,PrivateProject" to "https://example.com/api#[redacted]",
             "https://example.com/users/alice@example.com" to "https://example.com/users/[redacted-email]",
             "https://example.com/users/alice%40example.com" to "https://example.com/users/[redacted-email]",
+            "https://example.com/users/alice%team@example.com" to "https://example.com/users/[redacted-email]",
+            "alice%notes@example.com" to "[redacted-email]",
             "https://example.com/?token=abc{Secret}xyz" to "https://example.com/?[redacted]",
+            "(https://example.com/?q=secret)." to "(https://example.com/?[redacted]).",
             "file:///private/(https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "file:///private/My Folder/(https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "/private/My Folder/(https://Secret/Acquisition.mov)" to "[redacted-path]",
             "(relative/Secret.mov and https://example.com/api)" to "([redacted-path] https://example.com/api)",
             "Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and Bearer abcdefg" to
                 "Failed for [redacted-email] with Bearer [redacted] and Bearer [redacted]"
@@ -219,6 +224,8 @@ class CoreTelemetryServiceTest {
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
+        val repeated = "(https://example.com)".repeat(500)
+        assertEquals(repeated, CoreTelemetryService.sanitizeLocalPaths(repeated))
     }
 
     @Test
