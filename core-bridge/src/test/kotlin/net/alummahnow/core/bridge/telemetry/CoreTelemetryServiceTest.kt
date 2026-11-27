@@ -312,6 +312,14 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("'file:///tmp/O' Connor Private (https://private.example/Acquisition.mov)")
         )
         assertEquals(
+            "input'[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("input'file:///tmp/O' Connor Private https://private.example/Acquisition.mov")
+        )
+        assertEquals(
+            "input'[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("input'/tmp/O' Connor Private https://private.example/Acquisition.mov")
+        )
+        assertEquals(
             "status 'ready' (https://example.com/api)",
             CoreTelemetryService.sanitizeLocalPaths("status 'ready' (https://example.com/api)")
         )

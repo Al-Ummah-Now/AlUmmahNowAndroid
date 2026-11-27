@@ -808,8 +808,14 @@ class CoreTelemetryService(
 
         private fun canOpenQuote(text: String, pos: Int, ch: Char): Boolean = when (ch) {
             '"' -> true
-            '\'' -> pos == 0 || !text[pos - 1].isLetterOrDigit()
+            '\'' -> canOpenSingleQuote(text, pos)
             else -> false
+        }
+
+        private fun canOpenSingleQuote(text: String, pos: Int): Boolean {
+            if (pos == 0 || !text[pos - 1].isLetterOrDigit()) return true
+            val next = pos + 1
+            return next < text.length && (isFileSchemeAt(text, next) || startsLocalPathAt(text, next, atTokenStart = true))
         }
 
         private fun isInnerApostrophe(text: String, pos: Int, ch: Char): Boolean =
