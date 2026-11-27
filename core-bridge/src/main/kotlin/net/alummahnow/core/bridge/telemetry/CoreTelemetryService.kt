@@ -114,19 +114,23 @@ class CoreTelemetryService(
                 return false
             } else {
                 var cancelOnFail: List<Job> = emptyList()
-                succeeded = try {
-                    client.setConsent(mapped)
-                    _consent = consent
-                    revoked = false
-                    _lastPurgeFailed = false
-                    true
-                } catch (e: AunException) {
-                    // Fail closed in both wrapper and native state so an earlier native update
-                    // cannot leave collection active for a queued flush.
-                    val (_, cancelList) = revokeLocked("telemetry rollback purge failed")
-                    cancelOnFail = cancelList
-                    AunLog.w("telemetry", "failed to update telemetry consent; failing closed", "error" to e.message)
+                succeeded = if (_lastPurgeFailed && !tryDeleteBufferFallback()) {
                     false
+                } else {
+                    try {
+                        _lastPurgeFailed = false
+                        client.setConsent(mapped)
+                        _consent = consent
+                        revoked = false
+                        true
+                    } catch (e: AunException) {
+                        // Fail closed in both wrapper and native state so an earlier native update
+                        // cannot leave collection active for a queued flush.
+                        val (_, cancelList) = revokeLocked("telemetry rollback purge failed")
+                        cancelOnFail = cancelList
+                        AunLog.w("telemetry", "failed to update telemetry consent; failing closed", "error" to e.message)
+                        false
+                    }
                 }
                 jobsToCancel = cancelOnFail
             }
@@ -279,9 +283,7 @@ class CoreTelemetryService(
                 // Clean up any remnant if a flush already in flight before revocation completed
                 // its final persist rename after setConsent(DENIED) deleted the buffer file.
                 // Ordinary close() without revocation leaves revoked == false, keeping retryable buffers.
-                if (!tryDeleteBufferFallback()) {
-                    _lastPurgeFailed = true
-                }
+                _lastPurgeFailed = !tryDeleteBufferFallback()
             }
             if (closed && inFlightFlushes == 0 && !clientClosed) {
                 clientClosed = true
@@ -353,14 +355,19 @@ class CoreTelemetryService(
             """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/(?=[^\s/"]))[^"\r\n]*${'"'}""",
             RegexOption.IGNORE_CASE
         )
-        private val fileUriRegex = Regex("""file://[^\r\n"<>|]+""", RegexOption.IGNORE_CASE)
+        private val stackSuffixLookahead =
+            """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*(?=\r|\n|$)|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\()|[\r\n"]|$)"""
+        private val fileUriRegex = Regex(
+            """file://[^\r\n"]+?""" + stackSuffixLookahead,
+            RegexOption.IGNORE_CASE
+        )
         private val windowsPathRegex = Regex(
-            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+?(?=(?::line\s+\d+|:\d+(?::\d+)?)[)\]]*(?=\r|\n|$)|[\r\n"<>|]|$)""",
+            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"<>|]+?""" +
+                """(?=(?::line\s+\d+|:\d+(?::\d+)?)(?:[)\]]*(?=\r|\n|$)|\s+in\s+[\p{L}_][\p{L}\p{N}_.$<>]*\()|[\r\n"<>|]|$)""",
             RegexOption.IGNORE_CASE
         )
         private val unixPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._:/-])(?:~/|/(?=[^\s/"<>|]))""" +
-                """[^\r\n"<>|]+?(?=(?::line\s+\d+|:\d+(?::\d+)?)[)\]]*(?=\r|\n|$)|[\r\n"<>|]|$)"""
+            """(?<![\p{L}\p{M}\p{N}._:/-])(?:~/|/(?=[^\s/"]))[^\r\n"]+?""" + stackSuffixLookahead
         )
 
         /**
