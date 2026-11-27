@@ -444,10 +444,16 @@ fun StudioApp(
             telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
                 val ok = container.setTelemetryEnabled(enabled)
-                telemetryEnabled = if (ok) enabled else container.isTelemetryEnabled()
+                telemetryEnabled = if (ok) {
+                    enabled
+                } else if (container.isTelemetryPreferenceSaveFailed()) {
+                    true
+                } else {
+                    container.isTelemetryEnabled()
+                }
                 telemetryWarning = when {
+                    container.isTelemetryPreferenceSaveFailed() -> resources.getString(DesignR.string.aun_diagnostics_disable_error)
                     enabled && !ok -> resources.getString(DesignR.string.aun_diagnostics_enable_error)
-                    !enabled && !ok -> resources.getString(DesignR.string.aun_diagnostics_disable_error)
                     !enabled && container.telemetry.lastPurgeFailed ->
                         resources.getString(DesignR.string.aun_diagnostics_purge_warning)
                     else -> null

@@ -357,13 +357,19 @@ internal fun ViewerNavHost(
             telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
                 if (enabled) {
-                    if (container.telemetry.setConsent(TelemetryConsent.FULL) &&
-                        container.displayPrefs.setTelemetryEnabled(true)
-                    ) {
-                        telemetryWarning = null
+                    if (container.telemetry.setConsent(TelemetryConsent.FULL)) {
+                        if (container.displayPrefs.setTelemetryEnabled(true)) {
+                            telemetryWarning = null
+                        } else {
+                            container.telemetry.setConsent(TelemetryConsent.OFF)
+                            val rolledBack = container.displayPrefs.setTelemetryEnabled(false)
+                            telemetryWarning = context.getString(
+                                if (rolledBack) DesignR.string.aun_diagnostics_enable_error
+                                else DesignR.string.aun_diagnostics_disable_error
+                            )
+                        }
                     } else {
                         container.telemetry.setConsent(TelemetryConsent.OFF)
-                        container.displayPrefs.setTelemetryEnabled(false)
                         telemetryWarning = context.getString(DesignR.string.aun_diagnostics_enable_error)
                     }
                 } else {

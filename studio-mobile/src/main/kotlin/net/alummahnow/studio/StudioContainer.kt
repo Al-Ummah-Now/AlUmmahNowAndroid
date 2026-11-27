@@ -29,6 +29,7 @@ interface StudioContainer {
     val telemetry: TelemetryService get() = NullTelemetryService
     fun isTelemetryEnabled(): Boolean = false
     fun setTelemetryEnabled(enabled: Boolean): Boolean = !enabled
+    fun isTelemetryPreferenceSaveFailed(): Boolean = false
 
     /** For work that must finish although the screen that asked for it is gone (the last sign-out, a deletion). */
     val appScope: CoroutineScope

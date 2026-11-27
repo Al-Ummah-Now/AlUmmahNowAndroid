@@ -396,14 +396,21 @@ private fun StaffHome(
             telemetryWarning = telemetryWarning,
             onTelemetryChanged = { enabled ->
                 if (enabled) {
-                    if (services.telemetry.setConsent(TelemetryConsent.FULL) &&
-                        services.prefs.setTelemetryEnabled(true)
-                    ) {
-                        telemetryEnabled = true
-                        telemetryWarning = null
+                    if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
+                        if (services.prefs.setTelemetryEnabled(true)) {
+                            telemetryEnabled = true
+                            telemetryWarning = null
+                        } else {
+                            services.telemetry.setConsent(TelemetryConsent.OFF)
+                            val rolledBack = services.prefs.setTelemetryEnabled(false)
+                            telemetryEnabled = !rolledBack
+                            telemetryWarning = resources.getString(
+                                if (rolledBack) DesignR.string.aun_diagnostics_enable_error
+                                else DesignR.string.aun_diagnostics_disable_error
+                            )
+                        }
                     } else {
                         services.telemetry.setConsent(TelemetryConsent.OFF)
-                        services.prefs.setTelemetryEnabled(false)
                         telemetryEnabled = false
                         telemetryWarning = resources.getString(DesignR.string.aun_diagnostics_enable_error)
                     }

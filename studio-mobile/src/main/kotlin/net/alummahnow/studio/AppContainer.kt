@@ -91,24 +91,32 @@ class AppContainer(context: Context) : StudioContainer {
         initialEnabled = telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false)
     )
 
+    @Volatile
+    private var telemetrySaveFailed = false
+
     override fun isTelemetryEnabled(): Boolean = telemetryPrefs.getBoolean(KEY_TELEMETRY_ENABLED, false)
 
+    override fun isTelemetryPreferenceSaveFailed(): Boolean = telemetrySaveFailed
+
     override fun setTelemetryEnabled(enabled: Boolean): Boolean {
+        telemetrySaveFailed = false
         if (enabled) {
             if (!telemetry.setConsent(TelemetryConsent.FULL)) {
                 telemetry.setConsent(TelemetryConsent.OFF)
-                telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
                 return false
             }
             if (!telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, true).commit()) {
                 telemetry.setConsent(TelemetryConsent.OFF)
-                telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+                val rolledBack = telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+                telemetrySaveFailed = !rolledBack
                 return false
             }
             return true
         }
         telemetry.setConsent(TelemetryConsent.OFF)
-        return telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+        val saved = telemetryPrefs.edit().putBoolean(KEY_TELEMETRY_ENABLED, false).commit()
+        telemetrySaveFailed = !saved
+        return saved
     }
 
     override val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

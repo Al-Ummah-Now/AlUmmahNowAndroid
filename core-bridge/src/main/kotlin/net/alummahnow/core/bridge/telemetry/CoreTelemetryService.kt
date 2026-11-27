@@ -206,8 +206,8 @@ class CoreTelemetryService(
 
     override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
         val safeKind = kind.ifBlank { "UnhandledException" }
-        val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message, preserveStackLocations = false)
-        val safeStack = stack?.let { sanitizeLocalPaths(it, preserveStackLocations = true) }
+        val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message)
+        val safeStack = stack?.let(::sanitizeLocalPaths)
         val report = TelemetryCrashReport(
             kind = safeKind,
             message = safeMessage,
@@ -359,29 +359,11 @@ class CoreTelemetryService(
         @Volatile
         private var activeCrashService: TelemetryService? = null
 
-        private val stackFrameLineRegex = Regex("""^[ \t]*(?:at[ \t]+|#?\d+[ \t]+)""")
-        private val stackSuffixLookahead =
-            """(?=(?::line[ \t]+\d+|:\d+(?::\d+)?)(?:[)\]]*|[ \t]+in[ \t]+[\p{L}_][\p{L}\p{N}_.$<>]*\(\))(?=\r|\n|$)|\r|\n|$)"""
-        private val doubleQuotedStackPathRegex = Regex(
-            """${'"'}(?:file://|(?:[A-Za-z]:[\\/]|\\\\)|~/(?!\s)|/+(?=[^\s/"]))[^"\r\n]*?""" +
-                """((?::line[ \t]+\d+|:\d+(?::\d+)?)?)${'"'}(?=[ \t]*(\r|\n|$))""",
-            RegexOption.IGNORE_CASE
-        )
         private val fileUriRegex = Regex("""file://[^\r\n]+""", RegexOption.IGNORE_CASE)
-        private val fileUriStackRegex = Regex(
-            """file://[^\r\n]+?""" + stackSuffixLookahead,
-            RegexOption.IGNORE_CASE
-        )
         private val windowsPathRegex = Regex("""(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+""", RegexOption.IGNORE_CASE)
-        private val windowsStackPathRegex = Regex(
-            """(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+?""" + stackSuffixLookahead,
-            RegexOption.IGNORE_CASE
-        )
+        private val quotedSpacedRootPathRegex = Regex("""["']/[ \t]+[^\r\n]+""")
         private val unixPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<!:)//+(?=[^\s/])|/(?=[^\s/]))[^\r\n]+"""
-        )
-        private val unixStackPathRegex = Regex(
-            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<!:)//+(?=[^\s/])|/(?=[^\s/]))[^\r\n]+?""" + stackSuffixLookahead
+            """(?<![\p{L}\p{M}\p{N}._/-])(?:~/|(?<!:)//+(?=[^\s/])|(?<!:)/(?=[ \t]*[^\r\n/]+/)|/(?=[^\s/]))[^\r\n]+"""
         )
 
         /**
@@ -464,30 +446,13 @@ class CoreTelemetryService(
             return "https://$formattedHost$portSegment/api/v1/telemetry/batches"
         }
 
-        /**
-         * Scrubs local filesystem paths and `file://` URIs before crash or breadcrumb text enters telemetry.
-         * Line numbers are preserved only when [preserveStackLocations] is `true` and the line is an actual
-         * stack frame (never exception message/cause lines).
-         */
-        fun sanitizeLocalPaths(text: String, preserveStackLocations: Boolean = false): String {
+        /** Scrubs local filesystem paths and `file://` URIs before crash or breadcrumb text enters telemetry. */
+        fun sanitizeLocalPaths(text: String): String {
             if (text.isEmpty()) return text
-            if (!preserveStackLocations) return sanitizeMessageLine(text)
-            return text.split('\n').joinToString("\n") { line ->
-                if (stackFrameLineRegex.containsMatchIn(line)) sanitizeStackFrameLine(line) else sanitizeMessageLine(line)
-            }
-        }
-
-        private fun sanitizeMessageLine(text: String): String {
             var scrubbed = fileUriRegex.replace(text, "[redacted-path]")
             scrubbed = windowsPathRegex.replace(scrubbed, "[redacted-path]")
+            scrubbed = quotedSpacedRootPathRegex.replace(scrubbed, "[redacted-path]")
             return unixPathRegex.replace(scrubbed, "[redacted-path]")
-        }
-
-        private fun sanitizeStackFrameLine(line: String): String {
-            var scrubbed = doubleQuotedStackPathRegex.replace(line, "[redacted-path]\$1")
-            scrubbed = fileUriStackRegex.replace(scrubbed, "[redacted-path]")
-            scrubbed = windowsStackPathRegex.replace(scrubbed, "[redacted-path]")
-            return unixStackPathRegex.replace(scrubbed, "[redacted-path]")
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {

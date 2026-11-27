@@ -44,7 +44,7 @@ class CoreTelemetryServiceTest {
 
     @Test
     fun `sanitizeLocalPaths redacts unix unicode windows unc file uri and spaced filenames`() {
-        val rawMessage = buildString {
+        val raw = buildString {
             appendLine("Opened /workspace/E\u0301lodie/Very Secret Client Project Name.mov")
             appendLine("Failed to open '/data/user/0/O'Brien.mov'")
             appendLine("""Read "/Users/O'Brien/Final.mov"""")
@@ -58,25 +58,20 @@ class CoreTelemetryServiceTest {
             appendLine("Angle /Users/alice/Secret<Project>.mov")
             appendLine("DoubleSlash open //storage/emulated/0/Private.mov")
             appendLine("""EmbeddedQuote open /storage/emulated/0/Private"Acquisition.mov""")
+            appendLine("""LeadingSpace Failed to open "/ Secret/Acquisition.mov"""")
+            appendLine("""LeadingSpaceSingle Failed to open "/ SecretFile"""")
             appendLine("Bang /!Acquisition.mov")
             appendLine("""Quoted "/!Acquisition.mov"""")
             appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4""")
             appendLine("ColonPrefixed error 42:/home/alice/private.mov")
             appendLine("""\\fileserver\share\secret.mp4""")
             appendLine("~/private/key.pem")
-        }
-        val rawStack = buildString {
             appendLine("java.io.IOException: /Users/alice/Draft:99 in open()")
-            appendLine("Caused by: java.lang.RuntimeException: /Users/alice/Cause:99 in open()")
-            appendLine("""    at QuotedStack "/home/alice/source.kt:88"""")
-            appendLine("""    at "/home/alice/private:66" while opening file""")
-            appendLine("    at file:///Users/alice/Player.swift:42")
-            appendLine("    at /Users/alice/Player.swift:77 in open()")
-            appendLine("    at Foo.open() in /data/user/0/net.alummahnow.viewer/files/Final Cut.kt:42")
+            appendLine("    at open /storage/emulated/0/Private:99\rCaused by: /Users/alice/Cause:99")
+            appendLine("    at net.alummahnow.viewer.MainActivity.onCreate(MainActivity.kt:42)")
+            appendLine("https://videos.api.alummahnow.net/v1/items")
         }
-        val scrubbedMessage = CoreTelemetryService.sanitizeLocalPaths(rawMessage, preserveStackLocations = false)
-        val scrubbedStack = CoreTelemetryService.sanitizeLocalPaths(rawStack, preserveStackLocations = true)
-        val scrubbed = scrubbedMessage + "\n" + scrubbedStack
+        val scrubbed = CoreTelemetryService.sanitizeLocalPaths(raw)
         assertFalse(scrubbed.contains("alice", ignoreCase = true))
         assertFalse(scrubbed.contains("smith", ignoreCase = true))
         assertFalse(scrubbed.contains("lodie", ignoreCase = true))
@@ -84,21 +79,18 @@ class CoreTelemetryServiceTest {
         assertFalse(scrubbed.contains("private", ignoreCase = true))
         assertFalse(scrubbed.contains("client", ignoreCase = true))
         assertFalse(scrubbed.contains("acquisition", ignoreCase = true))
+        assertFalse(scrubbed.contains("secret", ignoreCase = true))
         assertFalse(scrubbed.contains("project>.mov", ignoreCase = true))
         assertFalse(scrubbed.contains("storage", ignoreCase = true))
         assertFalse(scrubbed.contains("name.mov", ignoreCase = true))
         assertFalse(scrubbed.contains("confidential", ignoreCase = true))
-        assertFalse(scrubbed.contains("final cut", ignoreCase = true))
         assertFalse(scrubbed.contains("workspace", ignoreCase = true))
         assertFalse(scrubbed.contains("fileserver", ignoreCase = true))
         assertFalse(scrubbed.contains("key.pem", ignoreCase = true))
-        assertFalse(scrubbed.contains("source.kt", ignoreCase = true))
-        assertFalse(scrubbed.contains(":99 in open()"))
-        assertFalse(scrubbed.contains(":66"))
-        assertFalse(scrubbedMessage.contains("in open()"))
-        assertTrue(scrubbedStack.contains("[redacted-path]:42"))
-        assertTrue(scrubbedStack.contains("[redacted-path]:77 in open()"))
-        assertTrue(scrubbedStack.contains("[redacted-path]:88"))
+        assertFalse(scrubbed.contains(":99"))
+        assertFalse(scrubbed.contains("in open()"))
+        assertTrue(scrubbed.contains("MainActivity.kt:42"))
+        assertTrue(scrubbed.contains("https://videos.api.alummahnow.net/v1/items"))
         assertTrue(scrubbed.contains("[redacted-path]"))
     }
 

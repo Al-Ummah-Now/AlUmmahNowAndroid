@@ -55,12 +55,21 @@ class MainActivity : ComponentActivity() {
                 onToggleTelemetry = {
                     val next = !telemetryEnabled
                     if (next) {
-                        if (telemetry.setConsent(TelemetryConsent.FULL) && prefs.edit().putBoolean(KEY_TELEMETRY, true).commit()) {
-                            telemetryEnabled = true
-                            telemetryWarning = null
+                        if (telemetry.setConsent(TelemetryConsent.FULL)) {
+                            if (prefs.edit().putBoolean(KEY_TELEMETRY, true).commit()) {
+                                telemetryEnabled = true
+                                telemetryWarning = null
+                            } else {
+                                telemetry.setConsent(TelemetryConsent.OFF)
+                                val rolledBack = prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
+                                telemetryEnabled = !rolledBack
+                                telemetryWarning = getString(
+                                    if (rolledBack) DesignR.string.aun_diagnostics_enable_error
+                                    else DesignR.string.aun_diagnostics_disable_error
+                                )
+                            }
                         } else {
                             telemetry.setConsent(TelemetryConsent.OFF)
-                            prefs.edit().putBoolean(KEY_TELEMETRY, false).commit()
                             telemetryEnabled = false
                             telemetryWarning = getString(DesignR.string.aun_diagnostics_enable_error)
                         }
