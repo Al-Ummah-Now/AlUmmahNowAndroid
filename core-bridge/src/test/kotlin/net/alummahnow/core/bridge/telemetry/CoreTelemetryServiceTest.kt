@@ -216,7 +216,23 @@ class CoreTelemetryServiceTest {
             "(https://example.com/?q=secret)." to "(https://example.com/?[redacted]).",
             "file:///private/(https://Secret/Acquisition.mov)" to "[redacted-path]",
             "file:///private/My Folder/(https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "file:///private/My Folder/( https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "file:///private/Project Folder/ (https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "\"file:///private/My Folder (https://Secret/Acquisition.mov)\"" to "\"[redacted-path]",
+            "\"file:///a.mov\" (https://example.com/api)" to "\"[redacted-path]\" (https://example.com/api)",
+            "file:///private/Folder/ https://example.com/api" to "[redacted-path] https://example.com/api",
+            "file:///private/My\u00A0Acquisition" to "[redacted-path]",
+            "file:///a.mov and ( https://example.com/api)" to "[redacted-path] ( https://example.com/api)",
+            "file:///a.mov and (((https://example.com/api)))" to "[redacted-path] (((https://example.com/api)))",
+            "file:// Secret Acquisition" to "[redacted-path]",
+            "file:///private/Secret\u001EAcquisition" to "[redacted-path]",
+            "file://   https://example.com/api" to "[redacted-path]   https://example.com/api",
+            "file:///a.mov; https://example.com/ (https://other.example/api)" to
+                "[redacted-path] https://example.com/ (https://other.example/api)",
+            "file:///a.mov; https://example.com/ /private/foo(https://Secret/Acquisition.mov)" to
+                "[redacted-path] https://example.com/ [redacted-path]",
             "/private/My Folder/(https://Secret/Acquisition.mov)" to "[redacted-path]",
+            "/private/foo(https://Secret/Acquisition.mov)" to "[redacted-path]",
             "(relative/Secret.mov and https://example.com/api)" to "([redacted-path] https://example.com/api)",
             "Failed for alice@example.com with Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig and Bearer abcdefg" to
                 "Failed for [redacted-email] with Bearer [redacted] and Bearer [redacted]"

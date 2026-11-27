@@ -387,7 +387,6 @@ class CoreTelemetryService(
                 "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
         private const val SOURCE_LINE_EXTS = "kt|java|swift|cs|cpp|cc|c|h|hpp|rs|py|js|ts|go|rb|m|mm"
         private val pathRedactionRules: List<Pair<Regex, String>> = listOf(
-            Regex("""(?<![A-Za-z0-9+.-])file://(?:(?!\s+\u001E)[^\r\n\u001E])+""", RegexOption.IGNORE_CASE) to "[redacted-path]",
             Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
             Regex(
                 """(\()(?!HTTP/\d)(?!TLS/\d)(?!SSL/\d)[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^()\r\n\u001E]+(\))""",
@@ -522,7 +521,7 @@ class CoreTelemetryService(
                 prefix += "X"
             }
             val (vaulted, vaultedUrls) = vaultNonFileUrls(text, prefix)
-            var scrubbed = vaulted
+            var scrubbed = redactFileUris(vaulted, prefix)
             for ((regex, template) in pathRedactionRules) {
                 scrubbed = regex.replace(scrubbed, template)
             }
@@ -536,46 +535,138 @@ class CoreTelemetryService(
         private class VaultLineTracker {
             private var cursor = 0
             private var hasFileUriOnLine = false
-            private var lastNonWsChar = '\u0000'
-            private var lastNonWrapperChar = '\u0000'
+            private var fileUriQuote = '\u0000'
+            private var lastNonWsOrWrapperChar = '\u0000'
+            private var tokenHasPathSep = false
+            private var inWrapperRun = false
+            private var wsBeforeRun = false
 
             fun isEmbeddedInPath(text: String, matchStart: Int): Boolean {
                 advanceTo(text, matchStart)
-                val precededByWs = matchStart > 0 && text[matchStart - 1].isWhitespace()
-                val insideFileUri = hasFileUriOnLine && (!precededByWs || isPathSep(lastNonWsChar))
-                return insideFileUri || isPathSep(lastNonWrapperChar)
+                val afterPathSep = isPathSep(lastNonWsOrWrapperChar)
+                return fileUriQuote != '\u0000' ||
+                    tokenHasPathSep ||
+                    (!wsBeforeRun && hasFileUriOnLine) ||
+                    (hasFileUriOnLine && inWrapperRun && afterPathSep)
+            }
+
+            fun onVaultedUrl(matchEnd: Int) {
+                cursor = matchEnd
+                resetLineState()
+            }
+
+            private fun resetLineState() {
+                hasFileUriOnLine = false
+                fileUriQuote = '\u0000'
+                lastNonWsOrWrapperChar = '\u0000'
+                tokenHasPathSep = false
+                inWrapperRun = false
+                wsBeforeRun = false
             }
 
             private fun advanceTo(text: String, target: Int) {
                 while (cursor < target) {
                     val ch = text[cursor]
                     if (ch == '\r' || ch == '\n') {
-                        hasFileUriOnLine = false
-                        lastNonWsChar = '\u0000'
-                        lastNonWrapperChar = '\u0000'
+                        resetLineState()
                     } else {
-                        if (!hasFileUriOnLine && isFileSchemeAt(text, cursor)) {
-                            hasFileUriOnLine = true
-                        }
-                        if (!ch.isWhitespace()) lastNonWsChar = ch
-                        if (!isOpeningWrapper(ch)) lastNonWrapperChar = ch
+                        processLineChar(text, ch)
                     }
                     cursor++
                 }
             }
 
-            private fun isFileSchemeAt(text: String, pos: Int): Boolean {
-                val boundaryOk = pos == 0 || !isUrlSchemeChar(text[pos - 1])
-                return boundaryOk && text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true)
+            private fun processLineChar(text: String, ch: Char) {
+                val closedQuote = fileUriQuote != '\u0000' && ch == fileUriQuote
+                if (closedQuote) {
+                    fileUriQuote = '\u0000'
+                } else if (isFileSchemeAt(text, cursor)) {
+                    hasFileUriOnLine = true
+                    if (cursor > 0 && (text[cursor - 1] == '"' || text[cursor - 1] == '\'')) {
+                        fileUriQuote = text[cursor - 1]
+                    }
+                }
+                updateRunState(ch, closedQuote)
             }
 
-            private fun isUrlSchemeChar(ch: Char): Boolean =
-                ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '+' || ch == '.' || ch == '-'
+            private fun updateRunState(ch: Char, closedQuote: Boolean) {
+                when {
+                    closedQuote -> {
+                        lastNonWsOrWrapperChar = ch
+                        inWrapperRun = false
+                        wsBeforeRun = false
+                    }
+                    ch.isWhitespace() -> if (!inWrapperRun) {
+                        wsBeforeRun = true
+                        tokenHasPathSep = false
+                    }
+                    isOpeningWrapper(ch) -> inWrapperRun = true
+                    else -> {
+                        lastNonWsOrWrapperChar = ch
+                        if (isPathSep(ch)) tokenHasPathSep = true
+                        inWrapperRun = false
+                        wsBeforeRun = false
+                    }
+                }
+            }
+        }
 
-            private fun isOpeningWrapper(ch: Char): Boolean =
-                ch == '(' || ch == '[' || ch == '{' || ch == '"' || ch == '\''
+        private fun isFileSchemeAt(text: String, pos: Int): Boolean {
+            val boundaryOk = pos == 0 || !isUrlSchemeChar(text[pos - 1])
+            return boundaryOk && text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true)
+        }
 
-            private fun isPathSep(ch: Char): Boolean = ch == '/' || ch == '\\'
+        private fun isUrlSchemeChar(ch: Char): Boolean =
+            ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '+' || ch == '.' || ch == '-'
+
+        private fun isOpeningWrapper(ch: Char): Boolean =
+            ch == '(' || ch == '[' || ch == '{' || ch == '"' || ch == '\''
+
+        private fun isPathSep(ch: Char): Boolean = ch == '/' || ch == '\\'
+
+        private fun fileUriSpanEnd(text: String, schemeEnd: Int, vaultPrefix: String): Pair<Int, Int> {
+            var rawEnd = schemeEnd
+            var stoppedAtVault = false
+            while (rawEnd < text.length) {
+                val ch = text[rawEnd]
+                if (ch == '\r' || ch == '\n') break
+                if (ch == '\u001E' && text.regionMatches(rawEnd, vaultPrefix, 0, vaultPrefix.length)) {
+                    stoppedAtVault = true
+                    break
+                }
+                rawEnd++
+            }
+            if (!stoppedAtVault) return rawEnd to rawEnd
+            var trimmedEnd = rawEnd
+            while (trimmedEnd > schemeEnd) {
+                val prev = text[trimmedEnd - 1]
+                if (isOpeningWrapper(prev) || prev.isWhitespace()) trimmedEnd-- else break
+            }
+            return rawEnd to trimmedEnd
+        }
+
+        private fun redactFileUris(text: String, vaultPrefix: String): String {
+            val schemeLen = FILE_SCHEME_PREFIX.length
+            if (text.length < schemeLen) return text
+            var sb: StringBuilder? = null
+            var copyStart = 0
+            var pos = 0
+            while (pos < text.length) {
+                if (isFileSchemeAt(text, pos)) {
+                    val (rawEnd, trimmedEnd) = fileUriSpanEnd(text, pos + schemeLen, vaultPrefix)
+                    val out = sb ?: StringBuilder(text.length).also { sb = it }
+                    out.append(text, copyStart, pos)
+                    out.append("[redacted-path]")
+                    out.append(text, trimmedEnd, rawEnd)
+                    copyStart = rawEnd
+                    pos = rawEnd
+                } else {
+                    pos++
+                }
+            }
+            val out = sb ?: return text
+            out.append(text, copyStart, text.length)
+            return out.toString()
         }
 
         private fun vaultNonFileUrls(text: String, prefix: String): Pair<String, List<String>> {
@@ -594,6 +685,7 @@ class CoreTelemetryService(
                     val (url, tail) = formatVaultedUrl(match, text)
                     val idx = vaultedUrls.size
                     vaultedUrls += url
+                    tracker.onVaultedUrl(match.range.last + 1)
                     "$prefix$idx\u001F$tail"
                 }
             }
