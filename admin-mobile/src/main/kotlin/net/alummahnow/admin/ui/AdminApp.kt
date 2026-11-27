@@ -257,8 +257,12 @@ private fun StaffHome(
     val telemetryWarningRes by services.prefs.telemetryWarningRes.collectAsStateWithLifecycle()
     val lastPurgeFailed by services.telemetry.lastPurgeFailedFlow.collectAsStateWithLifecycle()
     val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
-    val telemetryWarning = (telemetryWarningRes ?: if (lastPurgeFailed) DesignR.string.aun_diagnostics_purge_warning else null)
-        ?.let { stringResource(it) }
+    val telemetryWarning = buildList {
+        telemetryWarningRes?.let { add(stringResource(it)) }
+        if (lastPurgeFailed && telemetryWarningRes != DesignR.string.aun_diagnostics_purge_warning) {
+            add(stringResource(DesignR.string.aun_diagnostics_purge_warning))
+        }
+    }.takeIf { it.isNotEmpty() }?.joinToString("\n")
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     var reblurTick by remember { mutableLongStateOf(0L) }
     val queue: QueueViewModel =

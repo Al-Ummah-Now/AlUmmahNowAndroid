@@ -365,9 +365,13 @@ class CoreTelemetryService(
         private var activeCrashService: TelemetryService? = null
 
         private val urlVaultRegex = Regex(
-            """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>()\[\]{}\r\n]+""",
+            """(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://(?!\S*\\)[^\s"'<>\\{}\r\n]+""",
             RegexOption.IGNORE_CASE
         )
+        private val ioKeywordVerbs =
+            "open|opening|read|reading|write|writing|delete|deleting|remove|removing|rename|stat|" +
+                "create|creating|load|loading|save|saving|access|accessing|unlink|" +
+                "file|path|directory|folder|document|filename|filepath"
         private val bareFilenameExtensions =
             "mov|mp4|m4v|mkv|webm|avi|ts|m3u8|mpd|mp3|m4a|wav|aac|flac|ogg|opus|" +
                 "jpg|jpeg|png|gif|webp|heic|svg|pdf|txt|md|rtf|doc|docx|xls|xlsx|ppt|pptx|" +
@@ -388,6 +392,10 @@ class CoreTelemetryService(
             Regex("""'(?:[^'\r\n/\\]|'(?=\p{L}))*\.[A-Za-z0-9]{1,16}'""") to "[redacted-path]",
             Regex(
                 """(\b(?:file|path|directory|folder|document)\s+)(['"])(?!\u001E)[^'"\r\n]+\2""",
+                RegexOption.IGNORE_CASE
+            ) to "$1[redacted-path]",
+            Regex(
+                """(\b(?:$ioKeywordVerbs)\b(?:\s*[:=]\s*|\s+))(?!\u001E)(?=[^\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15}\b(?!\s*\())[^\r\n]+""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
@@ -492,9 +500,10 @@ class CoreTelemetryService(
                 if (match.value.startsWith("file://", ignoreCase = true)) {
                     match.value
                 } else {
+                    val (url, tail) = splitUnmatchedUrlClosers(match.value)
                     val idx = vaultedUrls.size
-                    vaultedUrls += match.value
-                    "$prefix$idx\u001F"
+                    vaultedUrls += url
+                    "$prefix$idx\u001F$tail"
                 }
             }
             for ((regex, template) in pathRedactionRules) {
@@ -504,6 +513,36 @@ class CoreTelemetryService(
                 scrubbed = scrubbed.replace("$prefix$idx\u001F", vaultedUrls[idx])
             }
             return scrubbed
+        }
+
+        private fun splitUnmatchedUrlClosers(raw: String): Pair<String, String> {
+            var openParens = 0
+            var closeParens = 0
+            var openBrackets = 0
+            var closeBrackets = 0
+            for (ch in raw) {
+                when (ch) {
+                    '(' -> openParens++
+                    ')' -> closeParens++
+                    '[' -> openBrackets++
+                    ']' -> closeBrackets++
+                }
+            }
+            var end = raw.length
+            while (end > 0) {
+                when {
+                    raw[end - 1] == ')' && closeParens > openParens -> {
+                        closeParens--
+                        end--
+                    }
+                    raw[end - 1] == ']' && closeBrackets > openBrackets -> {
+                        closeBrackets--
+                        end--
+                    }
+                    else -> break
+                }
+            }
+            return raw.substring(0, end) to raw.substring(end)
         }
 
         internal fun serializeProperties(properties: Map<String, Any?>): String? {

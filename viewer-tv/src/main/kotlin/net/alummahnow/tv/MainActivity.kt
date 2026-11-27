@@ -48,8 +48,12 @@ class MainActivity : ComponentActivity() {
             val telemetryWarningRes by telemetryWarningResState.collectAsState()
             val lastPurgeFailed by telemetry.lastPurgeFailedFlow.collectAsState()
             val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
-            val telemetryWarning = (telemetryWarningRes ?: if (lastPurgeFailed) DesignR.string.aun_diagnostics_purge_warning else null)
-                ?.let { stringResource(it) }
+            val telemetryWarning = buildList {
+                telemetryWarningRes?.let { add(stringResource(it)) }
+                if (lastPurgeFailed && telemetryWarningRes != DesignR.string.aun_diagnostics_purge_warning) {
+                    add(stringResource(DesignR.string.aun_diagnostics_purge_warning))
+                }
+            }.takeIf { it.isNotEmpty() }?.joinToString("\n")
             LaunchedEffect(telemetryEnabledPref) {
                 if (telemetryEnabledPref) telemetry.flush()
             }

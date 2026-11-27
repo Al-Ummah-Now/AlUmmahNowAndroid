@@ -215,8 +215,12 @@ internal fun ViewerNavHost(
     val telemetrySaveUncertain by container.displayPrefs.telemetrySaveUncertain.collectAsState()
     val telemetryWarningRes by container.displayPrefs.telemetryWarningRes.collectAsState()
     val lastPurgeFailed by container.telemetry.lastPurgeFailedFlow.collectAsState()
-    val telemetryWarning = (telemetryWarningRes ?: if (lastPurgeFailed) DesignR.string.aun_diagnostics_purge_warning else null)
-        ?.let { stringResource(it) }
+    val telemetryWarning = buildList {
+        telemetryWarningRes?.let { add(stringResource(it)) }
+        if (lastPurgeFailed && telemetryWarningRes != DesignR.string.aun_diagnostics_purge_warning) {
+            add(stringResource(DesignR.string.aun_diagnostics_purge_warning))
+        }
+    }.takeIf { it.isNotEmpty() }?.joinToString("\n")
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabled) {
         if (telemetryEnabled) container.telemetry.flush()
