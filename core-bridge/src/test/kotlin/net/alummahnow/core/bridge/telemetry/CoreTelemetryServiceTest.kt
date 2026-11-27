@@ -346,9 +346,27 @@ class CoreTelemetryServiceTest {
         )
         assertFalse(CoreTelemetryService.sanitizeLocalPaths("Failed for \"a\\\"b\"@example.com").contains("example.com"))
         assertEquals(
+            "Failed for [redacted-email], [redacted-email], [redacted-email], " +
+                "[redacted-email], [redacted-email], [redacted-email], [redacted-email], " +
+                "[redacted-email], [redacted-email], [redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "Failed for \"Private Name user@[IPv6:2001:db8::1]\"@example.com, " +
+                    "\"john@doe.example\"@example.com, \"alice@example.com private\"@example.org, " +
+                    "\"john\r\n doe\"@example.com, alice=tag@example.com, user@localhost, alice@intranet, " +
+                    "\"Private Name alice/bob\"@example.com, alice@x, alice@3com"
+            )
+        )
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("alice/bob@example.com"))
+        assertEquals("file [redacted-email]", CoreTelemetryService.sanitizeLocalPaths("file \"private name\"@localhost"))
+        assertEquals("document [redacted-email]", CoreTelemetryService.sanitizeLocalPaths("document \"private name\"%40intranet"))
+        assertEquals(
             "status 'ready' (https://example.com/api)",
             CoreTelemetryService.sanitizeLocalPaths("status 'ready' (https://example.com/api)")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts quoted filenames line separators and non-breaking spaces`() {
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("/tmp/Private\u2028Acquisition Plan"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Private.qzx'2 Acquisition.qzx'"))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2's Acquisition.qzx'"))

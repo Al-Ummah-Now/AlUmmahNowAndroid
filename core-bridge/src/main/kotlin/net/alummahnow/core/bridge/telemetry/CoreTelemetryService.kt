@@ -521,7 +521,8 @@ class CoreTelemetryService(
             if (text.isEmpty()) return text
             val (escaped, hadSentinels) = escapeSentinels(text)
             val (vaulted, vaultedUrls) = vaultNonFileUrls(escaped, VAULT_PREFIX)
-            var scrubbed = redactFileUris(vaulted, VAULT_PREFIX)
+            var scrubbed = CoreTelemetryScanners.redactQuotedEmails(vaulted)
+            scrubbed = redactFileUris(scrubbed, VAULT_PREFIX)
             for (regex in parenPathRegexes) {
                 scrubbed = CoreTelemetryScanners.replaceUnquotedParenPaths(scrubbed, regex)
             }
