@@ -900,7 +900,7 @@ class CoreTelemetryService(
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, span.start)
                     val idx = vaultedUrls.size
-                    vaultedUrls += url
+                    vaultedUrls += CoreTelemetryScanners.redactUrlPathSecrets(url)
                     tracker.onVaultedUrl(span.totalEnd)
                     out.append(prefix).append(idx).append('\u001F').append(tail)
                     copied = span.totalEnd

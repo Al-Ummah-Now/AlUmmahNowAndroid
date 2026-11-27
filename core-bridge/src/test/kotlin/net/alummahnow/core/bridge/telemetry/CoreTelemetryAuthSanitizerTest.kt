@@ -156,6 +156,28 @@ class CoreTelemetryAuthSanitizerTest {
             "{\"a\":{\"b\":1},\"Authorization\":\"[redacted]\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"a\":{\"b\":1},\"Authorization\":\"opaqueSecret123\"}")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scales linearly on nested JSON and redacts webhook URL tokens`() {
+        val repeatedMalformedBack = "\"\n" + "}, \"Authorization\": ".repeat(2_000)
+        assertEquals(true, CoreTelemetryService.sanitizeLocalPaths(repeatedMalformedBack).isNotEmpty())
+        val nestedJsonAuth = "{\"a\":".repeat(2_000) + "{}" + ",\"Authorization\":\"secret\"}".repeat(2_000)
+        val scrubbedNested = CoreTelemetryService.sanitizeLocalPaths(nestedJsonAuth)
+        assertEquals(false, scrubbedNested.contains("secret"))
+        assertEquals(true, scrubbedNested.endsWith(",\"Authorization\":\"[redacted]\"}"))
+        assertEquals(
+            "https://discord.com/api/webhooks/123456789/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://discord." + "com/api/webhooks/123456789/fakeWebhookToken")
+        )
+        assertEquals(
+            "https://hooks.slack.com/services/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://hooks.slack." + "com/services/T0000/B0000/fakeWebhookToken")
+        )
+        assertEquals(
+            "https://api.telegram.org/bot123456:[redacted]/getMe",
+            CoreTelemetryService.sanitizeLocalPaths("https://api.telegram." + "org/bot123456:fakeBotToken/getMe")
+        )
         assertEquals(
             "Authorization: [[redacted]]\r\nNextHeader: safe",
             CoreTelemetryService.sanitizeLocalPaths("Authorization: [firstValue]\r\nNextHeader: safe")

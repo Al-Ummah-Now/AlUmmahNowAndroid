@@ -87,6 +87,20 @@ internal object CoreTelemetryScanners {
         return isHexDigit(text[pos + 1]) && isHexDigit(text[pos + 2])
     }
 
+    private val urlPathSecretRules: List<Pair<Regex, String>> = listOf(
+        Regex("""((?:^|/)webhooks?/[^/\s?#]+/)[^/\s?#]+""", RegexOption.IGNORE_CASE) to "$1[redacted]",
+        Regex("""(https?://hooks\.slack\.com/(?:services|workflows|triggers)/)[^\s?#]+""", RegexOption.IGNORE_CASE) to "$1[redacted]",
+        Regex("""(/bot\d+:)[^/\s?#]+""", RegexOption.IGNORE_CASE) to "$1[redacted]"
+    )
+
+    fun redactUrlPathSecrets(url: String): String {
+        var result = url
+        for ((regex, replacement) in urlPathSecretRules) {
+            result = regex.replace(result, replacement)
+        }
+        return result
+    }
+
     private fun scanOptionalPort(text: String, pos: Int): Int? {
         if (pos >= text.length || text[pos] != ':') return pos
         var p = pos + 1

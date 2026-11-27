@@ -8,6 +8,7 @@ internal object CoreTelemetryAuthJsonHelpers {
 
     class JsonScanCache {
         var braceMap: MutableMap<Int, Int>? = null
+        val closeToOpenMap = HashMap<Int, Int>()
         var failedBraceBack = -1
         var failedBracketBack = -1
     }
@@ -47,13 +48,13 @@ internal object CoreTelemetryAuthJsonHelpers {
     }
 
     private fun scanBraceStartBackward(text: String, prev: Int, cache: JsonScanCache): Int {
-        val start = scanContainerStartBackward(text, prev, '{', '}', cache.failedBraceBack)
+        val start = scanContainerStartBackward(text, prev, '{', '}', cache.failedBraceBack, cache.closeToOpenMap)
         if (start < 0) cache.failedBraceBack = maxOf(cache.failedBraceBack, prev)
         return start
     }
 
     private fun scanBracketStartBackward(text: String, prev: Int, cache: JsonScanCache): Int {
-        val start = scanContainerStartBackward(text, prev, '[', ']', cache.failedBracketBack)
+        val start = scanContainerStartBackward(text, prev, '[', ']', cache.failedBracketBack, cache.closeToOpenMap)
         if (start < 0) cache.failedBracketBack = maxOf(cache.failedBracketBack, prev)
         return start
     }
@@ -89,26 +90,36 @@ internal object CoreTelemetryAuthJsonHelpers {
         closePos: Int,
         openChar: Char,
         closeChar: Char,
-        floor: Int
+        floor: Int,
+        closeToOpenMap: MutableMap<Int, Int>
     ): Int {
-        var depth = 0
+        closeToOpenMap[closePos]?.let { return it }
+        val stack = ArrayDeque<Int>()
         var idx = closePos
-        while (idx > floor) {
+        var failed = false
+        while (idx > floor && !failed) {
             val ch = text[idx]
             if (ch == '"' && !isEscapedQuote(text, idx)) {
                 val strStart = scanJsonStringStartBackward(text, idx)
-                if (strStart < 0) return -1
-                idx = strStart - 1
-            } else {
-                if (ch == closeChar) {
-                    depth++
-                } else if (ch == openChar) {
-                    depth--
-                    if (depth == 0) return idx
+                if (strStart < 0) failed = true else idx = strStart - 1
+            } else if (ch == closeChar) {
+                val innerOpen = closeToOpenMap[idx]
+                if (innerOpen != null) {
+                    if (innerOpen < 0) failed = true else idx = innerOpen - 1
+                } else {
+                    stack.addLast(idx)
+                    idx--
                 }
+            } else if (ch == openChar && stack.isNotEmpty()) {
+                val matchedClose = stack.removeLast()
+                closeToOpenMap[matchedClose] = idx
+                if (stack.isEmpty()) return idx
+                idx--
+            } else {
                 idx--
             }
         }
+        markUnmatched(stack, closeToOpenMap)
         return -1
     }
 
