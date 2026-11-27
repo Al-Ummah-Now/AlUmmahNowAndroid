@@ -376,9 +376,6 @@ class CoreTelemetryService(
         )
         private const val FILE_SCHEME_PREFIX = "file://"
         private const val VAULT_PREFIX = "\u001EAUNURL"
-        private val pathConnectors = setOf(
-            "and", "or", "from", "to", "via", "with", "at", "in", "for", "on", "of", "by", "see", "as"
-        )
         private const val IO_KEYWORD_VERBS =
             "open|opening|read|reading|write|writing|delete|deleting|remove|removing|rename|stat|" +
                 "create|creating|load|loading|save|saving|access|accessing|unlink|" +
@@ -584,8 +581,6 @@ class CoreTelemetryService(
             private var pathQuote = '\u0000'
             private var tokenStart = -1
             private var tokenEnd = -1
-            private var prevTokenStart = -1
-            private var prevTokenEnd = -1
             private var tokenHasPathSep = false
             private var inWrapperRun = false
             private var wsBeforeRun = false
@@ -593,9 +588,7 @@ class CoreTelemetryService(
             fun isEmbeddedInPath(text: String, matchStart: Int): Boolean {
                 advanceTo(text, matchStart)
                 val curTokenIsPath = tokenHasPathSep && !isProtocolToken(text, tokenStart, tokenEnd)
-                val wrappedUnderPath =
-                    hasPathOnLine && inWrapperRun && !isPathConnectorOrSep(text, prevTokenStart, prevTokenEnd)
-                return pathQuote != '\u0000' || curTokenIsPath || (!wsBeforeRun && hasPathOnLine) || wrappedUnderPath
+                return pathQuote != '\u0000' || curTokenIsPath || (hasPathOnLine && (!wsBeforeRun || inWrapperRun))
             }
 
             fun onVaultedUrl(matchEnd: Int) {
@@ -608,8 +601,6 @@ class CoreTelemetryService(
                 pathQuote = '\u0000'
                 tokenStart = -1
                 tokenEnd = -1
-                prevTokenStart = -1
-                prevTokenEnd = -1
                 tokenHasPathSep = false
                 inWrapperRun = false
                 wsBeforeRun = false
@@ -629,7 +620,7 @@ class CoreTelemetryService(
 
             private fun processLineChar(text: String, ch: Char) {
                 if (pathQuote != '\u0000' && ch == pathQuote) {
-                    closeQuotedPath()
+                    resetLineState()
                     return
                 }
                 val atTokenStart = tokenStart < 0 || inWrapperRun
@@ -642,38 +633,15 @@ class CoreTelemetryService(
                 updateRunState(ch)
             }
 
-            private fun closeQuotedPath() {
-                pathQuote = '\u0000'
-                hasPathOnLine = false
-                commitToken()
-                tokenHasPathSep = false
-                inWrapperRun = false
-                wsBeforeRun = false
-            }
-
-            private fun commitToken() {
-                if (tokenStart >= 0) {
-                    prevTokenStart = tokenStart
-                    prevTokenEnd = tokenEnd
-                    tokenStart = -1
-                    tokenEnd = -1
-                }
-            }
-
             private fun updateRunState(ch: Char) {
                 when {
                     ch.isWhitespace() -> if (!inWrapperRun) {
-                        commitToken()
+                        tokenStart = -1
+                        tokenEnd = -1
                         wsBeforeRun = true
                         tokenHasPathSep = false
                     }
-                    isOpeningWrapper(ch) -> {
-                        if (!inWrapperRun && tokenStart >= 0) {
-                            prevTokenStart = tokenStart
-                            prevTokenEnd = tokenEnd
-                        }
-                        inWrapperRun = true
-                    }
+                    isOpeningWrapper(ch) -> inWrapperRun = true
                     else -> {
                         if (tokenStart < 0 || inWrapperRun) {
                             tokenStart = cursor
@@ -715,13 +683,6 @@ class CoreTelemetryService(
             if (!validSlash) return false
             val proto = token.substring(0, slashIdx).uppercase(Locale.ROOT)
             return proto == "HTTP" || proto == "TLS" || proto == "SSL"
-        }
-
-        private fun isPathConnectorOrSep(text: String, start: Int, end: Int): Boolean {
-            if (start < 0 || end <= start) return false
-            val last = text[end - 1]
-            if (last == ';' || last == ',' || last == ':') return true
-            return text.substring(start, end).lowercase(Locale.ROOT) in pathConnectors
         }
 
         private fun isFileSchemeAt(text: String, pos: Int): Boolean {
