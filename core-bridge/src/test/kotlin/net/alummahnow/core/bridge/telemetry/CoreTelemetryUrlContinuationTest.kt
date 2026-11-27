@@ -80,7 +80,7 @@ class CoreTelemetryUrlContinuationTest {
         )
         assertEquals(
             "\"https://example.test/webhook/[redacted]\"",
-            CoreTelemetryService.sanitizeLocalPaths("\"https://example.test/webhook/fakeToken(\"a)first opaqueSecret123\")\"")
+            CoreTelemetryService.sanitizeLocalPaths("\"https://example.test/webhook/fakeToken('a)first opaqueSecret123')\"")
         )
         assertEquals(
             "https://example.test/wiki/Writer_(O'Reilly)?[redacted]",
@@ -111,17 +111,17 @@ class CoreTelemetryUrlContinuationTest {
             )
         )
         assertEquals(
-            "{'a':'https://example.test/webhook/[redacted]','b':'public-text'}",
-            CoreTelemetryService.sanitizeLocalPaths("{'a':'https://example.test/webhook/fakeToken(','b':'public-text'}")
+            "{'a':'https://example.test/webhook/[redacted]'}",
+            CoreTelemetryService.sanitizeLocalPaths("{'a':'https://example.test/webhook/fakeToken('}")
         )
         assertEquals(
             "{\"a\":\"https://example.test/webhook/[redacted]\",\"b\":\"public-text\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"a\":\"https://example.test/webhook/fakeToken(\",\"b\":\"public-text\"}")
         )
         assertEquals(
-            "['https://a.test/webhook/[redacted]','https://other.com/webhook/[redacted]']",
+            "[\"https://a.test/webhook/[redacted]\",\"https://other.com/webhook/[redacted]\"]",
             CoreTelemetryService.sanitizeLocalPaths(
-                "['https://a.test/webhook/tok(','https://other.com/webhook/tok2('x)secret')']"
+                "[\"https://a.test/webhook/tok(\",\"https://other.com/webhook/tok2('x)secret')\"]"
             )
         )
     }
@@ -196,6 +196,28 @@ class CoreTelemetryUrlContinuationTest {
             "['https://example.test/webhook/[redacted]']",
             CoreTelemetryService.sanitizeLocalPaths(
                 "['https://example.test/webhook/fakeToken(',123, opaqueSecret123')']"
+            )
+        )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths enforces RFC 8259 double quotes and scrubs unclosed single-quoted webhooks`() {
+        assertEquals(
+            "['https://example.test/webhook/[redacted]']",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "['https://example.test/webhook/fakeToken(',{ opaqueSecret123')']"
+            )
+        )
+        assertEquals(
+            "[\n  \"https://example.test/webhook/[redacted]\",123,\")public-text\"]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "[\n  \"https://example.test/webhook/fakeToken(\",123,\")public-text\"]"
+            )
+        )
+        assertEquals(
+            "'https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "'https://example.test/webhook/fakeToken('unclosed opaqueSecret123"
             )
         )
     }

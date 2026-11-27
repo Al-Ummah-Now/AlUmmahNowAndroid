@@ -248,7 +248,6 @@ internal object CoreTelemetryScanners {
         val allowDoubleQuotes: Boolean,
         val allowSingleQuotes: Boolean,
         val outerQuote: Char,
-        val isContainerValue: Boolean,
         val stopAtSchemes: Boolean
     ) {
         val groupStack = ArrayList<Char>()
@@ -303,11 +302,7 @@ internal object CoreTelemetryScanners {
         val ch = text[p]
         val allowed = if (ch == '"') state.allowDoubleQuotes else state.allowSingleQuotes
         if (!allowed || state.groupStack.isEmpty()) return false
-        val isOuterCloser = ch == state.outerQuote &&
-            CoreTelemetryUrlContinuation.isOuterQuoteCloser(text, p, state.outerQuote, state.isContainerValue)
-        if (isOuterCloser) return false
-        val afterNonAlphaNum = p > start && !isAsciiAlphaNum(text[p - 1])
-        return if (ch == '"') state.outerQuote != '"' || afterNonAlphaNum else afterNonAlphaNum
+        return ch == '"' || (p > start && !isAsciiAlphaNum(text[p - 1]))
     }
 
     private fun updateContGroupStack(ch: Char, stack: ArrayList<Char>) {
@@ -371,11 +366,9 @@ internal object CoreTelemetryScanners {
     private fun canOpenCloserQuote(text: String, i: Int, start: Int, openGroups: Int, quoteFlags: Int): Boolean {
         if (openGroups <= 0) return false
         val ch = text[i]
-        val afterNonAlphaNum = i > start && !isAsciiAlphaNum(text[i - 1])
-        val outerDouble = (quoteFlags and 8) != 0
         return when (ch) {
-            '"' -> (quoteFlags and 1) != 0 && (!outerDouble || afterNonAlphaNum)
-            '\'' -> (quoteFlags and 2) != 0 && afterNonAlphaNum
+            '"' -> (quoteFlags and 1) != 0
+            '\'' -> (quoteFlags and 2) != 0 && i > start && !isAsciiAlphaNum(text[i - 1])
             else -> false
         }
     }
