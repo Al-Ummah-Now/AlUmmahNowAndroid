@@ -531,15 +531,15 @@ class CoreTelemetryService(
         }
 
         private fun escapeSentinels(text: String): Pair<String, Boolean> {
-            val first = text.indexOfFirst { it == '\u001D' || it == '\u001E' || it == '\u001F' }
+            val first = text.indexOfFirst { it == '\u0018' || it == '\u001E' || it == '\u001F' }
             if (first < 0) return text to false
             val sb = StringBuilder(text.length + 8)
             sb.append(text, 0, first)
             for (i in first until text.length) {
                 when (text[i]) {
-                    '\u001D' -> sb.append("\u001D\u001D")
-                    '\u001E' -> sb.append("\u001D\u001C")
-                    '\u001F' -> sb.append("\u001D\u001B")
+                    '\u0018' -> sb.append("\u0018\u0018")
+                    '\u001E' -> sb.append("\u0018\u0019")
+                    '\u001F' -> sb.append("\u0018\u001A")
                     else -> sb.append(text[i])
                 }
             }
@@ -547,13 +547,13 @@ class CoreTelemetryService(
         }
 
         private fun unescapeSentinels(text: String): String {
-            val first = text.indexOf('\u001D')
+            val first = text.indexOf('\u0018')
             if (first < 0) return text
             val sb = StringBuilder(text.length)
             sb.append(text, 0, first)
             var i = first
             while (i < text.length) {
-                val decoded = if (text[i] == '\u001D' && i + 1 < text.length) {
+                val decoded = if (text[i] == '\u0018' && i + 1 < text.length) {
                     decodeSentinel(text[i + 1])
                 } else {
                     null
@@ -569,9 +569,9 @@ class CoreTelemetryService(
         }
 
         private fun decodeSentinel(next: Char): Char? = when (next) {
-            '\u001D' -> '\u001D'
-            '\u001C' -> '\u001E'
-            '\u001B' -> '\u001F'
+            '\u0018' -> '\u0018'
+            '\u0019' -> '\u001E'
+            '\u001A' -> '\u001F'
             else -> null
         }
 
@@ -630,12 +630,15 @@ class CoreTelemetryService(
                         pathQuote = text[cursor - 1]
                     }
                 }
-                updateRunState(ch)
+                updateRunState(text, ch)
             }
 
-            private fun updateRunState(ch: Char) {
+            private fun updateRunState(text: String, ch: Char) {
                 when {
                     ch.isWhitespace() -> if (!inWrapperRun) {
+                        if (tokenHasPathSep && !isProtocolToken(text, tokenStart, tokenEnd)) {
+                            hasPathOnLine = true
+                        }
                         tokenStart = -1
                         tokenEnd = -1
                         wsBeforeRun = true
@@ -698,12 +701,12 @@ class CoreTelemetryService(
 
         private fun isPathSep(ch: Char): Boolean = ch == '/' || ch == '\\'
 
-        private fun fileUriSpanEnd(text: String, schemeEnd: Int, vaultPrefix: String): Pair<Int, Int> {
+        private fun fileUriSpanEnd(text: String, schemeEnd: Int, quote: Char, vaultPrefix: String): Pair<Int, Int> {
             var rawEnd = schemeEnd
             var stoppedAtVault = false
             while (rawEnd < text.length) {
                 val ch = text[rawEnd]
-                if (ch == '\r' || ch == '\n') break
+                if (ch == '\r' || ch == '\n' || (quote != '\u0000' && ch == quote)) break
                 if (ch == '\u001E' && text.regionMatches(rawEnd, vaultPrefix, 0, vaultPrefix.length)) {
                     stoppedAtVault = true
                     break
@@ -727,7 +730,8 @@ class CoreTelemetryService(
             var pos = 0
             while (pos < text.length) {
                 if (isFileSchemeAt(text, pos)) {
-                    val (rawEnd, trimmedEnd) = fileUriSpanEnd(text, pos + schemeLen, vaultPrefix)
+                    val quote = if (pos > 0 && (text[pos - 1] == '"' || text[pos - 1] == '\'')) text[pos - 1] else '\u0000'
+                    val (rawEnd, trimmedEnd) = fileUriSpanEnd(text, pos + schemeLen, quote, vaultPrefix)
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copyStart, pos)
                     out.append("[redacted-path]")
