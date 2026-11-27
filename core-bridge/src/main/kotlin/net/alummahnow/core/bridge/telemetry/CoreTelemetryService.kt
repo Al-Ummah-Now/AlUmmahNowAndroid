@@ -370,7 +370,7 @@ class CoreTelemetryService(
             """(?<![A-Za-z0-9+.-/\\])([A-Za-z][A-Za-z0-9+.-]+://(?:\[([^\]\s"'<>\\{}\r\n]+)\]|""" +
                 """(?:[A-Za-z0-9._~!$&'*+;=-]|%[0-9A-Fa-f]{2})+)(?::\d+)?""" +
                 """(?:/(?:(?!(?:file://|[A-Za-z]:[\\/]))(?:[^\s"<>\\{},()\[\]?#\r\n]|""" +
-                """\([^\s"<>\\{},()\[\]/:\\?#]+\)|\[[^\s"<>\\{},()\[\]/:\\?#]+\]))*)?)""" +
+                """\([^\s"<>\\{},()\[\]:\\?#]+\)|\[[^\s"<>\\{},()\[\]:\\?#]+\]))*)?)""" +
                 """([?#][^\s"<>\r\n]*)?(?=$|[\s"'<>\\{},;()\[\]]|file://|[A-Za-z]:[\\/])""",
             RegexOption.IGNORE_CASE
         )
@@ -398,7 +398,8 @@ class CoreTelemetryService(
         private val preKeywordPathRules: List<Pair<Regex, String>> = listOf(
             Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE) to "$1[redacted-path]$2",
             Regex(
-                """(\()(?!(?:HTTP|TLS|SSL)/\d)(?!\d+/\d+[.,;:!?]?\))[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^()\r\n\u001E]+(\))""",
+                """(\()(?![ \t]*(?:HTTP|TLS|SSL)/\d)(?![ \t]*\d+/\d+[.,;:!?\s]*\))""" +
+                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^()\r\n\u001E]+(\))""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]$2",
             Regex(
@@ -406,7 +407,7 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>(),;\u001E\u001F]+\\""" +
+                """(^|[\s(\[{"'=,:;\u001F])[^\s\\/"'<>()\[\]{}:,;=\u001E\u001F]+\\""" +
                     """[^\r\n\u001E\u001F\s]+(?:[^\S\r\n]+[^\r\n\u001E\u001F\s]+)*"""
             ) to "$1[redacted-path]",
             Regex("""["']/[ \t]+[^\r\n\u001E]+""") to "[redacted-path]",
@@ -417,13 +418,13 @@ class CoreTelemetryService(
             Regex(
                 """(^|[\s(\[{"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
-                    """[^\s/\\"'<>()\[\]{}:,;\u001E\u001F]+/[^\r\n\u001E\u001F\s]+(?:[^\S\r\n]+[^\r\n\u001E\u001F\s]+)*""",
+                    """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s]+(?:[^\S\r\n]+[^\r\n\u001E\u001F\s]+)*""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(""""[^"\r\n/\\]*\.[A-Za-z0-9]{1,16}"""") to "[redacted-path]",
-            Regex("""(?<!\p{L})'(?:[^'\r\n/\\]|(?<=\p{L})'(?=\p{L}))*\.[A-Za-z0-9]{1,16}'""") to "[redacted-path]",
+            Regex("""(?<![\p{L}\p{N}])'(?:[^'\r\n/\\]|(?<=[\p{L}\p{N}])'(?=\p{L}))*\.[A-Za-z0-9]{1,16}'""") to "[redacted-path]",
             Regex(
-                """(\b(?:file|path|directory|folder|document)\s+)(['"])(?!\u001E)[^'"\r\n]+\2""",
+                """(\b(?:file|path|directory|folder|document)[^\S\r\n]+)(['"])(?!\u001E)[^'"\r\n]+\2""",
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]"
         )
@@ -433,7 +434,8 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "$1[redacted-path]",
             Regex(
-                """(^|[\r\n:=;\u001F])([ \t]*)[^\r\n:=;\u001E\u001F]*\.(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
+                """(^|[\r\n:=;\u001F])([ \t]*)(?=[^\r\n:=;\u001E\u001F \t])[^\r\n:=;\u001E\u001F]*\.""" +
+                    """(?!ts:\d+)(?:$BARE_FILENAME_EXTENSIONS)\b(?!\()""",
                 RegexOption.IGNORE_CASE
             ) to "$1$2[redacted-path]"
         )
@@ -831,7 +833,7 @@ class CoreTelemetryService(
         }
 
         private fun isInnerApostrophe(text: String, pos: Int, ch: Char): Boolean =
-            ch == '\'' && pos > 0 && pos + 1 < text.length && text[pos - 1].isLetter() && text[pos + 1].isLetter()
+            ch == '\'' && pos > 0 && pos + 1 < text.length && text[pos - 1].isLetterOrDigit() && text[pos + 1].isLetter()
 
         private fun startsLocalPathAt(text: String, pos: Int, atTokenStart: Boolean): Boolean {
             if (!atTokenStart) return false
@@ -893,7 +895,7 @@ class CoreTelemetryService(
             var escapedBackslash = false
             while (rawEnd < text.length) {
                 val ch = text[rawEnd]
-                if (isFileUriStopChar(ch, quote, escapedBackslash)) break
+                if (isFileUriStopChar(text, rawEnd, schemeEnd, quote, escapedBackslash)) break
                 if (ch == '\u001E' && text.regionMatches(rawEnd, vaultPrefix, 0, vaultPrefix.length)) {
                     stoppedAtVault = true
                     break
@@ -905,8 +907,18 @@ class CoreTelemetryService(
             return rawEnd to trimmedEnd
         }
 
-        private fun isFileUriStopChar(ch: Char, quote: Char, escapedBackslash: Boolean): Boolean =
-            ch == '\r' || ch == '\n' || (quote != '\u0000' && ch == quote && !escapedBackslash)
+        private fun isFileUriStopChar(
+            text: String,
+            pos: Int,
+            schemeEnd: Int,
+            quote: Char,
+            escapedBackslash: Boolean
+        ): Boolean {
+            val ch = text[pos]
+            if (ch == '\r' || ch == '\n') return true
+            if (quote == '\u0000' || ch != quote || escapedBackslash) return false
+            return !(pos > schemeEnd && isInnerApostrophe(text, pos, ch))
+        }
 
         private fun trimFileUriTail(text: String, schemeEnd: Int, rawEnd: Int): Int {
             var trimmedEnd = rawEnd

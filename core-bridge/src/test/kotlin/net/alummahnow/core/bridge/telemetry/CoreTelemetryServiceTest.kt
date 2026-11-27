@@ -273,6 +273,17 @@ class CoreTelemetryServiceTest {
         )
         assertEquals("progress 1/2.", CoreTelemetryService.sanitizeLocalPaths("progress 1/2."))
         assertEquals("progress (1/2.)", CoreTelemetryService.sanitizeLocalPaths("progress (1/2.)"))
+        assertEquals("progress (1/2 )", CoreTelemetryService.sanitizeLocalPaths("progress (1/2 )"))
+        assertEquals(
+            "progress (1/2...) (https://example.com/api)",
+            CoreTelemetryService.sanitizeLocalPaths("progress (1/2...) (https://example.com/api)")
+        )
+        assertEquals(
+            "https://example.com/a(b/c)",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/a(b/c)")
+        )
+        assertEquals("'[redacted-path]'", CoreTelemetryService.sanitizeLocalPaths("'file:///storage/User's Private Project'"))
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("'Studio 2's Acquisition.qzx'"))
         assertEquals(
             "progress 1/2. (https://example.com/api)",
             CoreTelemetryService.sanitizeLocalPaths("progress 1/2. (https://example.com/api)")
@@ -328,6 +339,10 @@ class CoreTelemetryServiceTest {
         assertEquals(repeatedKeywords, CoreTelemetryService.sanitizeLocalPaths(repeatedKeywords))
         val repeatedQuotes = "'a ".repeat(20_000) + "."
         assertEquals(repeatedQuotes, CoreTelemetryService.sanitizeLocalPaths(repeatedQuotes))
+        val repeatedEquals = "=".repeat(50_000)
+        assertEquals(repeatedEquals, CoreTelemetryService.sanitizeLocalPaths(repeatedEquals))
+        val leadingSpaces = " ".repeat(50_000) + "x.qzx"
+        assertEquals(leadingSpaces, CoreTelemetryService.sanitizeLocalPaths(leadingSpaces))
     }
 
     @Test

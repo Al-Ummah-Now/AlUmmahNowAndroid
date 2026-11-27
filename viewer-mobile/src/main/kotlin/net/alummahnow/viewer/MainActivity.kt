@@ -387,8 +387,8 @@ internal fun ViewerNavHost(
                         container.displayPrefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
                     }
                 } else {
-                    val purged = container.telemetry.setConsent(TelemetryConsent.OFF)
                     val saved = container.displayPrefs.setTelemetryEnabled(false)
+                    val purged = container.telemetry.setConsent(TelemetryConsent.OFF)
                     container.displayPrefs.setTelemetrySaveUncertain(!saved)
                     container.displayPrefs.setTelemetryWarningRes(
                         when {
