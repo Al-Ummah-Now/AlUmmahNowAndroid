@@ -896,15 +896,27 @@ class CoreTelemetryService(
                 if (span == null) {
                     searchFrom = sep + 3
                 } else {
-                    val (url, tail) = formatVaultedUrl(span, text)
+                    val (url, baseTail) = formatVaultedUrl(span, text)
+                    val baseRedacted = CoreTelemetryScanners.redactUrlPathSecrets(url)
+                    var endPos = span.totalEnd
+                    var tail = baseTail
+                    val commaProbe = probeWebhookCommaExtension(span, baseTail, url, text)
+                    val redactedUrl = if (commaProbe != null) {
+                        val (extUrl, extEnd, extTail) = extendRedactedWebhookComma(text, commaProbe, span.start, endPos)
+                        endPos = extEnd
+                        tail = extTail
+                        extUrl
+                    } else {
+                        baseRedacted
+                    }
                     val out = sb ?: StringBuilder(text.length).also { sb = it }
                     out.append(text, copied, span.start)
                     val idx = vaultedUrls.size
-                    vaultedUrls += CoreTelemetryScanners.redactUrlPathSecrets(url)
-                    tracker.onVaultedUrl(span.totalEnd)
+                    vaultedUrls += redactedUrl
+                    tracker.onVaultedUrl(endPos)
                     out.append(prefix).append(idx).append('\u001F').append(tail)
-                    copied = span.totalEnd
-                    searchFrom = span.totalEnd
+                    copied = endPos
+                    searchFrom = endPos
                 }
             }
             val out = sb ?: return text to emptyList()
@@ -934,6 +946,41 @@ class CoreTelemetryService(
                 }
             }
             return sb.toString()
+        }
+
+        private fun probeWebhookCommaExtension(
+            span: CoreTelemetryScanners.UrlSpan,
+            tail: String,
+            url: String,
+            text: String
+        ): String? {
+            val canCheck = !span.hasQf && tail.isEmpty() && span.totalEnd < text.length
+            if (!canCheck || text[span.totalEnd] != ',') return null
+            if (CoreTelemetryScanners.shouldStopAtUrlComma(text, span.totalEnd)) return null
+            val withComma = "$url,"
+            val probe = CoreTelemetryScanners.redactUrlPathSecrets(withComma)
+            return if (probe != withComma && probe.endsWith("[redacted]")) probe else null
+        }
+
+        private fun extendRedactedWebhookComma(
+            text: String,
+            redactedUrl: String,
+            urlStart: Int,
+            totalEnd: Int
+        ): Triple<String, Int, String> {
+            val (pathEnd, truncated) = CoreTelemetryScanners.scanUrlPath(text, totalEnd, allowCommas = true)
+            val hasNext = !truncated && pathEnd < text.length
+            val hasQfAfter = hasNext && (text[pathEnd] == '?' || text[pathEnd] == '#')
+            if (hasQfAfter) {
+                val qfEnd = CoreTelemetryScanners.scanQueryOrFragment(text, pathEnd)
+                val (cleanQf, tail) = trimQueryOrFragmentDelimiters(text.substring(pathEnd, qfEnd), text, urlStart)
+                return Triple("$redactedUrl${cleanQf.first()}[redacted]", qfEnd, tail)
+            }
+            var end = pathEnd
+            while (end > totalEnd && (text[end - 1] == ',' || text[end - 1] == ';')) end--
+            val hasOpenQuote = urlStart > 0 && text[urlStart - 1] == '\''
+            if (hasOpenQuote && end > totalEnd && text[end - 1] == '\'') end--
+            return Triple(redactedUrl, pathEnd, text.substring(end, pathEnd))
         }
 
         private fun formatVaultedUrl(span: CoreTelemetryScanners.UrlSpan, text: String): Pair<String, String> {

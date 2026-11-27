@@ -1,7 +1,7 @@
 package net.alummahnow.core.bridge.telemetry
 
 /**
- * JSON delimiter and balanced-brace helpers for [CoreTelemetryAuthScanner].
+ * JSON delimiter and backward-container helpers for [CoreTelemetryAuthScanner].
  */
 internal object CoreTelemetryAuthJsonHelpers {
     private const val ASCII_SPACE = 0x20
@@ -9,12 +9,15 @@ internal object CoreTelemetryAuthJsonHelpers {
     private val jsonKeywords = listOf("true", "false", "null")
 
     class JsonScanCache {
-        var braceMap: MutableMap<Int, Int>? = null
+        val validJsonValueEnd = HashMap<Int, Int>()
         val closeToOpenMap = HashMap<Int, Int>()
-        val memberCommaValid = HashMap<Int, Boolean>()
-        var failedBraceBack = -1
-        var failedBracketBack = -1
+        val memberCommaOpen = HashMap<Int, Int>()
+        val arrayCommaOpen = HashMap<Int, Int>()
+        val containerValidForAuth = HashMap<Int, Boolean>()
+        var failedContainerBack = -1
     }
+
+    private data class CloseFrame(val closeIdx: Int, val expectedOpen: Char)
 
     fun isJsonNumber(token: String): Boolean = jsonNumberRegex.matches(token)
 
@@ -23,23 +26,26 @@ internal object CoreTelemetryAuthJsonHelpers {
     fun isJsonPrimitiveStop(ch: Char): Boolean =
         isHorizSpace(ch) || isNewline(ch) || isJsonDelimiter(ch)
 
-    fun isPrecededByJsonMemberDelimiter(text: String, pos: Int, cache: JsonScanCache): Boolean {
+    fun findEnclosingJsonObjectStart(text: String, pos: Int, cache: JsonScanCache): Int {
         val start = skipJsonWhitespaceBackward(text, pos - 1)
-        if (start < 0) return false
-        if (text[start] == '{') return true
-        if (text[start] != ',') return false
-        return cache.memberCommaValid[start] ?: walkMemberCommasBackward(text, start, cache)
+        return when {
+            start < 0 -> -1
+            text[start] == '{' -> start
+            text[start] == ',' -> findEnclosingJsonObjectStartFromComma(text, start, cache)
+            else -> -1
+        }
     }
 
-    private fun walkMemberCommasBackward(text: String, startComma: Int, cache: JsonScanCache): Boolean {
+    private fun findEnclosingJsonObjectStartFromComma(text: String, startComma: Int, cache: JsonScanCache): Int {
+        cache.memberCommaOpen[startComma]?.let { return it }
         val visited = ArrayList<Int>()
         var p = startComma
-        var result = false
+        var openBrace = -1
         var walking = true
         while (walking && p >= 0 && text[p] == ',') {
-            val known = cache.memberCommaValid[p]
+            val known = cache.memberCommaOpen[p]
             if (known != null) {
-                result = known
+                openBrace = known
                 walking = false
             } else {
                 visited.add(p)
@@ -47,15 +53,103 @@ internal object CoreTelemetryAuthJsonHelpers {
                 if (beforeKey < 0) {
                     walking = false
                 } else if (text[beforeKey] == '{') {
-                    result = true
+                    openBrace = beforeKey
                     walking = false
                 } else {
                     p = beforeKey
                 }
             }
         }
-        for (commaPos in visited) cache.memberCommaValid[commaPos] = result
-        return result
+        for (commaPos in visited) cache.memberCommaOpen[commaPos] = openBrace
+        return openBrace
+    }
+
+    private fun findEnclosingJsonArrayStartFromComma(text: String, startComma: Int, cache: JsonScanCache): Int {
+        cache.arrayCommaOpen[startComma]?.let { return it }
+        val visited = ArrayList<Int>()
+        var p = startComma
+        var openBracket = -1
+        var walking = true
+        while (walking && p >= 0 && text[p] == ',') {
+            val known = cache.arrayCommaOpen[p]
+            if (known != null) {
+                openBracket = known
+                walking = false
+            } else {
+                visited.add(p)
+                val beforeVal = stepBackOverJsonArrayElement(text, p, cache)
+                if (beforeVal < 0) {
+                    walking = false
+                } else if (text[beforeVal] == '[') {
+                    openBracket = beforeVal
+                    walking = false
+                } else {
+                    p = beforeVal
+                }
+            }
+        }
+        for (commaPos in visited) cache.arrayCommaOpen[commaPos] = openBracket
+        return openBracket
+    }
+
+    private fun stepBackOverJsonArrayElement(text: String, commaPos: Int, cache: JsonScanCache): Int {
+        val prev = skipJsonWhitespaceBackward(text, commaPos - 1)
+        if (prev < 0) return -1
+        val valStart = findJsonValueStartBackward(text, prev, cache)
+        val beforeVal = if (valStart > 0) skipJsonWhitespaceBackward(text, valStart - 1) else -1
+        return if (beforeVal >= 0 && (text[beforeVal] == '[' || text[beforeVal] == ',')) beforeVal else -1
+    }
+
+    fun isInsideValidTopLevelJsonContainer(text: String, openPos: Int, cache: JsonScanCache): Boolean {
+        cache.containerValidForAuth[openPos]?.let { return it }
+        val visited = ArrayList<Int>()
+        var curOpen = openPos
+        var valid = false
+        var walking = true
+        while (walking && curOpen >= 0) {
+            val known = cache.containerValidForAuth[curOpen]
+            if (known != null) {
+                valid = known
+                walking = false
+            } else {
+                visited.add(curOpen)
+                val endPos = CoreTelemetryAuthJsonValidator.tryParseJsonValue(text, curOpen, cache.validJsonValueEnd)
+                if (endPos <= curOpen) {
+                    walking = false
+                } else if (reachesLineOrTextEnd(text, endPos)) {
+                    valid = true
+                    walking = false
+                } else {
+                    curOpen = findParentJsonContainerOpen(text, curOpen, cache)
+                }
+            }
+        }
+        for (pos in visited) cache.containerValidForAuth[pos] = valid
+        return valid
+    }
+
+    private fun reachesLineOrTextEnd(text: String, start: Int): Boolean {
+        var p = start
+        while (p < text.length && isHorizSpace(text[p])) p++
+        return p >= text.length || isNewline(text[p])
+    }
+
+    private fun findParentJsonContainerOpen(text: String, valueStart: Int, cache: JsonScanCache): Int {
+        val prev = skipJsonWhitespaceBackward(text, valueStart - 1)
+        if (prev < 0) return -1
+        return when (text[prev]) {
+            ':' -> {
+                val beforeKey = findDelimiterBeforeJsonMemberKeyColon(text, valueStart)
+                when {
+                    beforeKey < 0 -> -1
+                    text[beforeKey] == '{' -> beforeKey
+                    else -> findEnclosingJsonObjectStartFromComma(text, beforeKey, cache)
+                }
+            }
+            '[' -> prev
+            ',' -> findEnclosingJsonArrayStartFromComma(text, prev, cache)
+            else -> -1
+        }
     }
 
     private fun stepBackOverJsonMember(text: String, commaPos: Int, cache: JsonScanCache): Int {
@@ -69,8 +163,7 @@ internal object CoreTelemetryAuthJsonHelpers {
         val ch = text[prev]
         return when {
             ch == '"' -> scanJsonStringStartBackward(text, prev)
-            ch == '}' -> scanBraceStartBackward(text, prev, cache)
-            ch == ']' -> scanBracketStartBackward(text, prev, cache)
+            ch == '}' || ch == ']' -> scanContainerStartBackward(text, prev, cache)
             ch in '0'..'9' -> findJsonNumberStartBefore(text, prev)
             else -> findJsonKeywordStartEndingAt(text, prev)
         }
@@ -88,18 +181,6 @@ internal object CoreTelemetryAuthJsonHelpers {
             if (start > 0 && text.regionMatches(start, keyword, 0, keyword.length)) return start
         }
         return -1
-    }
-
-    private fun scanBraceStartBackward(text: String, prev: Int, cache: JsonScanCache): Int {
-        val start = scanContainerStartBackward(text, prev, '{', '}', cache.failedBraceBack, cache.closeToOpenMap)
-        if (start < 0) cache.failedBraceBack = maxOf(cache.failedBraceBack, prev)
-        return start
-    }
-
-    private fun scanBracketStartBackward(text: String, prev: Int, cache: JsonScanCache): Int {
-        val start = scanContainerStartBackward(text, prev, '[', ']', cache.failedBracketBack, cache.closeToOpenMap)
-        if (start < 0) cache.failedBracketBack = maxOf(cache.failedBracketBack, prev)
-        return start
     }
 
     private fun findDelimiterBeforeJsonMemberKeyColon(text: String, valueStart: Int): Int {
@@ -129,50 +210,99 @@ internal object CoreTelemetryAuthJsonHelpers {
     }
 
     private fun scanJsonStringStartBackward(text: String, closeQuotePos: Int): Int {
-        for (i in closeQuotePos - 1 downTo 0) {
+        var open = -1
+        var i = closeQuotePos - 1
+        var scanning = true
+        while (i >= 0 && scanning) {
             val ch = text[i]
-            if (ch.code < ASCII_SPACE) return -1
-            if (ch == '"' && !isEscapedQuote(text, i)) return i
+            if (ch.code < ASCII_SPACE) {
+                scanning = false
+            } else if (ch == '"' && !isEscapedQuote(text, i)) {
+                open = i
+                scanning = false
+            } else {
+                i--
+            }
         }
+        val valid = open >= 0 && CoreTelemetryAuthJsonValidator.scanJsonStringEnd(text, open + 1) == closeQuotePos + 1
+        return if (valid) open else -1
+    }
+
+    private fun scanContainerStartBackward(text: String, closePos: Int, cache: JsonScanCache): Int {
+        cache.closeToOpenMap[closePos]?.let { return it }
+        if (closePos <= cache.failedContainerBack) return -1
+        val matched = walkContainerBackward(text, closePos, cache)
+        if (matched < 0) {
+            cache.closeToOpenMap[closePos] = -1
+            cache.failedContainerBack = maxOf(cache.failedContainerBack, closePos)
+        }
+        return matched
+    }
+
+    private fun walkContainerBackward(text: String, closePos: Int, cache: JsonScanCache): Int {
+        val stack = ArrayDeque<CloseFrame>()
+        var idx = closePos
+        var foundOpen = -1
+        while (idx > cache.failedContainerBack && foundOpen < 0) {
+            val step = stepContainerBackward(text, idx, stack, cache)
+            if (step == Int.MIN_VALUE) {
+                idx = cache.failedContainerBack
+            } else if (step >= 0 && stack.isEmpty()) {
+                foundOpen = step
+            } else {
+                idx = if (step < 0) -step - 2 else step - 1
+            }
+        }
+        if (foundOpen >= 0) return foundOpen
+        while (stack.isNotEmpty()) cache.closeToOpenMap[stack.removeLast().closeIdx] = -1
         return -1
     }
 
-    private fun scanContainerStartBackward(
+    private fun stepContainerBackward(
         text: String,
-        closePos: Int,
-        openChar: Char,
-        closeChar: Char,
-        floor: Int,
-        closeToOpenMap: MutableMap<Int, Int>
+        idx: Int,
+        stack: ArrayDeque<CloseFrame>,
+        cache: JsonScanCache
+    ): Int = when (val ch = text[idx]) {
+        '"' -> stepBackwardQuote(text, idx)
+        '}', ']' -> stepBackwardCloser(idx, ch, stack, cache)
+        '{', '[' -> matchContainerOpener(text, idx, ch, stack, cache)
+        else -> -((idx - 1) + 2)
+    }
+
+    private fun stepBackwardQuote(text: String, idx: Int): Int {
+        val strStart = if (!isEscapedQuote(text, idx)) scanJsonStringStartBackward(text, idx) else -1
+        return if (strStart < 0) Int.MIN_VALUE else -((strStart - 1) + 2)
+    }
+
+    private fun stepBackwardCloser(
+        idx: Int,
+        ch: Char,
+        stack: ArrayDeque<CloseFrame>,
+        cache: JsonScanCache
     ): Int {
-        closeToOpenMap[closePos]?.let { return it }
-        val stack = ArrayDeque<Int>()
-        var idx = closePos
-        var failed = false
-        while (idx > floor && !failed) {
-            val ch = text[idx]
-            if (ch == '"' && !isEscapedQuote(text, idx)) {
-                val strStart = scanJsonStringStartBackward(text, idx)
-                if (strStart < 0) failed = true else idx = strStart - 1
-            } else if (ch == closeChar) {
-                val innerOpen = closeToOpenMap[idx]
-                if (innerOpen != null) {
-                    if (innerOpen < 0) failed = true else idx = innerOpen - 1
-                } else {
-                    stack.addLast(idx)
-                    idx--
-                }
-            } else if (ch == openChar && stack.isNotEmpty()) {
-                val matchedClose = stack.removeLast()
-                closeToOpenMap[matchedClose] = idx
-                if (stack.isEmpty()) return idx
-                idx--
-            } else {
-                idx--
-            }
+        val innerOpen = cache.closeToOpenMap[idx]
+        if (innerOpen != null) return if (innerOpen < 0) Int.MIN_VALUE else -((innerOpen - 1) + 2)
+        stack.addLast(CloseFrame(idx, if (ch == '}') '{' else '['))
+        return -((idx - 1) + 2)
+    }
+
+    private fun matchContainerOpener(
+        text: String,
+        openIdx: Int,
+        openChar: Char,
+        stack: ArrayDeque<CloseFrame>,
+        cache: JsonScanCache
+    ): Int {
+        if (stack.isEmpty() || stack.last().expectedOpen != openChar) return Int.MIN_VALUE
+        val top = stack.removeLast()
+        val parsedEnd = CoreTelemetryAuthJsonValidator.tryParseJsonValue(text, openIdx, cache.validJsonValueEnd)
+        if (parsedEnd != top.closeIdx + 1) {
+            cache.closeToOpenMap[top.closeIdx] = -1
+            return Int.MIN_VALUE
         }
-        markUnmatched(stack, closeToOpenMap)
-        return -1
+        cache.closeToOpenMap[top.closeIdx] = openIdx
+        return openIdx
     }
 
     private fun isJsonValuePrefixStop(ch: Char): Boolean =
@@ -190,70 +320,14 @@ internal object CoreTelemetryAuthJsonHelpers {
     private fun isFollowedByJsonMemberKey(text: String, afterComma: Int): Boolean {
         val next = skipJsonWhitespace(text, afterComma)
         if (next >= text.length || text[next] != '"') return false
-        val strEnd = scanJsonStringEnd(text, next + 1)
+        val strEnd = CoreTelemetryAuthJsonValidator.scanJsonStringEnd(text, next + 1)
         val afterKey = if (strEnd > 0) skipJsonWhitespace(text, strEnd) else text.length
         return afterKey < text.length && text[afterKey] == ':'
     }
 
     fun scanBalancedJsonObjectEnd(text: String, bracePos: Int, cache: JsonScanCache): Int {
         if (bracePos >= text.length || text[bracePos] != '{') return -1
-        val map = cache.braceMap ?: HashMap<Int, Int>().also { cache.braceMap = it }
-        return map[bracePos] ?: scanAndMemoizeBracesFrom(text, bracePos, map)
-    }
-
-    private fun scanAndMemoizeBracesFrom(text: String, bracePos: Int, map: MutableMap<Int, Int>): Int {
-        val stack = ArrayDeque<Int>()
-        var noCloseQuoteBefore = -1
-        var idx = bracePos
-        while (idx < text.length) {
-            val ch = text[idx]
-            if (ch == '"' && idx >= noCloseQuoteBefore) {
-                val strEnd = scanJsonStringEnd(text, idx + 1)
-                if (strEnd > 0) {
-                    idx = strEnd
-                } else {
-                    noCloseQuoteBefore = -strEnd - 1
-                    idx++
-                }
-            } else if (ch == '{') {
-                val known = map[idx]
-                if (known != null) {
-                    if (known > idx) {
-                        idx = known
-                    } else {
-                        markUnmatched(stack, map)
-                        return -1
-                    }
-                } else {
-                    stack.addLast(idx)
-                    idx++
-                }
-            } else if (ch == '}' && stack.isNotEmpty()) {
-                val open = stack.removeLast()
-                map[open] = idx + 1
-                if (stack.isEmpty()) return idx + 1
-                idx++
-            } else {
-                idx++
-            }
-        }
-        markUnmatched(stack, map)
-        return -1
-    }
-
-    private fun markUnmatched(stack: ArrayDeque<Int>, map: MutableMap<Int, Int>) {
-        while (stack.isNotEmpty()) map[stack.removeLast()] = -1
-    }
-
-    private fun scanJsonStringEnd(text: String, start: Int): Int {
-        var escaped = false
-        for (i in start until text.length) {
-            val ch = text[i]
-            if (ch.code < ASCII_SPACE) return -(i + 1)
-            if (ch == '"' && !escaped) return i + 1
-            escaped = ch == '\\' && !escaped
-        }
-        return -(text.length + 1)
+        return CoreTelemetryAuthJsonValidator.tryParseJsonValue(text, bracePos, cache.validJsonValueEnd)
     }
 
     private fun skipJsonWhitespace(text: String, start: Int): Int {

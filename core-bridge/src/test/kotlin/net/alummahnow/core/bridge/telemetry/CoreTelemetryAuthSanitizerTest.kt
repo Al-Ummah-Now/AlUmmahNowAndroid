@@ -283,4 +283,57 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("opening\u00A0Acquisition.qzx")
         )
     }
+
+    @Test
+    fun `sanitizeLocalPaths rejects malformed JSON escapes or containers and scrubs encoded webhook URLs`() {
+        val badEscapeScrubbed = CoreTelemetryService.sanitizeLocalPaths(
+            "{\"bad\\qkey\":\"hi\",\"Authorization\":\"firstValue\" } opaqueSecret123"
+        )
+        assertEquals(false, badEscapeScrubbed.contains("firstValue"))
+        assertEquals(false, badEscapeScrubbed.contains("opaqueSecret123"))
+        assertEquals(
+            "{\"\\q\":\"hi\",\"Authorization\":\"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"\\q\":\"hi\",\"Authorization\":\"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"a\":[{],\"Authorization\":\"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"a\":[{],\"Authorization\":\"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":\"bad\\qval\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"\\Authorization\":\"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":\"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\"[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":\"firstValue\",\"a\":[{]} opaqueSecret123")
+        )
+        assertEquals(
+            "[{\"Authorization\":\"[redacted]\"},{\"status\":\"safe\"}]",
+            CoreTelemetryService.sanitizeLocalPaths("[{\"Authorization\":\"opaqueSecret123\"},{\"status\":\"safe\"}]")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,remainingSecret123")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/,remainingSecret123")
+        )
+        assertEquals(
+            "https://example.test/%77ebhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/%77ebhook/fakeToken")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted], next",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken, next")
+        )
+    }
 }
