@@ -400,6 +400,10 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,;opaqueSecret123")
         )
         assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,'opaqueSecret123")
+        )
+        assertEquals(
             "{\"\\q\":\"hi\",\"Authorization\":[\"[redacted]\",\n\"[redacted]\"",
             CoreTelemetryService.sanitizeLocalPaths("{\"\\q\":\"hi\",\"Authorization\":[\"firstValue\",\n\"opaqueSecret123\"")
         )

@@ -248,7 +248,7 @@ internal object CoreTelemetryScanners {
         val nextPos = commaPos + 1
         if (nextPos >= text.length) return true
         val next = text[nextPos]
-        if (next in "([,;?#") return false
+        if (next in "([,;?#\'") return false
         val stopsAfterComma = next.isWhitespace() || next in URL_PATH_STOP || next in URL_END_BOUNDARY
         return stopsAfterComma || startsEmbeddedFilesystemPath(text, nextPos)
     }
