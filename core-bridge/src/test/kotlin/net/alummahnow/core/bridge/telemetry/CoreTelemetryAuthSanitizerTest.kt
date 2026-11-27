@@ -73,6 +73,30 @@ class CoreTelemetryAuthSanitizerTest {
             "{\"Authorization\": \"[redacted]\", \"status\": \"safe\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\": \"opaqueSecret123\", \"status\": \"safe\"}")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths preserves comma-first JSON primitives and folded headers`() {
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\"\n  , \"status\":\"safe\"\n}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":\"opaqueSecret123\"\n  , \"status\":\"safe\"\n}")
+        )
+        assertEquals(
+            "Authorization: \"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Authorization: \"firstValue\" ]opaqueSecret123")
+        )
+        assertEquals(
+            "{\"Authorization\":[\"[redacted]\",\"[redacted]\",null]}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":[123,true,null]}")
+        )
+        assertEquals(
+            "{\"Authorization\":\"[redacted]\",\"status\":\"safe\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":12345,\"status\":\"safe\"}")
+        )
+        assertEquals(
+            "{\"Authorization\":null,\"status\":\"safe\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":null,\"status\":\"safe\"}")
+        )
         assertEquals(
             "Authorization: [[redacted]]\r\nNextHeader: safe",
             CoreTelemetryService.sanitizeLocalPaths("Authorization: [firstValue]\r\nNextHeader: safe")
