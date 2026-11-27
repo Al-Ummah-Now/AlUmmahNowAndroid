@@ -145,6 +145,18 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("{\"status\":401,\"Authorization\":\"opaqueSecret123\"}")
         )
         assertEquals(
+            "{\"Authorization\":\"[redacted]\"[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":\"firstValue\", \"opaqueSecret123\"}")
+        )
+        assertEquals(
+            "note \"hi\", \"Authorization\": \"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("note \"hi\", \"Authorization\": \"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"a\":{\"b\":1},\"Authorization\":\"[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"a\":{\"b\":1},\"Authorization\":\"opaqueSecret123\"}")
+        )
+        assertEquals(
             "Authorization: [[redacted]]\r\nNextHeader: safe",
             CoreTelemetryService.sanitizeLocalPaths("Authorization: [firstValue]\r\nNextHeader: safe")
         )
