@@ -155,6 +155,7 @@ internal object CoreTelemetryAuthScanner {
         cache: CoreTelemetryAuthJsonHelpers.JsonScanCache
     ): AuthKeyMatch? {
         val parsed = scanQuotedAuthKey(text, pos, quote) ?: return null
+        val hasPrefix = quote == '"' && CoreTelemetryAuthJsonHelpers.isPrecededByBraceOrComma(text, pos)
         val allowJson = quote == '"' && !parsed.hasInvalidJsonEscape
         val openBrace = if (allowJson) CoreTelemetryAuthJsonHelpers.findEnclosingJsonObjectStart(text, pos, cache) else -1
         val authState = if (openBrace >= 0) {
@@ -166,7 +167,7 @@ internal object CoreTelemetryAuthScanner {
             pos,
             parsed.keyEnd,
             isJsonCandidate = authState == 0,
-            hasJsonPrefix = openBrace >= 0,
+            hasJsonPrefix = hasPrefix,
             failedTopEnd = if (authState > 0) authState else -1,
             normalizedKey = if (parsed.sawEscape) parsed.canonical else null
         )

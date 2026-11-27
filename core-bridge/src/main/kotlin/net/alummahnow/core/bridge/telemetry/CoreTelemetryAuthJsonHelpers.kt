@@ -26,6 +26,11 @@ internal object CoreTelemetryAuthJsonHelpers {
     fun isJsonPrimitiveStop(ch: Char): Boolean =
         isHorizSpace(ch) || isNewline(ch) || isJsonDelimiter(ch)
 
+    fun isPrecededByBraceOrComma(text: String, pos: Int): Boolean {
+        val start = skipJsonWhitespaceBackward(text, pos - 1)
+        return start >= 0 && (text[start] == '{' || text[start] == ',')
+    }
+
     fun findEnclosingJsonObjectStart(text: String, pos: Int, cache: JsonScanCache): Int {
         val start = skipJsonWhitespaceBackward(text, pos - 1)
         return when {

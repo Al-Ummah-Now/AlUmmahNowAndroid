@@ -182,7 +182,7 @@ internal object CoreTelemetryScanners {
             if (next < 0) break
             p = next
         }
-        return if (openPositions.isNotEmpty()) openPositions[0] to true else p to false
+        return if (!allowCommas && openPositions.isNotEmpty()) openPositions[0] to true else p to false
     }
 
     private fun stepUrlPathChar(
@@ -195,13 +195,16 @@ internal object CoreTelemetryScanners {
         val ch = text[p]
         return when {
             isPathStopChar(text, p, ch) -> -1
-            ch == ',' && (!allowCommas || shouldStopAtUrlComma(text, p)) -> -1
+            ch == ',' && stopsAtPathComma(text, p, allowCommas, openChars.isEmpty()) -> -1
             ch == '(' || ch == '[' -> pushGroupOpener(text, p, ch, openPositions, openChars)
             ch == ')' || ch == ']' -> popGroupCloser(p, ch, openPositions, openChars)
             !allowCommas && openChars.isNotEmpty() && ch == ':' -> -1
             else -> p + 1
         }
     }
+
+    private fun stopsAtPathComma(text: String, pos: Int, allowCommas: Boolean, openEmpty: Boolean): Boolean =
+        !allowCommas || (openEmpty && shouldStopAtUrlComma(text, pos))
 
     private fun pushGroupOpener(
         text: String,

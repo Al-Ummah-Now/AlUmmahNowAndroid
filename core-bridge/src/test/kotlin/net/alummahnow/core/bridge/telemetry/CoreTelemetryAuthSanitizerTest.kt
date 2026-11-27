@@ -343,6 +343,10 @@ class CoreTelemetryAuthSanitizerTest {
             "{\"Authorization\":[\n\"[redacted]\"\n",
             CoreTelemetryService.sanitizeLocalPaths("{\"Authorization\":[\n\"opaqueSecret123\"\n")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scrubs grouped webhook tokens and malformed-prefix multiline arrays`() {
         assertEquals(
             "https://example.test/webhook/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,remainingSecret123")
@@ -363,6 +367,23 @@ class CoreTelemetryAuthSanitizerTest {
             "https://example.test/webhook/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken(tag:opaqueSecret123)")
         )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken(tag:opaqueSecret123,)")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken,(tag:opaqueSecret123")
+        )
+        assertEquals(
+            "{\"\\q\":\"hi\",\"Authorization\":[\"[redacted]\",\n\"[redacted]\"",
+            CoreTelemetryService.sanitizeLocalPaths("{\"\\q\":\"hi\",\"Authorization\":[\"firstValue\",\n\"opaqueSecret123\"")
+        )
+        val badEscapeArray = CoreTelemetryService.sanitizeLocalPaths(
+            "{\"bad\\qkey\":\"hi\",\"Authorization\":[\"firstValue\",\n\"opaqueSecret123\""
+        )
+        assertEquals(false, badEscapeArray.contains("firstValue"))
+        assertEquals(false, badEscapeArray.contains("opaqueSecret123"))
         assertEquals(
             "https://example.test/%77ebhook/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.test/%77ebhook/fakeToken")
