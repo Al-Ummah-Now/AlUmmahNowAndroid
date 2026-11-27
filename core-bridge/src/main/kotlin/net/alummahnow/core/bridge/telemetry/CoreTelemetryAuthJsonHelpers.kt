@@ -4,11 +4,14 @@ package net.alummahnow.core.bridge.telemetry
  * JSON delimiter and balanced-brace helpers for [CoreTelemetryAuthScanner].
  */
 internal object CoreTelemetryAuthJsonHelpers {
+    private const val ASCII_SPACE = 0x20
     private val jsonNumberRegex = Regex("""^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$""")
+    private val jsonKeywords = listOf("true", "false", "null")
 
     class JsonScanCache {
         var braceMap: MutableMap<Int, Int>? = null
         val closeToOpenMap = HashMap<Int, Int>()
+        val memberCommaValid = HashMap<Int, Boolean>()
         var failedBraceBack = -1
         var failedBracketBack = -1
     }
@@ -21,30 +24,70 @@ internal object CoreTelemetryAuthJsonHelpers {
         isHorizSpace(ch) || isNewline(ch) || isJsonDelimiter(ch)
 
     fun isPrecededByJsonMemberDelimiter(text: String, pos: Int, cache: JsonScanCache): Boolean {
-        var idx = pos - 1
-        while (idx >= 0 && isJsonWhitespace(text[idx])) idx--
-        if (idx < 0) return false
-        return text[idx] == '{' || (text[idx] == ',' && isPrecededByJsonValue(text, idx, cache))
+        val start = skipJsonWhitespaceBackward(text, pos - 1)
+        if (start < 0) return false
+        if (text[start] == '{') return true
+        if (text[start] != ',') return false
+        return cache.memberCommaValid[start] ?: walkMemberCommasBackward(text, start, cache)
     }
 
-    private fun isPrecededByJsonValue(text: String, commaPos: Int, cache: JsonScanCache): Boolean {
-        var prev = commaPos - 1
-        while (prev >= 0 && isJsonWhitespace(text[prev])) prev--
-        if (prev < 0) return false
+    private fun walkMemberCommasBackward(text: String, startComma: Int, cache: JsonScanCache): Boolean {
+        val visited = ArrayList<Int>()
+        var p = startComma
+        var result = false
+        var walking = true
+        while (walking && p >= 0 && text[p] == ',') {
+            val known = cache.memberCommaValid[p]
+            if (known != null) {
+                result = known
+                walking = false
+            } else {
+                visited.add(p)
+                val beforeKey = stepBackOverJsonMember(text, p, cache)
+                if (beforeKey < 0) {
+                    walking = false
+                } else if (text[beforeKey] == '{') {
+                    result = true
+                    walking = false
+                } else {
+                    p = beforeKey
+                }
+            }
+        }
+        for (commaPos in visited) cache.memberCommaValid[commaPos] = result
+        return result
+    }
+
+    private fun stepBackOverJsonMember(text: String, commaPos: Int, cache: JsonScanCache): Int {
+        val prev = skipJsonWhitespaceBackward(text, commaPos - 1)
+        if (prev < 0) return -1
+        val valueStart = findJsonValueStartBackward(text, prev, cache)
+        return if (valueStart > 0) findDelimiterBeforeJsonMemberKeyColon(text, valueStart) else -1
+    }
+
+    private fun findJsonValueStartBackward(text: String, prev: Int, cache: JsonScanCache): Int {
         val ch = text[prev]
         return when {
-            ch == '"' -> isPrecededByColon(text, scanJsonStringStartBackward(text, prev))
-            ch == '}' -> isPrecededByColon(text, scanBraceStartBackward(text, prev, cache))
-            ch == ']' -> isPrecededByColon(text, scanBracketStartBackward(text, prev, cache))
-            ch in '0'..'9' -> matchesJsonNumberBefore(text, prev)
-            else -> matchesJsonKeywordEndingAt(text, prev)
+            ch == '"' -> scanJsonStringStartBackward(text, prev)
+            ch == '}' -> scanBraceStartBackward(text, prev, cache)
+            ch == ']' -> scanBracketStartBackward(text, prev, cache)
+            ch in '0'..'9' -> findJsonNumberStartBefore(text, prev)
+            else -> findJsonKeywordStartEndingAt(text, prev)
         }
     }
 
-    private fun matchesJsonNumberBefore(text: String, prev: Int): Boolean {
+    private fun findJsonNumberStartBefore(text: String, prev: Int): Int {
         var s = prev
         while (s >= 0 && !isJsonValuePrefixStop(text[s])) s--
-        return isJsonNumber(text.substring(s + 1, prev + 1)) && isPrecededByColon(text, s + 1)
+        return if (isJsonNumber(text.substring(s + 1, prev + 1))) s + 1 else -1
+    }
+
+    private fun findJsonKeywordStartEndingAt(text: String, endIdx: Int): Int {
+        for (keyword in jsonKeywords) {
+            val start = endIdx - keyword.length + 1
+            if (start > 0 && text.regionMatches(start, keyword, 0, keyword.length)) return start
+        }
+        return -1
     }
 
     private fun scanBraceStartBackward(text: String, prev: Int, cache: JsonScanCache): Int {
@@ -59,14 +102,14 @@ internal object CoreTelemetryAuthJsonHelpers {
         return start
     }
 
-    private fun isPrecededByColon(text: String, valueStart: Int): Boolean {
+    private fun findDelimiterBeforeJsonMemberKeyColon(text: String, valueStart: Int): Int {
         val colonPos = skipJsonWhitespaceBackward(text, valueStart - 1)
-        if (colonPos <= 0 || text[colonPos] != ':') return false
+        if (colonPos <= 0 || text[colonPos] != ':') return -1
         val keyEnd = skipJsonWhitespaceBackward(text, colonPos - 1)
-        if (keyEnd <= 0 || text[keyEnd] != '"') return false
+        if (keyEnd <= 0 || text[keyEnd] != '"') return -1
         val keyStart = scanJsonStringStartBackward(text, keyEnd)
         val beforeKey = if (keyStart > 0) skipJsonWhitespaceBackward(text, keyStart - 1) else -1
-        return beforeKey >= 0 && (text[beforeKey] == '{' || text[beforeKey] == ',')
+        return if (beforeKey >= 0 && (text[beforeKey] == '{' || text[beforeKey] == ',')) beforeKey else -1
     }
 
     private fun skipJsonWhitespaceBackward(text: String, start: Int): Int {
@@ -88,7 +131,7 @@ internal object CoreTelemetryAuthJsonHelpers {
     private fun scanJsonStringStartBackward(text: String, closeQuotePos: Int): Int {
         for (i in closeQuotePos - 1 downTo 0) {
             val ch = text[i]
-            if (isNewline(ch)) return -1
+            if (ch.code < ASCII_SPACE) return -1
             if (ch == '"' && !isEscapedQuote(text, i)) return i
         }
         return -1
@@ -134,17 +177,6 @@ internal object CoreTelemetryAuthJsonHelpers {
 
     private fun isJsonValuePrefixStop(ch: Char): Boolean =
         isJsonWhitespace(ch) || ch == ':' || ch == ',' || ch == '['
-
-    private fun matchesJsonKeywordEndingAt(text: String, endIdx: Int): Boolean =
-        matchesSingleKeyword(text, endIdx, "true") ||
-            matchesSingleKeyword(text, endIdx, "false") ||
-            matchesSingleKeyword(text, endIdx, "null")
-
-    private fun matchesSingleKeyword(text: String, endIdx: Int, keyword: String): Boolean {
-        val start = endIdx - keyword.length + 1
-        if (start <= 0 || !text.regionMatches(start, keyword, 0, keyword.length)) return false
-        return isPrecededByColon(text, start)
-    }
 
     fun isJsonMemberContinuationDelimiter(text: String, pos: Int): Boolean = when (text[pos]) {
         '}' -> pos + 1 >= text.length || isClosingBraceFollower(text[pos + 1])
@@ -217,7 +249,7 @@ internal object CoreTelemetryAuthJsonHelpers {
         var escaped = false
         for (i in start until text.length) {
             val ch = text[i]
-            if (isNewline(ch)) return -(i + 1)
+            if (ch.code < ASCII_SPACE) return -(i + 1)
             if (ch == '"' && !escaped) return i + 1
             escaped = ch == '\\' && !escaped
         }

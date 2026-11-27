@@ -157,6 +157,18 @@ class CoreTelemetryAuthSanitizerTest {
             CoreTelemetryService.sanitizeLocalPaths("note: \"hi\", \"Authorization\": \"firstValue\" } opaqueSecret123")
         )
         assertEquals(
+            "request, \"note\": \"hi\", \"Authorization\": \"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("request, \"note\": \"hi\", \"Authorization\": \"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"bad\tkey\":\"hi\",\"Authorization\":\"[redacted]\" [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("{\"bad\tkey\":\"hi\",\"Authorization\":\"firstValue\" } opaqueSecret123")
+        )
+        assertEquals(
+            "{\"a\":1,\"b\":\"hi\",\"Authorization\":\"[redacted]\"}",
+            CoreTelemetryService.sanitizeLocalPaths("{\"a\":1,\"b\":\"hi\",\"Authorization\":\"opaqueSecret123\"}")
+        )
+        assertEquals(
             "{\"a\":{\"b\":1},\"Authorization\":\"[redacted]\"}",
             CoreTelemetryService.sanitizeLocalPaths("{\"a\":{\"b\":1},\"Authorization\":\"opaqueSecret123\"}")
         )
@@ -171,8 +183,12 @@ class CoreTelemetryAuthSanitizerTest {
         assertEquals(false, scrubbedNested.contains("secret"))
         assertEquals(true, scrubbedNested.endsWith(",\"Authorization\":\"[redacted]\"}"))
         assertEquals(
-            "https://discord.com/api/webhooks/123456789/[redacted]",
+            "https://discord.com/api/webhooks/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://discord." + "com/api/webhooks/123456789/fakeWebhookToken")
+        )
+        assertEquals(
+            "https://example.test/webhook/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.test/webhook/fakeToken")
         )
         assertEquals(
             "https://hooks.slack.com/services/[redacted]",

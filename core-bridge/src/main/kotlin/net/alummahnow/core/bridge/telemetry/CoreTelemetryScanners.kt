@@ -88,7 +88,7 @@ internal object CoreTelemetryScanners {
     }
 
     private val urlPathSecretRules: List<Pair<Regex, String>> = listOf(
-        Regex("""((?:^|/)webhooks?/[^/\s?#]+/)[^/\s?#]+""", RegexOption.IGNORE_CASE) to "$1[redacted]",
+        Regex("""((?:^|/)webhooks?/)[^\s?#]+""", RegexOption.IGNORE_CASE) to "$1[redacted]",
         Regex(
             """(https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?/(?:services|workflows|triggers)/)[^\s?#]+""",
             RegexOption.IGNORE_CASE

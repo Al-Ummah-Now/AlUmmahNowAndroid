@@ -136,7 +136,7 @@ internal object CoreTelemetryAuthScanner {
         var failed = false
         while (j < limit && matched == null && !failed) {
             val ch = text[j]
-            if (isNewline(ch)) {
+            if (ch.code < ASCII_SPACE) {
                 failed = true
             } else if (ch == quote) {
                 val canonical = canonicalAuthKeyName(decoded.toString())
