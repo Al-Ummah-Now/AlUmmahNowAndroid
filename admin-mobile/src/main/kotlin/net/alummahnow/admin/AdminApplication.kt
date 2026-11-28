@@ -18,6 +18,7 @@ class AdminApplication :
     override fun onCreate() {
         super.onCreate()
         AunLog.enabled = BuildConfig.DEBUG
+        if (AdminPrefs(this).telemetryEnabled) container
         registerActivityLifecycleCallbacks(SecureWindows)
         AdminNotifications.ensureChannel(this)
     }

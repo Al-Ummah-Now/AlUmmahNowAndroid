@@ -75,6 +75,7 @@ class CoreTelemetryService(
     private val flushJobs = mutableSetOf<Job>()
     private var retryFlushJob: Job? = null
     private var retryBackoffMs: Long = INITIAL_RETRY_BACKOFF_MS
+    private var flushRequestedWhileInFlight: Boolean = false
 
     init {
         val app = TelemetryAppInfo(
@@ -172,6 +173,7 @@ class CoreTelemetryService(
         flushJobs.clear()
         retryFlushJob = null
         retryBackoffMs = INITIAL_RETRY_BACKOFF_MS
+        flushRequestedWhileInFlight = false
         if (clientClosed) {
             _lastPurgeFailedFlow.value = !tryDeleteBufferFallback()
             return Pair(!_lastPurgeFailedFlow.value, jobsToCancel)
@@ -336,14 +338,21 @@ class CoreTelemetryService(
 
     override suspend fun flush() = flushInternal(fromRetryTimer = false)
 
-    private suspend fun flushInternal(fromRetryTimer: Boolean) {
-        val job: Job
-        gate.withLock {
-            if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
-            if (inFlightFlushes > 0 || (!fromRetryTimer && retryFlushJob != null)) return
+    private suspend fun flushInternal(fromRetryTimer: Boolean, expectedEpoch: Long? = null) {
+        val job: Job = gate.withLock {
+            if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = expectedEpoch)) return
+            if (fromRetryTimer) {
+                retryFlushJob = null
+            }
+            if (inFlightFlushes > 0) {
+                if (retryFlushJob == null) flushRequestedWhileInFlight = true
+                return
+            }
+            if (!fromRetryTimer && retryFlushJob != null) return
+            flushRequestedWhileInFlight = false
             inFlightFlushes++
             val flushEpoch = consentEpoch
-            job = flushScope.launch(start = CoroutineStart.LAZY) {
+            val launched = flushScope.launch(start = CoroutineStart.LAZY) {
                 try {
                     client.flush()
                     onFlushSucceeded(flushEpoch)
@@ -354,8 +363,9 @@ class CoreTelemetryService(
                 }
             }
             // Register completion cleanup before start so even a pre-dispatch cancel releases inFlightFlushes.
-            job.invokeOnCompletion { releaseInFlightFlush(job, flushEpoch) }
-            flushJobs += job
+            launched.invokeOnCompletion { releaseInFlightFlush(launched, flushEpoch) }
+            flushJobs += launched
+            launched
         }
         job.start()
         job.join()
@@ -375,6 +385,7 @@ class CoreTelemetryService(
             flushJobs.clear()
             retryFlushJob = null
             retryBackoffMs = INITIAL_RETRY_BACKOFF_MS
+            flushRequestedWhileInFlight = false
             if (inFlightFlushes == 0 && !clientClosed) {
                 clientClosed = true
                 client.close()
@@ -399,6 +410,7 @@ class CoreTelemetryService(
             if (revoked || !isActiveConsentLocked(requiresFull = false, expectedEpoch = flushEpoch)) {
                 return
             }
+            flushRequestedWhileInFlight = false
             AunLog.w("telemetry", "telemetry flush skipped", "error" to error.message)
             val hasPending = runCatching { client.pendingCount().toInt() > 0 }.getOrDefault(false)
             if (!hasPending || retryFlushJob != null) {
@@ -408,11 +420,7 @@ class CoreTelemetryService(
                 retryBackoffMs = (retryBackoffMs * 2).coerceAtMost(MAX_RETRY_BACKOFF_MS)
                 val retryJob = flushScope.launch(start = CoroutineStart.LAZY) {
                     delay(delayMs)
-                    val stillActive = gate.withLock {
-                        retryFlushJob = null
-                        !revoked && isActiveConsentLocked(requiresFull = false, expectedEpoch = flushEpoch)
-                    }
-                    if (stillActive) flushInternal(fromRetryTimer = true)
+                    flushInternal(fromRetryTimer = true, expectedEpoch = flushEpoch)
                 }
                 retryFlushJob = retryJob
                 retryJob
@@ -421,8 +429,14 @@ class CoreTelemetryService(
         scheduled?.start()
     }
 
+    private fun shouldScheduleFollowUpFlushLocked(flushEpoch: Long): Boolean {
+        if (inFlightFlushes != 0 || !flushRequestedWhileInFlight || retryFlushJob != null) return false
+        if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = flushEpoch)) return false
+        return runCatching { client.pendingCount().toInt() > 0 }.getOrDefault(false)
+    }
+
     private fun releaseInFlightFlush(job: Job, flushEpoch: Long) {
-        gate.withLock {
+        val runFollowUp = gate.withLock {
             flushJobs.remove(job)
             inFlightFlushes = (inFlightFlushes - 1).coerceAtLeast(0)
             if (flushEpoch < consentEpoch) {
@@ -439,6 +453,15 @@ class CoreTelemetryService(
                 clientClosed = true
                 client.close()
             }
+            if (shouldScheduleFollowUpFlushLocked(flushEpoch)) {
+                flushRequestedWhileInFlight = false
+                true
+            } else {
+                false
+            }
+        }
+        if (runFollowUp) {
+            flushScope.launch { flushInternal(fromRetryTimer = false, expectedEpoch = flushEpoch) }
         }
     }
 
