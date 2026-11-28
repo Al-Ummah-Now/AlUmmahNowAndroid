@@ -133,33 +133,43 @@ internal object CoreTelemetryQuotedAuthHelpers {
         return 0
     }
 
+    private data class BearerQuoteState(val inEscapedQuote: Boolean, val inLiteralDoubleQuote: Boolean)
+
     private fun findBearerTokenRanges(text: String, flags: BearerScanFlags): List<BearerMatch> {
         val ranges = ArrayList<BearerMatch>()
-        var inEscapedQuote = false
+        var state = BearerQuoteState(inEscapedQuote = false, inLiteralDoubleQuote = false)
         var i = 0
         while (i < text.length) {
             val ch = text[i]
-            val stepped = stepBearerQuoteState(text, i, ch, inEscapedQuote)
+            val stepped = stepBearerQuoteState(text, i, ch, state)
             if (stepped != null) {
                 i = stepped.first
-                inEscapedQuote = stepped.second
+                state = stepped.second
             } else if (!matchesBearerPrefix(text, i)) {
                 i++
             } else {
                 var wsEnd = i + BEARER_LEN
                 while (wsEnd < text.length && CoreTelemetryScanners.isSpace(text[wsEnd])) wsEnd++
-                i = advanceAfterBearerPrefix(text, i, wsEnd, inEscapedQuote, flags, ranges)
+                i = advanceAfterBearerPrefix(text, i, wsEnd, state, flags, ranges)
             }
         }
         return ranges
     }
 
-    private fun stepBearerQuoteState(text: String, pos: Int, ch: Char, inEscapedQuote: Boolean): Pair<Int, Boolean>? =
-        when {
-            ch == '\\' && pos + 1 < text.length -> stepBearerBackslash(text, pos, inEscapedQuote)
-            ch == '"' || ch == '\r' || ch == '\n' -> (pos + 1) to false
-            else -> null
+    private fun stepBearerQuoteState(
+        text: String,
+        pos: Int,
+        ch: Char,
+        state: BearerQuoteState
+    ): Pair<Int, BearerQuoteState>? = when {
+        ch == '\\' && pos + 1 < text.length -> {
+            val (nextPos, nextEsc) = stepBearerBackslash(text, pos, state.inEscapedQuote)
+            nextPos to state.copy(inEscapedQuote = nextEsc)
         }
+        ch == '"' -> (pos + 1) to BearerQuoteState(inEscapedQuote = false, inLiteralDoubleQuote = !state.inLiteralDoubleQuote)
+        ch == '\r' || ch == '\n' -> (pos + 1) to BearerQuoteState(inEscapedQuote = false, inLiteralDoubleQuote = false)
+        else -> null
+    }
 
     private fun stepBearerBackslash(text: String, pos: Int, inEscapedQuote: Boolean): Pair<Int, Boolean> {
         val next = text[pos + 1]
@@ -222,22 +232,40 @@ internal object CoreTelemetryQuotedAuthHelpers {
     private fun matchesBasicClosingQuote(text: String, tokEnd: Int, openLen: Int, openCh: Char): Boolean =
         if (openLen == 1) text[tokEnd] == openCh else escapedDoubleQuoteLen(text, tokEnd) == openLen
 
-    private fun hasBearerTokenAt(text: String, pos: Int, stopAtEscapedQuote: Boolean, flags: BearerScanFlags): Boolean {
-        if (pos >= text.length) return false
-        val wsCh = text[pos]
-        val openLen = if (!stopAtEscapedQuote) openingBearerQuoteLen(text, pos, wsCh, flags.allowLiteralQuoted) else 0
-        if (openLen > 0) {
-            return hasQuotedBearerTokenAt(text, pos, openLen, wsCh, flags.requireClosingLiteralQuote)
-        }
-        return isRedactedBearerPlaceholder(text, pos, stopAtEscapedQuote) ||
-            scanBearerTokenEnd(text, pos, stopAtEscapedQuote) > pos
+    @Suppress("LongParameterList")
+    private fun isValidQuotedBearerEnd(
+        text: String,
+        innerEnd: Int,
+        openLen: Int,
+        openCh: Char,
+        closeLen: Int,
+        inLiteralDoubleQuote: Boolean,
+        requireClosingLiteralQuote: Boolean
+    ): Boolean {
+        val closedOrUnchecked = closeLen > 0 || (openLen == 1 && !requireClosingLiteralQuote)
+        if (closedOrUnchecked) return true
+        if (openLen == 1 && openCh == '"' && inLiteralDoubleQuote) return false
+        return innerEnd >= text.length || text[innerEnd] in "\r\n,;)]}"
     }
 
+    private fun hasBearerTokenAt(text: String, pos: Int, state: BearerQuoteState, flags: BearerScanFlags): Boolean {
+        if (pos >= text.length) return false
+        val wsCh = text[pos]
+        val openLen = if (!state.inEscapedQuote) openingBearerQuoteLen(text, pos, wsCh, flags.allowLiteralQuoted) else 0
+        if (openLen > 0) {
+            return hasQuotedBearerTokenAt(text, pos, openLen, wsCh, state.inLiteralDoubleQuote, flags.requireClosingLiteralQuote)
+        }
+        return isRedactedBearerPlaceholder(text, pos, state.inEscapedQuote) ||
+            scanBearerTokenEnd(text, pos, state.inEscapedQuote) > pos
+    }
+
+    @Suppress("LongParameterList")
     private fun hasQuotedBearerTokenAt(
         text: String,
         pos: Int,
         openLen: Int,
         wsCh: Char,
+        inLiteralDoubleQuote: Boolean,
         requireClosingLiteralQuote: Boolean
     ): Boolean {
         val innerStart = pos + openLen
@@ -245,8 +273,8 @@ internal object CoreTelemetryQuotedAuthHelpers {
         if (isRedactedBearerPlaceholder(text, innerStart, stopEsc)) return true
         val innerEnd = scanBearerTokenEnd(text, innerStart, stopEsc)
         val closeLen = closingBearerQuoteLen(text, innerEnd, openLen, wsCh)
-        val allowUnclosed = openLen == 1 && !requireClosingLiteralQuote
-        return innerEnd > innerStart && (closeLen > 0 || allowUnclosed)
+        return innerEnd > innerStart &&
+            isValidQuotedBearerEnd(text, innerEnd, openLen, wsCh, closeLen, inLiteralDoubleQuote, requireClosingLiteralQuote)
     }
 
     @Suppress("LongParameterList")
@@ -254,7 +282,7 @@ internal object CoreTelemetryQuotedAuthHelpers {
         text: String,
         prefixStart: Int,
         wsEnd: Int,
-        stopAtEscapedQuote: Boolean,
+        state: BearerQuoteState,
         flags: BearerScanFlags,
         ranges: MutableList<BearerMatch>
     ): Int {
@@ -275,7 +303,7 @@ internal object CoreTelemetryQuotedAuthHelpers {
         val hasCred = afterWs < text.length &&
             (
                 hasValidBasicCredentialAt(text, afterWs, flags.isValidBasic) ||
-                    hasBearerTokenAt(text, afterWs, stopAtEscapedQuote, flags)
+                    hasBearerTokenAt(text, afterWs, state, flags)
                 )
         if (hasCred) return lastBearer
         ranges += BearerMatch(prevBearer, lastBearer + BEARER_LEN, redactedOnly = false)
@@ -287,25 +315,25 @@ internal object CoreTelemetryQuotedAuthHelpers {
         text: String,
         prefixStart: Int,
         wsEnd: Int,
-        stopAtEscapedQuote: Boolean,
+        state: BearerQuoteState,
         flags: BearerScanFlags,
         ranges: MutableList<BearerMatch>
     ): Int {
         if (wsEnd >= text.length) return text.length
         if (matchesBearerAt(text, wsEnd)) {
-            return stepRepeatedBearerChain(text, prefixStart, wsEnd, stopAtEscapedQuote, flags, ranges)
+            return stepRepeatedBearerChain(text, prefixStart, wsEnd, state, flags, ranges)
         }
         if (hasValidBasicCredentialAt(text, wsEnd, flags.isValidBasic)) return wsEnd
-        val quotedNext = if (!stopAtEscapedQuote) {
-            tryScanQuotedBearerToken(text, wsEnd, flags.allowLiteralQuoted, flags.requireClosingLiteralQuote, ranges)
+        val quotedNext = if (!state.inEscapedQuote) {
+            tryScanQuotedBearerToken(text, wsEnd, state.inLiteralDoubleQuote, flags, ranges)
         } else {
             -1
         }
         return when {
             quotedNext >= 0 -> quotedNext
-            isRedactedBearerPlaceholder(text, wsEnd, stopAtEscapedQuote) -> wsEnd + REDACTED_LEN
+            isRedactedBearerPlaceholder(text, wsEnd, state.inEscapedQuote) -> wsEnd + REDACTED_LEN
             else -> {
-                val tokEnd = scanBearerTokenEnd(text, wsEnd, stopAtEscapedQuote)
+                val tokEnd = scanBearerTokenEnd(text, wsEnd, state.inEscapedQuote)
                 if (tokEnd > wsEnd) ranges += BearerMatch(prefixStart, tokEnd, redactedOnly = false)
                 if (tokEnd > wsEnd) tokEnd else wsEnd
             }
@@ -315,20 +343,29 @@ internal object CoreTelemetryQuotedAuthHelpers {
     private fun tryScanQuotedBearerToken(
         text: String,
         wsEnd: Int,
-        allowLiteralQuoted: Boolean,
-        requireClosingLiteralQuote: Boolean,
+        inLiteralDoubleQuote: Boolean,
+        flags: BearerScanFlags,
         ranges: MutableList<BearerMatch>
     ): Int {
         val wsCh = text[wsEnd]
-        val openLen = openingBearerQuoteLen(text, wsEnd, wsCh, allowLiteralQuoted)
+        val openLen = openingBearerQuoteLen(text, wsEnd, wsCh, flags.allowLiteralQuoted)
         if (openLen <= 0) return -1
         val innerStart = wsEnd + openLen
         val stopEsc = openLen > 1
         if (isRedactedBearerPlaceholder(text, innerStart, stopEsc)) return innerStart + REDACTED_LEN
         val innerEnd = scanBearerTokenEnd(text, innerStart, stopEsc)
         val closeLen = closingBearerQuoteLen(text, innerEnd, openLen, wsCh)
-        val allowUnclosed = openLen == 1 && !requireClosingLiteralQuote
-        if (innerEnd > innerStart && (closeLen > 0 || allowUnclosed)) {
+        val validEnd = innerEnd > innerStart &&
+            isValidQuotedBearerEnd(
+                text,
+                innerEnd,
+                openLen,
+                wsCh,
+                closeLen,
+                inLiteralDoubleQuote,
+                flags.requireClosingLiteralQuote
+            )
+        if (validEnd) {
             ranges += BearerMatch(innerStart, innerEnd, redactedOnly = true)
             return innerEnd + closeLen
         }

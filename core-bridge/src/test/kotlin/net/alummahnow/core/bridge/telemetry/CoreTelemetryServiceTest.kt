@@ -523,6 +523,18 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("Bearer Bearer \"opaqueSecret123\"")
         )
         assertEquals(
+            "received Bearer \"[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("received Bearer \"opaqueSecret123")
+        )
+        assertEquals(
+            "Bearer Bearer \"[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer Bearer \"opaqueSecret123")
+        )
+        assertEquals(
+            "received Bearer '[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("received Bearer 'opaqueSecret123")
+        )
+        assertEquals(
             "Bearer Bearer [redacted]",
             CoreTelemetryService.sanitizeLocalPaths("Bearer Bearer opaqueSecret123")
         )
@@ -542,6 +554,10 @@ class CoreTelemetryServiceTest {
             "Bearer [redacted] auth",
             CoreTelemetryService.sanitizeLocalPaths("Bearer Basic auth")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths handles repeated Basic slash-local emails and linear IP literals`() {
         assertEquals(
             "Basic Basic \"[redacted]\"",
             CoreTelemetryService.sanitizeLocalPaths("Basic Basic \"dXNlcjpwYXNz\"")
