@@ -6,6 +6,8 @@ import net.alummahnow.core.bridge.studio.StudioRepository
 import net.alummahnow.core.bridge.studio.UploadQueue
 import net.alummahnow.core.bridge.studio.deletion.AccountDeletion
 import net.alummahnow.core.bridge.studio.deletion.DeletionRecords
+import net.alummahnow.core.bridge.telemetry.NullTelemetryService
+import net.alummahnow.core.bridge.telemetry.TelemetryService
 
 /** What [StudioApp] needs. [AppContainer] is the real one; tests hand in fakes. */
 interface StudioContainer {
@@ -22,6 +24,11 @@ interface StudioContainer {
     /** Deletions that started on this device, and the one way to run them. */
     val deletionRecords: DeletionRecords
     val deletion: AccountDeletion
+
+    /** Opt-in diagnostics & crash reports (off by default). */
+    val telemetry: TelemetryService get() = NullTelemetryService
+    fun isTelemetryEnabled(): Boolean = false
+    fun setTelemetryEnabled(enabled: Boolean): Boolean = !enabled
 
     /** For work that must finish although the screen that asked for it is gone (the last sign-out, a deletion). */
     val appScope: CoroutineScope

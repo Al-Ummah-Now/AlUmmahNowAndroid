@@ -98,8 +98,8 @@ class AdminScreenshotTest {
 
     /** FixtureReviewService's staff accounts as the people a frame shows: (English name, Arabic name). */
     private val staff = mapOf(
-        "Fixture Senior" to ("Huda Karim" to "هدى كريم"),
-        "Fixture Reviewer" to ("Yusuf Haddad" to "يوسف حداد")
+        "Huda Karim" to ("Huda Karim" to "هدى كريم"),
+        "Yusuf Haddad" to ("Yusuf Haddad" to "يوسف حداد")
     )
 
     private fun String.inLang(lang: Lang): String {
@@ -173,15 +173,17 @@ class AdminScreenshotTest {
     }
 
     /** Settings as the frame shows them: its own theme and language selected, alerts on (a release build with push set up). */
-    private fun settings(lang: Lang, mode: ThemeMode) = @Composable {
+    private fun settings(lang: Lang, mode: ThemeMode, enabled: Boolean = false) = @Composable {
         SettingsContent(
-            "Fixture Senior".inLang(lang),
+            "Huda Karim".inLang(lang),
             dark = mode == ThemeMode.DARK,
             language = if (lang == Lang.AR) "ar" else "en",
             push = PushState.ON,
             onDark = {},
             onLanguage = {},
-            onSignOut = {}
+            onSignOut = {},
+            telemetryEnabled = enabled,
+            onTelemetryChanged = {}
         )
     }
 
@@ -247,9 +249,19 @@ class AdminScreenshotTest {
 
     @Test fun notStaffAr() = shoot("not_staff", Lang.AR, ThemeMode.DARK) { NotStaffScreen(onSignOut = {}) }
 
-    @Test fun settingsEn() = shoot("settings", Lang.EN, ThemeMode.LIGHT, content = settings(Lang.EN, ThemeMode.LIGHT))
+    @Test fun settingsEnLight() = shoot("settings", Lang.EN, ThemeMode.LIGHT, content = settings(Lang.EN, ThemeMode.LIGHT))
 
-    @Test fun settingsAr() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK))
+    @Test fun settingsEnDark() = shoot("settings", Lang.EN, ThemeMode.DARK, content = settings(Lang.EN, ThemeMode.DARK))
+
+    @Test fun settingsArLight() = shoot("settings", Lang.AR, ThemeMode.LIGHT, content = settings(Lang.AR, ThemeMode.LIGHT))
+
+    @Test fun settingsArDark() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK))
+
+    @Test fun diagnosticsEnDarkEnabled() =
+        shoot("settings_on", Lang.EN, ThemeMode.DARK, content = settings(Lang.EN, ThemeMode.DARK, enabled = true))
+
+    @Test fun diagnosticsArDarkEnabled() =
+        shoot("settings_on", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK, enabled = true))
 
     private companion object {
         val FRAME_KEY = Regex("""review/([^/]+)/r1/frame-(\d+)\.jpg""")

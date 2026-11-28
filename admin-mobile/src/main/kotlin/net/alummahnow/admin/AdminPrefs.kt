@@ -28,11 +28,19 @@ class AdminPrefs(context: Context) {
     val installId: String
         get() = prefs.getString(KEY_INSTALL, null) ?: UUID.randomUUID().toString().also { prefs.edit().putString(KEY_INSTALL, it).apply() }
 
+    /** Opt-in diagnostics & crash reports. Always defaults to `false`. */
+    var telemetryEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TELEMETRY, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_TELEMETRY, value).commit()
+        }
+
     companion object {
         private const val NAME = "aun_admin_prefs"
         private const val KEY_DARK = "dark"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_INSTALL = "install_id"
+        private const val KEY_TELEMETRY = "telemetry_enabled"
         const val DEFAULT_LANGUAGE = "en"
         val LANGUAGES = setOf("en", "ar")
     }

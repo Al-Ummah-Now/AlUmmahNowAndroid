@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Key
@@ -29,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import net.alummahnow.core.bridge.SupportLinks
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.core.bridge.studio.StudioChannel
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.components.ConfirmDialog
 import net.alummahnow.design.format.aunString
 import net.alummahnow.design.format.avatarInitial
@@ -76,7 +79,9 @@ fun AccountSheet(
     /** Deletes the active account; null hides the row. */
     onDeleteAccount: (() -> Unit)? = null,
     /** Accounts whose deletion started and isn't finished. */
-    deletionStarted: Set<String> = emptySet()
+    deletionStarted: Set<String> = emptySet(),
+    telemetryEnabled: Boolean = false,
+    onTelemetryChanged: ((Boolean) -> Unit)? = null
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
     ModalBottomSheet(
@@ -97,7 +102,9 @@ fun AccountSheet(
             onOpenUrl = onOpenUrl,
             webHost = webHost,
             onDeleteAccount = onDeleteAccount,
-            deletionStarted = deletionStarted
+            deletionStarted = deletionStarted,
+            telemetryEnabled = telemetryEnabled,
+            onTelemetryChanged = onTelemetryChanged
         )
     }
     confirmSignOut?.let { a ->
@@ -130,7 +137,9 @@ internal fun AccountSheetContent(
     /** Deletes the active account; null hides the row. */
     onDeleteAccount: (() -> Unit)? = null,
     /** Accounts whose deletion started and isn't finished. */
-    deletionStarted: Set<String> = emptySet()
+    deletionStarted: Set<String> = emptySet(),
+    telemetryEnabled: Boolean = false,
+    onTelemetryChanged: ((Boolean) -> Unit)? = null
 ) {
     val lang = currentLocale().language
     Column(
@@ -192,6 +201,24 @@ internal fun AccountSheetContent(
                 title = stringResource(net.alummahnow.feature.passkey.R.string.passkey_add),
                 subtitle = stringResource(net.alummahnow.feature.passkey.R.string.passkey_explainer),
                 modifier = Modifier.clickable(role = Role.Button, onClick = onAddPasskey).testTag("add-passkey")
+            )
+        }
+        if (onTelemetryChanged != null) {
+            HorizontalDivider(Modifier.padding(vertical = FanousTokens.Spacing.xs))
+            SheetRow(
+                icon = {
+                    Icon(
+                        Icons.Filled.BugReport,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).padding(8.dp)
+                    )
+                },
+                title = stringResource(DesignR.string.aun_diagnostics_toggle),
+                subtitle = stringResource(DesignR.string.aun_diagnostics_description),
+                modifier = Modifier
+                    .clickable(role = Role.Switch) { onTelemetryChanged(!telemetryEnabled) }
+                    .testTag("studio-diagnostics"),
+                trailing = { Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged) }
             )
         }
         if (onOpenUrl != null) {

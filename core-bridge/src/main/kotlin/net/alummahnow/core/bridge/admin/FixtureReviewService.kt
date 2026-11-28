@@ -69,7 +69,7 @@ class FixtureReviewService(
         decided += ReviewItem(
             id = "fx-old", subjectId = "v-old", status = "approved", title = "Morning reminder", channelId = "c-2",
             channelName = "Hope Relief", risk = 0.2, holdCause = HoldCause.RISK, topCategory = "spam", slaDueAt = due(-60),
-            decision = "approve", decidedAt = due(-50), decidedByName = "Fixture Reviewer", version = 2
+            decision = "approve", decidedAt = due(-50), decidedByName = "Yusuf Haddad", version = 2
         )
     }
 
@@ -78,14 +78,14 @@ class FixtureReviewService(
     }
 
     private val me: String get() = if (role == Role.SENIOR) "fx-senior" else "fx-reviewer"
-    private val myName: String get() = if (role == Role.SENIOR) "Fixture Senior" else "Fixture Reviewer"
+    private val myName: String get() = if (role == Role.SENIOR) "Huda Karim" else "Yusuf Haddad"
 
     override suspend fun profile(): StaffProfile {
         online()
         return when (role) {
             Role.VIEWER -> throw ReviewError.NotStaff()
-            Role.REVIEWER -> StaffProfile("fx-reviewer", "Fixture Reviewer", listOf("content_reviewer"))
-            Role.SENIOR -> StaffProfile("fx-senior", "Fixture Senior", listOf("senior_reviewer"))
+            Role.REVIEWER -> StaffProfile("fx-reviewer", "Yusuf Haddad", listOf("content_reviewer"))
+            Role.SENIOR -> StaffProfile("fx-senior", "Huda Karim", listOf("senior_reviewer"))
         }
     }
 

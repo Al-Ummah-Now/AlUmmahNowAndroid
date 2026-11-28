@@ -13,6 +13,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import net.alummahnow.core.bridge.SupportLinks
+import net.alummahnow.design.R as DesignR
 import net.alummahnow.design.format.currentLocale
 import net.alummahnow.design.theme.ThemeMode
 
@@ -36,7 +38,9 @@ fun DisplaySettingsSheet(
     onDismiss: () -> Unit,
     onOpenUrl: ((String) -> Unit)? = null,
     onOpenBlockedList: (() -> Unit)? = null,
-    webHost: String
+    webHost: String,
+    telemetryEnabled: Boolean = false,
+    onTelemetryChanged: ((Boolean) -> Unit)? = null
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         DisplaySettingsSheetContent(
@@ -48,7 +52,9 @@ fun DisplaySettingsSheet(
             onDismiss = onDismiss,
             onOpenUrl = onOpenUrl,
             onOpenBlockedList = onOpenBlockedList,
-            webHost = webHost
+            webHost = webHost,
+            telemetryEnabled = telemetryEnabled,
+            onTelemetryChanged = onTelemetryChanged
         )
     }
 }
@@ -63,7 +69,9 @@ internal fun DisplaySettingsSheetContent(
     onDismiss: () -> Unit,
     onOpenUrl: ((String) -> Unit)? = null,
     onOpenBlockedList: (() -> Unit)? = null,
-    webHost: String
+    webHost: String,
+    telemetryEnabled: Boolean = false,
+    onTelemetryChanged: ((Boolean) -> Unit)? = null
 ) {
     val langCode = language ?: currentLocale().language
     Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -77,6 +85,31 @@ internal fun DisplaySettingsSheetContent(
             // Language names are shown in their own script so either speaker can find theirs.
             Option("العربية", language == "ar") { onLanguage("ar") }
             Option("English", language == "en") { onLanguage("en") }
+        }
+        if (onTelemetryChanged != null) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Switch) { onTelemetryChanged(!telemetryEnabled) }
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                    .testTag("settings-diagnostics"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        stringResource(DesignR.string.aun_diagnostics_toggle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        stringResource(DesignR.string.aun_diagnostics_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged)
+            }
         }
         if (onOpenBlockedList != null) {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
