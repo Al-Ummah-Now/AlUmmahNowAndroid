@@ -17,6 +17,34 @@ internal val LOCAL_OR_SHARE_URI_PREFIXES = listOf(
 
 private val urlUserinfoRegex = Regex("""^([a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s?#]+)@""")
 private val oneDriveShareTokenRegex = Regex("""((?:/|%2[fF])s!)[^\s?#]+""", RegexOption.IGNORE_CASE)
+private val urlPathKeyValueRegex = Regex("""(?<![A-Za-z0-9_])([A-Za-z0-9_.-]{2,64})([=:])([^/?#&\s;]+)""")
+
+private fun redactEncodedKeyValuesInUrl(
+    url: String,
+    decode: (String) -> Pair<String, IntArray>
+): String {
+    val (decoded, origOffsets) = if (url.indexOf('%') >= 0) decode(url) else url to null
+    val schemeIdx = decoded.indexOf("://")
+    if (schemeIdx < 0) return url
+    val pathSlash = decoded.indexOf('/', schemeIdx + 3)
+    if (pathSlash < 0) return url
+    val matches = urlPathKeyValueRegex.findAll(decoded, pathSlash)
+        .filter { CoreTelemetryPropertySanitizer.isSensitiveKeyName(it.groupValues[1]) }
+        .toList()
+    if (matches.isEmpty()) return url
+    val sb = StringBuilder(url.length)
+    var copied = 0
+    for (match in matches) {
+        val valGroup = match.groups[3] ?: continue
+        val start = origOffsets?.get(valGroup.range.first) ?: valGroup.range.first
+        if (start >= copied) {
+            val end = origOffsets?.get(valGroup.range.last + 1) ?: (valGroup.range.last + 1)
+            sb.append(url, copied, start).append("[redacted]")
+            copied = end
+        }
+    }
+    return if (copied == 0) url else sb.append(url, copied, url.length).toString()
+}
 
 private fun skipOptionalUrlUserinfo(text: String, start: Int): Int {
     var lastAt = -1
@@ -214,6 +242,7 @@ internal object CoreTelemetryScanners {
         result = replaceUrlPathSecret(result, telegramBotTokenUrlRegex)
         result = replaceUrlPathSecret(result, oneDriveShareTokenRegex)
         result = replaceUrlPathSecret(result, urlMatrixParamRegex)
+        result = redactEncodedKeyValuesInUrl(result, ::decodeUrlForPathSecretMatch)
         return redactEncodedJoseTokensInUrl(result, ::decodeUrlForPathSecretMatch)
     }
 

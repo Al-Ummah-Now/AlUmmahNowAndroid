@@ -25,9 +25,11 @@ class CoreTelemetryDiagnosticSanitizerTest {
                 "safeId" to "eyJunction.load.failed",
                 "nbText" to "+33\u202F6\u202F12\u202F34\u202F56\u202F78",
                 "detailText" to "12 34 56 78 and 2026-11-27",
-                "creds" to """{"challenge.verificationCode":"482731"} pass="correct horse battery staple" """ +
+                "creds" to """{"challenge.verificationCode":"482731"} {"home\u0041ddress":"12 Cedar Rd"} """ +
+                    "password=\u201Corchid velvet\u201D " +
+                    """pass="correct horse battery staple" """ +
                     """{"pass":"multi word phrase"} fullName="Alice Wonderland" pwd=shortsecret""",
-                "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K",
+                "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K https://example.test/password%3Dshortcredential",
                 "badVal" to throwingProp
             )
         )
@@ -40,6 +42,10 @@ class CoreTelemetryDiagnosticSanitizerTest {
         assertFalse(json.contains("12 34 56 78"))
         assertTrue(json.contains("2026-11-27"))
         assertFalse(json.contains("482731"))
+        assertFalse(json.contains("12 Cedar Rd"))
+        assertFalse(json.contains("orchid"))
+        assertFalse(json.contains("velvet"))
+        assertFalse(json.contains("shortcredential"))
         assertFalse(json.contains("horse battery staple"))
         assertFalse(json.contains("word phrase"))
         assertFalse(json.contains("Alice"))

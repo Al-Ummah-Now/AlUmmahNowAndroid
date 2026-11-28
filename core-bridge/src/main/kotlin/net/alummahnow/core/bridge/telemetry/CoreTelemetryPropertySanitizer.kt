@@ -66,11 +66,15 @@ internal object CoreTelemetryPropertySanitizer {
     )
 
     private val keyValueCredentialRegex = Regex(
-        """(?<![A-Za-z0-9_])([A-Za-z0-9_.-]{2,64})((?:\\?["'])?\s*[=:]\s*)""" +
-            """(?:\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]"']+)"""
+        """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]|\\u[0-9A-Fa-f]{4}){2,64})""" +
+            """((?:\\?["']|[\u201D\u2019\u00BB\u300D\u300F])?\s*[=:]\s*)""" +
+            """(?:\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|""" +
+            """\u201C[^\u201D\r\n]*\u201D|\u2018[^\u2019\r\n]*\u2019|\u00AB[^\u00BB\r\n]*\u00BB|""" +
+            """\u201E[^\u201D\r\n]*\u201D|\u300C[^\u300D\r\n]*\u300D|\u300E[^\u300F\r\n]*\u300F|""" +
+            """[^\s,;}\]"'\u201C\u201D\u2018\u2019\u00AB\u00BB\u201E\u300C\u300D\u300E\u300F]+)"""
     )
 
-    private fun isSensitiveKeyName(key: String): Boolean {
+    internal fun isSensitiveKeyName(key: String): Boolean {
         val squashed = buildString(key.length) {
             for (c in key) {
                 if (c.isLetterOrDigit()) append(c.lowercaseChar())
@@ -85,13 +89,33 @@ internal object CoreTelemetryPropertySanitizer {
         return false
     }
 
+    private fun decodeJsonUnicodeEscapes(raw: String): String {
+        if (!raw.contains("\\u")) return raw
+        val sb = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            if (raw[i] == '\\' && i + 5 < raw.length && raw[i + 1] == 'u') {
+                val code = raw.substring(i + 2, i + 6).toIntOrNull(16)
+                if (code != null) {
+                    sb.append(code.toChar())
+                    i += 6
+                    continue
+                }
+            }
+            sb.append(raw[i])
+            i++
+        }
+        return sb.toString()
+    }
+
     private fun scrubSensitiveKeyValues(text: String): String =
         keyValueCredentialRegex.replace(text) { m ->
             val key = m.groupValues[1]
-            val lower = key.lowercase(Locale.ROOT)
+            val decoded = decodeJsonUnicodeEscapes(key)
+            val lower = decoded.trim('"', '\'').lowercase(Locale.ROOT)
             if (lower == "authorization" || lower == "proxy-authorization") {
                 m.value
-            } else if (isSensitiveKeyName(key)) {
+            } else if (isSensitiveKeyName(decoded)) {
                 key + m.groupValues[2] + "[redacted]"
             } else {
                 m.value
