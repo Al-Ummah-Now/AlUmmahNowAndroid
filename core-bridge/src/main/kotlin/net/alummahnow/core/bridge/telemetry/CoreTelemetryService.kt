@@ -559,34 +559,38 @@ class CoreTelemetryService(
         }
 
         private fun findLastUnquotedFilenameExt(text: String, segStart: Int, segEnd: Int): Pair<Int, Int>? {
-            for (dot in segEnd - 1 downTo segStart) {
-                if (text[dot] != '.') continue
-                val extStart = dot + 1
-                var extEnd = extStart
-                while (
-                    extEnd < segEnd &&
-                    extEnd - extStart < MAX_FILENAME_EXT_CHECK &&
-                    CoreTelemetryScanners.isAsciiAlphaNum(text[extEnd])
-                ) {
-                    extEnd++
+            var dot = segEnd - 1
+            while (dot >= segStart) {
+                if (text[dot] == '.') {
+                    val extStart = dot + 1
+                    var extEnd = extStart
+                    while (
+                        extEnd < segEnd &&
+                        extEnd - extStart < MAX_FILENAME_EXT_CHECK &&
+                        CoreTelemetryScanners.isAsciiAlphaNum(text[extEnd])
+                    ) {
+                        extEnd++
+                    }
+                    val extLen = extEnd - extStart
+                    val validEnd = extEnd == text.length ||
+                        (!CoreTelemetryScanners.isAsciiWordChar(text[extEnd]) && text[extEnd] != '(')
+                    val validExt = extLen in 1..MAX_FILENAME_EXT_LEN &&
+                        validEnd &&
+                        !isSourceLineReference(text, extStart, extEnd)
+                    if (validExt) {
+                        val skipTo = skipNumericDotRun(text, segStart, dot, extStart, extEnd)
+                        if (skipTo < -1) return dot to extEnd
+                        dot = skipTo + 1
+                    }
                 }
-                val extLen = extEnd - extStart
-                val validEnd = extEnd == text.length ||
-                    (!CoreTelemetryScanners.isAsciiWordChar(text[extEnd]) && text[extEnd] != '(')
-                val validExt = extLen in 1..MAX_FILENAME_EXT_LEN &&
-                    validEnd &&
-                    !isSourceLineReference(text, extStart, extEnd) &&
-                    !isNumericDotToken(text, segStart, dot, extStart, extEnd)
-                if (validExt) {
-                    return dot to extEnd
-                }
+                dot--
             }
             return null
         }
 
-        private fun isNumericDotToken(text: String, segStart: Int, dot: Int, extStart: Int, extEnd: Int): Boolean {
+        private fun skipNumericDotRun(text: String, segStart: Int, dot: Int, extStart: Int, extEnd: Int): Int {
             for (i in extStart until extEnd) {
-                if (text[i] !in '0'..'9') return false
+                if (text[i] !in '0'..'9') return -2
             }
             var p = dot - 1
             var hasDigitBefore = false
@@ -594,7 +598,7 @@ class CoreTelemetryService(
                 if (text[p] in '0'..'9') hasDigitBefore = true
                 p--
             }
-            return hasDigitBefore && (p < segStart || !CoreTelemetryScanners.isAsciiWordChar(text[p]))
+            return if (hasDigitBefore && (p < segStart || !CoreTelemetryScanners.isAsciiWordChar(text[p]))) p else -2
         }
 
         private fun isSourceLineReference(text: String, extStart: Int, extEnd: Int): Boolean {

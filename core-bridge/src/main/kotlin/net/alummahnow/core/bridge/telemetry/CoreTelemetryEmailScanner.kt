@@ -191,7 +191,7 @@ internal object CoreTelemetryEmailScanner {
         val quotedEnd = matchQuotedEmail(text, i, copied, quoteCache)
         if (quotedEnd > 0) return i to quotedEnd
         val atLen = emailAtLength(text, i)
-        if (atLen == 0) return null
+        if (atLen == 0 || (i > copied && text[i - 1] == '/')) return null
         val domEnd = findEmailDomainEnd(text, i + atLen)
         val localStart = if (domEnd > 0) scanEmailLocalStart(text, i, copied) else i
         return if (domEnd > 0 && localStart < i) localStart to domEnd else null

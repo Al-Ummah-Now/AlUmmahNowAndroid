@@ -128,13 +128,17 @@ class CoreTelemetryQuotedEscapedTest {
             "open failed after 3.14 seconds" to "open failed after 3.14 seconds",
             "failed file:/Users/alice/secret.txt" to "failed [redacted-path]",
             "{\"uri\":\"file:\\/Users\\/alice\\/secret.txt\",\"ok\":true}" to
-                "{\"uri\":\"[redacted-path]\",\"ok\":true}"
+                "{\"uri\":\"[redacted-path]\",\"ok\":true}",
+            "https://registry.npmjs.org/@angular/core" to "https://registry.npmjs.org/@angular/core",
+            "https://registry.npmjs.org/%40angular/core" to "https://registry.npmjs.org/%40angular/core"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
         val repeatedSlackHosts = "https://hooks.slack.com" + "/https://hooks.slack.com".repeat(2000) + "/x"
         assertEquals(repeatedSlackHosts, CoreTelemetryService.sanitizeLocalPaths(repeatedSlackHosts))
+        val dottedNumbers = "read " + "1.".repeat(20_000) + "1"
+        assertEquals(dottedNumbers, CoreTelemetryService.sanitizeLocalPaths(dottedNumbers))
         val props = CoreTelemetryService.serializeProperties(
             mapOf("X-API-Key" to "apiSecret789", "X-Auth-Token" to "authTok999", "screen" to "home")
         )
