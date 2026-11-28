@@ -16,7 +16,25 @@ private val percentEncodedUrlRegex = Regex(
 
 private val multiWordSensitiveSegments = setOf(
     "fullname", "displayname", "firstname", "lastname", "givenname", "familyname",
-    "address", "street", "streetaddress", "homeaddress", "passphrase", "pass", "password", "passwd"
+    "username", "login", "address", "street", "streetaddress", "homeaddress",
+    "passphrase", "pass", "password", "passwd", "pwd",
+    "phone", "phonenumber", "mobile", "tel", "telephone",
+    "card", "creditcard", "iban", "ssn", "dob", "birthdate", "dateofbirth", "passport"
+)
+
+private val windowsDriveRelativePathRegex = Regex(
+    """(?<![A-Za-z0-9_:])[A-Za-z]:(?![/\\])(?!\d+:\d+)[A-Za-z_.][A-Za-z0-9_.\\/-]+"""
+)
+
+private val spaceDelimitedCredentialRegex = Regex(
+    """(?<![A-Za-z0-9_])((?:api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|""" +
+        """auth[_-]?token|session[_-]?token|security[_-]?token|client[_-]?secret|private[_-]?key|""" +
+        """secret[_-]?key|access[_-]?key|verification[_-]?code|auth[_-]?code|recovery[_-]?code|""" +
+        """passphrase|password|passwd|passcode|credential|credentials|token|secret|jwt|otp|pin|pwd)[ \t]+)""" +
+        """(?!\[redacted(?:-[a-z]+)?\])(?!"\[redacted\]")""" +
+        """(?:\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|""" +
+        """\u201C[^\u201D\r\n]*\u201D|\u2018[^\u2019\r\n]*\u2019|[^\s,;}\]"'=:\u201C\u201D\u2018\u2019]+)""",
+    RegexOption.IGNORE_CASE
 )
 
 private val multiWordValueRegex = Regex(
@@ -217,8 +235,10 @@ internal object CoreTelemetryPropertySanitizer {
         var safe = CoreTelemetryService.sanitizeLocalPaths(pre)
         safe = scrubUnquotedMultiWordSensitiveValues(safe, false, ::decodeJsonUnicodeEscapes, ::splitKeySegments)
         safe = scrubSensitiveKeyValues(safe, false)
+        safe = spaceDelimitedCredentialRegex.replace(safe, "$1[redacted]")
         safe = ipv6InKeyRegex.replace(safe, "[redacted-ip]")
         safe = ipv4InKeyRegex.replace(safe, "[redacted-ip]")
+        safe = windowsDriveRelativePathRegex.replace(safe, "[redacted-path]")
         safe = phoneInKeyRegex.replace(safe) { m ->
             if (isRedactedPhoneMatch(m.value)) "[redacted-phone]" else m.value
         }
