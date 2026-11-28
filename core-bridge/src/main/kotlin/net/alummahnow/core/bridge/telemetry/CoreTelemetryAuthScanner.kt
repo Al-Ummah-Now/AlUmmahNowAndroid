@@ -8,8 +8,7 @@ import java.nio.charset.StandardCharsets
  * Linear O(n) auth-header scanner (plain text, JSON escaped keys, arrays) and RFC 7617 Basic / Bearer redactor.
  */
 internal object CoreTelemetryAuthScanner {
-    private const val MAX_QUOTED_KEY_RAW_LEN = 256
-    private const val MAX_AUTH_KEY_LEN = 64
+    private const val MAX_AUTH_KEY_LEN = 19
     private const val HEX_ESCAPE_LEN = 6
     private const val BASE64_CHUNK_LEN = 4
     private const val BASE64_PAD_TWO = 2
@@ -102,6 +101,7 @@ internal object CoreTelemetryAuthScanner {
     }
 
     private fun scanAuthHeaders(text: String, maxDepth: Int, builder: HeaderBuilder) {
+        builder.jsonCache.allowTrailingProse = maxDepth < 4
         var i = 0
         while (i < text.length) {
             val keyMatch = matchAuthHeaderKey(text, i, builder.jsonCache)
@@ -122,6 +122,7 @@ internal object CoreTelemetryAuthScanner {
             val escEnd = CoreTelemetryAuthEscapedHelpers.tryRedactEscapedQuotedAuthHeader(
                 text,
                 pos,
+                builder.jsonCache,
                 builder::appendRedacted,
                 ::redactAuthValueBody
             )
@@ -278,60 +279,58 @@ internal object CoreTelemetryAuthScanner {
     }
 
     private fun scanQuotedAuthKey(text: String, pos: Int, quote: Char): QuotedKeyResult? {
-        val limit = minOf(text.length, pos + MAX_QUOTED_KEY_RAW_LEN)
-        val decoded = StringBuilder(MAX_AUTH_KEY_LEN + 1)
+        val core = StringBuilder(MAX_AUTH_KEY_LEN + 1)
         var j = pos + 1
+        var sawTrailingPad = false
+        var sawPad = false
         var sawEscape = false
         var hasInvalidJsonEscape = false
-        var result: QuotedKeyResult? = null
-        var failed = false
-        while (j < limit && result == null && !failed) {
+        while (j < text.length) {
             val ch = text[j]
-            when {
-                ch.code < ASCII_SPACE -> failed = true
-                ch == quote -> {
-                    val canonical = canonicalAuthKeyName(decoded.toString())
-                    if (canonical != null) {
-                        result = QuotedKeyResult(j + 1, canonical, sawEscape, hasInvalidJsonEscape)
-                    } else {
-                        failed = true
-                    }
-                }
-                decoded.length >= MAX_AUTH_KEY_LEN -> failed = true
-                else -> {
-                    val (step, validEsc) = appendDecodedKeyChar(text, j, decoded)
-                    if (ch == '\\') {
-                        sawEscape = true
-                        if (!validEsc) hasInvalidJsonEscape = true
-                    }
-                    if (step < 0) failed = true else j += step
+            if (ch.code < ASCII_SPACE && ch != '\t') return null
+            if (ch == quote) {
+                return canonicalAuthKeyName(core.toString())?.let {
+                    QuotedKeyResult(j + 1, it, sawEscape && !sawPad, hasInvalidJsonEscape)
                 }
             }
+            val (decodedChar, step, validEsc) = decodeQuotedKeyChar(text, j)
+            if (ch == '\\') {
+                sawEscape = true
+                if (!validEsc) hasInvalidJsonEscape = true
+            }
+            if (step < 0 || !appendTrimmedKeyChar(decodedChar, core, sawTrailingPad)) return null
+            if (isHorizPad(decodedChar)) {
+                sawPad = true
+                if (core.isNotEmpty()) sawTrailingPad = true
+            }
+            j += step
         }
-        return result
+        return null
+    }
+
+    private fun isHorizPad(ch: Char): Boolean = ch == ' ' || ch == '\t'
+
+    private fun appendTrimmedKeyChar(ch: Char, core: StringBuilder, sawTrailingPad: Boolean): Boolean {
+        if (isHorizPad(ch)) return true
+        if (sawTrailingPad || core.length >= MAX_AUTH_KEY_LEN) return false
+        core.append(ch)
+        return true
     }
 
     private fun canonicalAuthKeyName(key: String): String? =
         CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(key)
 
-    private fun appendDecodedKeyChar(text: String, pos: Int, out: StringBuilder): Pair<Int, Boolean> {
+    private fun decodeQuotedKeyChar(text: String, pos: Int): Triple<Char, Int, Boolean> {
         val ch = text[pos]
-        if (ch != '\\') {
-            out.append(ch)
-            return 1 to true
-        }
-        if (pos + 1 >= text.length) return -1 to false
+        if (ch != '\\') return Triple(ch, 1, true)
+        if (pos + 1 >= text.length) return Triple('\u0000', -1, false)
         val next = text[pos + 1]
         if (next == 'u' && pos + HEX_ESCAPE_LEN <= text.length) {
             val hex = parseHex4(text, pos + 2)
-            if (hex >= 0) {
-                out.append(hex.toChar())
-                return HEX_ESCAPE_LEN to true
-            }
+            if (hex >= 0) return Triple(hex.toChar(), HEX_ESCAPE_LEN, true)
         }
         val (decodedChar, validJson) = CoreTelemetryAuthEscapedHelpers.decodeSimpleJsonEscape(next)
-        out.append(decodedChar)
-        return 2 to validJson
+        return Triple(decodedChar, 2, validJson)
     }
 
     private fun parseHex4(text: String, pos: Int): Int {

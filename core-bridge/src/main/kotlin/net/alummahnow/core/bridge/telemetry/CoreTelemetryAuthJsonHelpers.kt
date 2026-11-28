@@ -14,6 +14,8 @@ internal object CoreTelemetryAuthJsonHelpers {
         val memberCommaOpen = HashMap<Int, Int>()
         val arrayCommaOpen = HashMap<Int, Int>()
         val containerAuthState = HashMap<Int, Int>()
+        val escapedContainerEnd = HashMap<Int, Int>()
+        var allowTrailingProse = false
         var failedContainerBack = -1
     }
 
@@ -138,7 +140,14 @@ internal object CoreTelemetryAuthJsonHelpers {
         if (endPos <= curOpen) return Int.MIN_VALUE
         val parentOpen = findParentJsonContainerOpen(text, curOpen, cache)
         if (parentOpen >= 0) return -(parentOpen + 2)
-        return if (reachesLineOrTextEnd(text, endPos)) 0 else endPos
+        val hasPrefix = hasSameLineNonWhitespaceBefore(text, curOpen)
+        return if (cache.allowTrailingProse || reachesLineOrTextEnd(text, endPos) || hasPrefix) 0 else endPos
+    }
+
+    private fun hasSameLineNonWhitespaceBefore(text: String, pos: Int): Boolean {
+        var p = pos - 1
+        while (p >= 0 && isHorizSpace(text[p])) p--
+        return p >= 0 && !isNewline(text[p])
     }
 
     private fun reachesLineOrTextEnd(text: String, start: Int): Boolean {
