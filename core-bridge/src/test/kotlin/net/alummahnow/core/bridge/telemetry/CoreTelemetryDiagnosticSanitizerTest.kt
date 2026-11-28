@@ -2,6 +2,7 @@ package net.alummahnow.core.bridge.telemetry
 
 import java.io.IOException
 import java.util.Base64
+import java.util.concurrent.locks.ReentrantLock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -90,5 +91,38 @@ class CoreTelemetryDiagnosticSanitizerTest {
         }
         assertEquals("en", sanitizeLocaleTag("/Users/Ada/Private.mov"))
         assertEquals("ar-SA", sanitizeLocaleTag("ar-SA"))
+    }
+
+    @Test
+    fun `tryLockUninterruptibly acquires lock and preserves interrupt status on interrupted threads`() {
+        val lock = ReentrantLock()
+        var acquiredUncontended = false
+        var remainedInterrupted = false
+        val worker = Thread {
+            Thread.currentThread().interrupt()
+            acquiredUncontended = CoreTelemetryService.tryLockUninterruptibly(lock, 250L)
+            if (acquiredUncontended) lock.unlock()
+            remainedInterrupted = Thread.currentThread().isInterrupted
+        }
+        worker.start()
+        worker.join(5_000)
+        assertTrue(acquiredUncontended)
+        assertTrue(remainedInterrupted)
+
+        lock.lock()
+        var acquiredContended = false
+        var contendedInterrupted = false
+        val contendedWorker = Thread {
+            Thread.currentThread().interrupt()
+            acquiredContended = CoreTelemetryService.tryLockUninterruptibly(lock, 500L)
+            if (acquiredContended) lock.unlock()
+            contendedInterrupted = Thread.currentThread().isInterrupted
+        }
+        contendedWorker.start()
+        Thread.sleep(50)
+        lock.unlock()
+        contendedWorker.join(5_000)
+        assertTrue(acquiredContended)
+        assertTrue(contendedInterrupted)
     }
 }

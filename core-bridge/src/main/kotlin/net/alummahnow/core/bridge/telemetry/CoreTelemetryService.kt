@@ -293,7 +293,7 @@ class CoreTelemetryService(
         if (fastConsent == TelemetryConsent.OFF || gate.isHeldByCurrentThread) return
         val captureEpoch = tryCaptureCrashEpochBounded() ?: return
         val report = buildSanitizedCrashReport(kind, message, stack, fromPreviousSession = false)
-        if (!gate.tryLock(CRASH_LOCK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) return
+        if (!tryLockUninterruptibly(CRASH_LOCK_TIMEOUT_MS)) return
         try {
             if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
             client.reportCrash(report)
@@ -306,13 +306,16 @@ class CoreTelemetryService(
     }
 
     private fun tryCaptureCrashEpochBounded(): Long? {
-        if (!gate.tryLock(CRASH_LOCK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) return null
+        if (!tryLockUninterruptibly(CRASH_LOCK_TIMEOUT_MS)) return null
         return try {
             if (isActiveConsentLocked(requiresFull = false)) consentEpoch else null
         } finally {
             gate.unlock()
         }
     }
+
+    private fun tryLockUninterruptibly(timeoutMs: Long): Boolean =
+        tryLockUninterruptibly(gate, timeoutMs)
 
     override fun persist() {
         gate.withLock {
@@ -597,6 +600,25 @@ class CoreTelemetryService(
         private const val MAX_CRASH_STACK_FRAMES = 128
         private const val MAX_CRASH_STACK_CHARS = 16_384
         private const val CRASH_LOCK_TIMEOUT_MS = 250L
+
+        internal fun tryLockUninterruptibly(lock: ReentrantLock, timeoutMs: Long): Boolean {
+            if (lock.tryLock()) return true
+            val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+            var interrupted = Thread.interrupted()
+            try {
+                while (true) {
+                    val remainingNs = deadline - System.nanoTime()
+                    if (remainingNs <= 0L) return false
+                    try {
+                        return lock.tryLock(remainingNs, TimeUnit.NANOSECONDS)
+                    } catch (_: InterruptedException) {
+                        interrupted = true
+                    }
+                }
+            } finally {
+                if (interrupted) Thread.currentThread().interrupt()
+            }
+        }
 
         fun installUncaughtExceptionHandler(service: TelemetryService) {
             synchronized(crashHandlerLock) {

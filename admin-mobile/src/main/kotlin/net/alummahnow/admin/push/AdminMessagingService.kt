@@ -19,6 +19,7 @@ class AdminMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        (application as? AdminApplication)?.container
         AdminNotifications.handle(this, message.data, message.notification?.title, message.notification?.body)
     }
 }
