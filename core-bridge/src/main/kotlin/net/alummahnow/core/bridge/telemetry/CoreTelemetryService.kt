@@ -1055,13 +1055,8 @@ class CoreTelemetryService(
             return sb.toString()
         }
 
-        private fun isAuthHeaderPropertyKey(key: String): Boolean {
-            val trimmed = key.trim()
-            return trimmed.equals("authorization", ignoreCase = true) ||
-                trimmed.equals("proxy-authorization", ignoreCase = true) ||
-                trimmed.equals("cookie", ignoreCase = true) ||
-                trimmed.equals("set-cookie", ignoreCase = true)
-        }
+        private fun isAuthHeaderPropertyKey(key: String): Boolean =
+            CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(key.trim()) != null
 
         private fun resolveUniquePropertyKey(
             usedKeys: MutableSet<String>,

@@ -233,7 +233,10 @@ internal object CoreTelemetryScanners {
         if (pos >= text.length || text[pos] != ':') return pos
         var p = pos + 1
         while (p < text.length && text[p] in '0'..'9') p++
-        return if (p > pos + 1) p else null
+        if (p > pos + 1 || p == text.length) return p
+        val ch = text[p]
+        val emptyPortOk = ch == '/' || ch == '?' || ch == '#' || isUrlEndBoundary(text, p)
+        return if (emptyPortOk) p else null
     }
 
     fun scanUrlPath(text: String, start: Int): Pair<Int, Boolean> {

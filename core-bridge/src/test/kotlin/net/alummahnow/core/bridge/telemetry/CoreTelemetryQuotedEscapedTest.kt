@@ -72,7 +72,21 @@ class CoreTelemetryQuotedEscapedTest {
             "{\"\\u0063ookie\":\"firstSecret\",\"Cookie\":\"secondSecret\"}" to
                 "{\"cookie\":\"[redacted]\",\"Cookie\":\"[redacted]\"}",
             "{\\\"\tCookie\t\\\":\\\"opaqueSecret123\\\"}" to "{\\\"\tCookie\t\\\":\\\"[redacted]\\\"}",
-            "[[\\\"Authorization\\\",\\\"opaqueSecret123\\\"\\n]]" to "[[\\\"Authorization\\\",\\\"[redacted]\\\"\\n]]",
+            "[[\\\"Authorization\\\",\\\"opaqueSecret123\\\"\\n]]" to "[[\\\"Authorization\\\",\\\"[redacted]\\\"\\n]]"
+        )
+        for ((input, expected) in cases) {
+            assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
+        }
+        assertTrue(!CoreTelemetryService.sanitizeLocalPaths("{\"\tCookie\t\":\"opaqueSecret123\"}").contains("opaqueSecret123"))
+        val malformedEscaped = "{\\\"Authorization\\\":[" + "{,".repeat(2000) + "]"
+        assertTrue(CoreTelemetryService.sanitizeLocalPaths(malformedEscaped).startsWith("{\\\"Authorization\\\":[\\\"[redacted]\\\""))
+        val repeatedVaultPrefix = "\u001EAUNURLx ".repeat(5000) + "https://example/path"
+        assertEquals(repeatedVaultPrefix, CoreTelemetryService.sanitizeLocalPaths(repeatedVaultPrefix))
+    }
+
+    @Test
+    fun `sanitizeLocalPaths redacts Slack dot-segments API keys content URIs and preserves path colons and empty ports`() {
+        val cases = listOf(
             "https://hooks.slack.com/./services/T000/B000/fakeWebhookSecret" to
                 "https://hooks.slack.com/./services/[redacted]",
             "https://hooks.slack.com/a/../services/T000/B000/fakeWebhookSecret" to
@@ -96,17 +110,26 @@ class CoreTelemetryQuotedEscapedTest {
                 ) to
                 "{\"uri\":\"[redacted-path]\",\"ok\":true}",
             "https://proxy.example.com/https://hooks.slack.com/./services/T000/B000/fakeWebhookSecret" to
-                "https://proxy.example.com/https://hooks.slack.com/./services/[redacted]"
+                "https://proxy.example.com/https://hooks.slack.com/./services/[redacted]",
+            "X-API-Key: secret123" to "X-API-Key: [redacted]",
+            "Api-Key: secret123" to "Api-Key: [redacted]",
+            "X-Auth-Token: secret123" to "X-Auth-Token: [redacted]",
+            "X-Access-Token: secret123" to "X-Access-Token: [redacted]",
+            "{\"X-API-Key\":\"secret123\",\"Api-Key\":\"secret456\",\"X-Auth-Token\":\"tok789\"}" to
+                "{\"X-API-Key\":\"[redacted]\",\"Api-Key\":\"[redacted]\",\"X-Auth-Token\":\"[redacted]\"}",
+            "https://example.com:/api?token=secret123" to "https://example.com:/api?[redacted]",
+            "https://example.com:?token=secret123" to "https://example.com:?[redacted]",
+            "https://example.com:#secret123" to "https://example.com:#[redacted]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
         }
-        assertTrue(!CoreTelemetryService.sanitizeLocalPaths("{\"\tCookie\t\":\"opaqueSecret123\"}").contains("opaqueSecret123"))
-        val malformedEscaped = "{\\\"Authorization\\\":[" + "{,".repeat(2000) + "]"
-        assertTrue(CoreTelemetryService.sanitizeLocalPaths(malformedEscaped).startsWith("{\\\"Authorization\\\":[\\\"[redacted]\\\""))
-        val repeatedVaultPrefix = "\u001EAUNURLx ".repeat(5000) + "https://example/path"
-        assertEquals(repeatedVaultPrefix, CoreTelemetryService.sanitizeLocalPaths(repeatedVaultPrefix))
         val repeatedSlackHosts = "https://hooks.slack.com" + "/https://hooks.slack.com".repeat(2000) + "/x"
         assertEquals(repeatedSlackHosts, CoreTelemetryService.sanitizeLocalPaths(repeatedSlackHosts))
+        val props = CoreTelemetryService.serializeProperties(
+            mapOf("X-API-Key" to "apiSecret789", "X-Auth-Token" to "authTok999", "screen" to "home")
+        )
+        assertTrue(props != null && !props.contains("apiSecret789") && !props.contains("authTok999"))
+        assertTrue(props!!.contains("\"X-API-Key\":\"[redacted]\"") && props.contains("\"X-Auth-Token\":\"[redacted]\""))
     }
 }

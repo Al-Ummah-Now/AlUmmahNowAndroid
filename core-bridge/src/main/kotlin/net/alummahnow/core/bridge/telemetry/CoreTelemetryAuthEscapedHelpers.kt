@@ -12,13 +12,21 @@ internal object CoreTelemetryAuthEscapedHelpers {
 
     private data class ContainerFrame(val openPos: Int, val expectedClose: Char)
 
+    private val canonicalAuthHeaders = setOf(
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "api-key",
+        "x-auth-token",
+        "x-access-token",
+        "x-api-token"
+    )
+
     fun matchCanonicalAuthHeaderName(raw: String): String? {
         val trimmed = raw.trim { it == ' ' || it == '\t' }
-        val isAuthHeader = trimmed.equals("authorization", ignoreCase = true) ||
-            trimmed.equals("proxy-authorization", ignoreCase = true) ||
-            trimmed.equals("cookie", ignoreCase = true) ||
-            trimmed.equals("set-cookie", ignoreCase = true)
-        return if (isAuthHeader) trimmed else null
+        return if (trimmed.lowercase(java.util.Locale.ROOT) in canonicalAuthHeaders) trimmed else null
     }
 
     fun decodeSimpleJsonEscape(next: Char): Pair<Char, Boolean> = when (next) {

@@ -217,7 +217,17 @@ internal object CoreTelemetryAuthScanner {
         return redactAuthHeaderValue(text, valStart, AuthValueContext(true, false, -1), builder)
     }
 
-    private val unquotedAuthHeaders = listOf("proxy-authorization", "authorization", "set-cookie", "cookie")
+    private val unquotedAuthHeaders = listOf(
+        "proxy-authorization",
+        "authorization",
+        "set-cookie",
+        "cookie",
+        "x-api-key",
+        "api-key",
+        "x-auth-token",
+        "x-access-token",
+        "x-api-token"
+    )
 
     private fun matchAuthHeaderKey(
         text: String,
