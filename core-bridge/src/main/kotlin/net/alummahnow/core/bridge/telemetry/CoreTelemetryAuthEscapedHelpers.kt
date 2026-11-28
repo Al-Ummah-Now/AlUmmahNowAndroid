@@ -6,23 +6,46 @@ package net.alummahnow.core.bridge.telemetry
  */
 @Suppress("TooManyFunctions")
 internal object CoreTelemetryAuthEscapedHelpers {
-    private const val MAX_AUTH_KEY_LEN = 19
+    const val MAX_AUTH_KEY_LEN = 23
     private const val HEX_ESCAPE_LEN = 6
     private const val ASCII_SPACE = 0x20
 
     private data class ContainerFrame(val openPos: Int, val expectedClose: Char)
 
-    private val canonicalAuthHeaders = setOf(
-        "authorization",
+    private val jwtTokenRegex = Regex("""\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]*)?""")
+
+    fun redactJwtTokens(text: String): String =
+        if (text.contains("eyJ")) jwtTokenRegex.replace(text, "[redacted]") else text
+
+    val unquotedAuthHeaders = listOf(
+        "authorization-signature",
+        "authorizationsignature",
         "proxy-authorization",
-        "cookie",
+        "authorization",
         "set-cookie",
+        "cookie",
         "x-api-key",
         "api-key",
+        "api_key",
         "x-auth-token",
         "x-access-token",
-        "x-api-token"
+        "x-api-token",
+        "auth_token",
+        "api_token",
+        "access_token",
+        "access-token",
+        "refresh_token",
+        "refresh-token",
+        "id_token",
+        "id-token",
+        "code_verifier",
+        "code-verifier",
+        "client_secret",
+        "client-secret",
+        "password"
     )
+
+    private val canonicalAuthHeaders = unquotedAuthHeaders.toSet()
 
     fun matchCanonicalAuthHeaderName(raw: String): String? {
         val trimmed = raw.trim { it == ' ' || it == '\t' }

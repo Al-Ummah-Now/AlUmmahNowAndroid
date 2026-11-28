@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets
  * Linear O(n) auth-header scanner (plain text, JSON escaped keys, arrays) and RFC 7617 Basic / Bearer redactor.
  */
 internal object CoreTelemetryAuthScanner {
-    private const val MAX_AUTH_KEY_LEN = 19
+    private const val MAX_AUTH_KEY_LEN = CoreTelemetryAuthEscapedHelpers.MAX_AUTH_KEY_LEN
     private const val HEX_ESCAPE_LEN = 6
     private const val BASE64_CHUNK_LEN = 4
     private const val BASE64_PAD_TWO = 2
@@ -60,7 +60,8 @@ internal object CoreTelemetryAuthScanner {
             ::isBasicCredentialToken
         )
         val bearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactBearerTokens(basicScrubbed)
-        return CoreTelemetryQuotedAuthHelpers.redactEscapedBearerInBalancedQuotes(bearerScrubbed)
+        val escapedBearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBearerInBalancedQuotes(bearerScrubbed)
+        return CoreTelemetryAuthEscapedHelpers.redactJwtTokens(escapedBearerScrubbed)
     }
 
     private data class AuthValueContext(
@@ -209,18 +210,6 @@ internal object CoreTelemetryAuthScanner {
         return redactAuthHeaderValue(text, valStart, AuthValueContext(true, false, -1), builder)
     }
 
-    private val unquotedAuthHeaders = listOf(
-        "proxy-authorization",
-        "authorization",
-        "set-cookie",
-        "cookie",
-        "x-api-key",
-        "api-key",
-        "x-auth-token",
-        "x-access-token",
-        "x-api-token"
-    )
-
     private fun matchAuthHeaderKey(
         text: String,
         pos: Int,
@@ -229,7 +218,9 @@ internal object CoreTelemetryAuthScanner {
         val ch = text[pos]
         if (ch == '"' || ch == '\'') return matchQuotedAuthKey(text, pos, ch, cache)
         if (pos > 0 && isAuthKeyWordChar(text[pos - 1])) return null
-        val matched = unquotedAuthHeaders.firstOrNull { matchesUnquotedKey(text, pos, it, it.length) }
+        val matched = CoreTelemetryAuthEscapedHelpers.unquotedAuthHeaders.firstOrNull {
+            matchesUnquotedKey(text, pos, it, it.length)
+        }
         return matched?.let { AuthKeyMatch(pos, pos + it.length, false, false, false, -1, null) }
     }
 

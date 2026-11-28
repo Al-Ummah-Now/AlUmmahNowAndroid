@@ -65,6 +65,7 @@ class CoreTelemetryService(
     private val _lastPurgeFailedFlow = MutableStateFlow(false)
     private var inFlightFlushes: Int = 0
     private var consentEpoch: Long = 0L
+    private var analyticsEpoch: Long = 0L
     private var revokedFlushesRemaining: Int = 0
     private var clientClosed: Boolean = false
     private val flushJobs = mutableSetOf<Job>()
@@ -127,6 +128,9 @@ class CoreTelemetryService(
                     try {
                         _lastPurgeFailedFlow.value = false
                         client.setConsent(mapped)
+                        if (_consent == TelemetryConsent.FULL && consent != TelemetryConsent.FULL) {
+                            analyticsEpoch++
+                        }
                         _consent = consent
                         revoked = false
                         true
@@ -151,6 +155,7 @@ class CoreTelemetryService(
         _consent = TelemetryConsent.OFF
         revoked = true
         consentEpoch++
+        analyticsEpoch++
         revokedFlushesRemaining = inFlightFlushes
         val jobsToCancel = flushJobs.toList()
         flushJobs.clear()
@@ -173,14 +178,15 @@ class CoreTelemetryService(
     private fun isActiveConsentLocked(requiresFull: Boolean, expectedEpoch: Long? = null): Boolean {
         val open = !closed && !clientClosed
         val allowed = if (requiresFull) _consent == TelemetryConsent.FULL else _consent != TelemetryConsent.OFF
-        return open && allowed && (expectedEpoch == null || consentEpoch == expectedEpoch)
+        val activeEpoch = if (requiresFull) analyticsEpoch else consentEpoch
+        return open && allowed && (expectedEpoch == null || activeEpoch == expectedEpoch)
     }
 
     override fun track(name: String, properties: Map<String, Any?>) {
         if (name.isBlank()) return
         val captureEpoch = synchronized(gate) {
             if (!isActiveConsentLocked(requiresFull = true)) return
-            consentEpoch
+            analyticsEpoch
         }
         val safeName = sanitizeLocalPaths(name)
         if (safeName.isBlank()) return
@@ -199,7 +205,7 @@ class CoreTelemetryService(
         if (code.isBlank()) return
         val captureEpoch = synchronized(gate) {
             if (!isActiveConsentLocked(requiresFull = true)) return
-            consentEpoch
+            analyticsEpoch
         }
         val safeCode = sanitizeLocalPaths(code)
         if (safeCode.isBlank()) return

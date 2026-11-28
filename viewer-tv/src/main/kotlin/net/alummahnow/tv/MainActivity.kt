@@ -20,13 +20,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunClient
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
@@ -59,11 +63,23 @@ class MainActivity : ComponentActivity() {
                     add(stringResource(DesignR.string.aun_diagnostics_purge_warning))
                 }
             }.takeIf { it.isNotEmpty() }?.joinToString("\n")
+            val scope = rememberCoroutineScope()
             LaunchedEffect(telemetryEnabledPref) {
                 if (telemetryEnabledPref) telemetry.flush()
             }
-            DisposableEffect(Unit) {
-                onDispose { telemetry.persist() }
+            DisposableEffect(this@MainActivity) {
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_RESUME -> scope.launch { telemetry.flush() }
+                        Lifecycle.Event.ON_STOP -> telemetry.persist()
+                        else -> Unit
+                    }
+                }
+                this@MainActivity.lifecycle.addObserver(observer)
+                onDispose {
+                    this@MainActivity.lifecycle.removeObserver(observer)
+                    telemetry.persist()
+                }
             }
             TvApp(
                 telemetryEnabled = telemetryEnabled,

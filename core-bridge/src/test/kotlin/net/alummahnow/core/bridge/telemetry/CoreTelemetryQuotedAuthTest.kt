@@ -56,6 +56,20 @@ class CoreTelemetryQuotedAuthTest {
             """{"msg":"Bearer [redacted]\" next"}""",
             CoreTelemetryService.sanitizeLocalPaths("""{"msg":"Bearer opaqueSecret123\" next"}""")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths scrubs OAuth keys JWTs empty-port Slack webhooks and long protocol versions`() {
+        assertEquals(
+            """{"refresh_token":"[redacted]","access_token":"[redacted]","id_token":"[redacted]"}""",
+            CoreTelemetryService.sanitizeLocalPaths(
+                """{"refresh_token":"opaqueSecret123","access_token":"accSecret456","id_token":"idSecret789"}"""
+            )
+        )
+        assertEquals(
+            "jwt=[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.sigSecret")
+        )
         assertEquals(
             "https://hooks.slack.com:/services/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://hooks.slack.com:/services/T000/B000/Canary")

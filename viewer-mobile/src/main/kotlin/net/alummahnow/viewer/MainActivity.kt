@@ -34,6 +34,8 @@ import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
@@ -225,8 +227,11 @@ internal fun ViewerNavHost(
     LaunchedEffect(telemetryEnabled) {
         if (telemetryEnabled) container.telemetry.flush()
     }
-    DisposableEffect(Unit) {
-        onDispose { container.telemetry.persist() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (telemetryEnabled) scope.launch { container.telemetry.flush() }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        container.telemetry.persist()
     }
     val openPage: (String) -> Unit = { url ->
         if (!openInBrowser(url)) Toast.makeText(context, R.string.settings_no_browser, Toast.LENGTH_SHORT).show()
