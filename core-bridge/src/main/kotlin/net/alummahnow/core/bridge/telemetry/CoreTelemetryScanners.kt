@@ -136,7 +136,7 @@ internal object CoreTelemetryScanners {
         RegexOption.IGNORE_CASE
     )
     private val slackWebhookHostRegex = Regex(
-        """https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?(?=(?:/|%2[fF]))""",
+        """https?://hooks\.slack(?:-gov)?\.com\.?(?::\d*)?(?=(?:/|%2[fF]))""",
         RegexOption.IGNORE_CASE
     )
     private val slackWebhookRouteRegex = Regex(

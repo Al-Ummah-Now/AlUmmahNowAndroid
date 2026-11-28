@@ -169,13 +169,24 @@ class CoreTelemetryService(
         return Pair(!_lastPurgeFailedFlow.value, jobsToCancel)
     }
 
+    /** Must be called while holding [gate]. */
+    private fun isActiveConsentLocked(requiresFull: Boolean, expectedEpoch: Long? = null): Boolean {
+        val open = !closed && !clientClosed
+        val allowed = if (requiresFull) _consent == TelemetryConsent.FULL else _consent != TelemetryConsent.OFF
+        return open && allowed && (expectedEpoch == null || consentEpoch == expectedEpoch)
+    }
+
     override fun track(name: String, properties: Map<String, Any?>) {
-        if (name.isBlank() || consent != TelemetryConsent.FULL) return
+        if (name.isBlank()) return
+        val captureEpoch = synchronized(gate) {
+            if (!isActiveConsentLocked(requiresFull = true)) return
+            consentEpoch
+        }
         val safeName = sanitizeLocalPaths(name)
         if (safeName.isBlank()) return
         val json = serializeProperties(properties)
         synchronized(gate) {
-            if (closed || clientClosed || _consent != TelemetryConsent.FULL) return
+            if (!isActiveConsentLocked(requiresFull = true, expectedEpoch = captureEpoch)) return
             try {
                 client.track(safeName, json)
             } catch (e: AunException) {
@@ -185,12 +196,16 @@ class CoreTelemetryService(
     }
 
     override fun trackError(code: String, properties: Map<String, Any?>) {
-        if (code.isBlank() || consent != TelemetryConsent.FULL) return
+        if (code.isBlank()) return
+        val captureEpoch = synchronized(gate) {
+            if (!isActiveConsentLocked(requiresFull = true)) return
+            consentEpoch
+        }
         val safeCode = sanitizeLocalPaths(code)
         if (safeCode.isBlank()) return
         val json = serializeProperties(properties)
         synchronized(gate) {
-            if (closed || clientClosed || _consent != TelemetryConsent.FULL) return
+            if (!isActiveConsentLocked(requiresFull = true, expectedEpoch = captureEpoch)) return
             try {
                 client.trackError(safeCode, json)
             } catch (e: AunException) {
@@ -200,7 +215,11 @@ class CoreTelemetryService(
     }
 
     override fun addBreadcrumb(category: String, message: String, level: TelemetryBreadcrumbSeverity) {
-        if (category.isBlank() || consent == TelemetryConsent.OFF) return
+        if (category.isBlank()) return
+        val captureEpoch = synchronized(gate) {
+            if (!isActiveConsentLocked(requiresFull = false)) return
+            consentEpoch
+        }
         val mapped = when (level) {
             TelemetryBreadcrumbSeverity.DEBUG -> TelemetryBreadcrumbLevel.DEBUG
             TelemetryBreadcrumbSeverity.INFO -> TelemetryBreadcrumbLevel.INFO
@@ -210,13 +229,16 @@ class CoreTelemetryService(
         val safeCategory = sanitizeLocalPaths(category)
         val safeMessage = sanitizeLocalPaths(message)
         synchronized(gate) {
-            if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
+            if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
             client.addBreadcrumb(safeCategory, safeMessage, mapped)
         }
     }
 
     override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
-        if (consent == TelemetryConsent.OFF) return
+        val captureEpoch = synchronized(gate) {
+            if (!isActiveConsentLocked(requiresFull = false)) return
+            consentEpoch
+        }
         val safeKind = if (kind.isBlank()) "UnhandledException" else sanitizeLocalPaths(kind)
         val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message)
         val safeStack = stack?.let(::sanitizeLocalPaths)
@@ -229,7 +251,7 @@ class CoreTelemetryService(
             propertiesJson = null
         )
         synchronized(gate) {
-            if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
+            if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
             try {
                 client.reportCrash(report)
                 client.persist()
@@ -399,7 +421,7 @@ class CoreTelemetryService(
         private val parenPathRegexes: List<Regex> = listOf(
             Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE),
             Regex(
-                """(\()(?![ \t]*(?:HTTP|TLS|SSL)/\d+(?:\.\d+)*[.,;:!?\s]*\))(?![ \t]*\d+/\d+[.,;:!?\s]*\))""" +
+                """(\()(?![ \t]*(?:HTTP|TLS|SSL)/\d+(?:\.\d+){0,8}[.,;:!?\s]*\))(?![ \t]*\d+/\d+[.,;:!?\s]*\))""" +
                     """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^()\r\n\u001E]+(\))""",
                 RegexOption.IGNORE_CASE
             )
@@ -424,7 +446,7 @@ class CoreTelemetryService(
             ) to "[redacted-path]",
             Regex(
                 """(^|[\s(\[{)\]}<>"'=,:;\u001F])""" +
-                    """(?!(?<!['"])(?:HTTP|TLS|SSL)/\d+(?:\.\d+)*(?:$|[\s(\[{)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
+                    """(?!(?<!['"])(?:HTTP|TLS|SSL)/\d+(?:\.\d+){0,8}(?:$|[\s(\[{)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
                     """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s\p{Zs}"]""" +
                     """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?""",

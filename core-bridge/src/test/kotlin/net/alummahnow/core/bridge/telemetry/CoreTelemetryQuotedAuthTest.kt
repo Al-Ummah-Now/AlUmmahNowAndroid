@@ -56,5 +56,11 @@ class CoreTelemetryQuotedAuthTest {
             """{"msg":"Bearer [redacted]\" next"}""",
             CoreTelemetryService.sanitizeLocalPaths("""{"msg":"Bearer opaqueSecret123\" next"}""")
         )
+        assertEquals(
+            "https://hooks.slack.com:/services/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://hooks.slack.com:/services/T000/B000/Canary")
+        )
+        val longProto = "(HTTP/1" + ".1".repeat(50_000) + "x)"
+        assertEquals("([redacted-path])", CoreTelemetryService.sanitizeLocalPaths(longProto))
     }
 }
