@@ -89,7 +89,8 @@ class DisplaySettingsLinksTest {
                             onLanguage = {},
                             onDismiss = {},
                             onOpenUrl = {},
-                            webHost = "videos.alummahnow.net"
+                            webHost = "videos.alummahnow.net",
+                            onTelemetryChanged = {}
                         )
                     }
                 }
@@ -102,4 +103,10 @@ class DisplaySettingsLinksTest {
 
     @Test
     fun viewerSettingsLinksArLightPhone() = shootSheet("viewer_settings_links_ar_light_phone", "ar", ThemeMode.LIGHT)
+
+    @Test
+    fun viewerSettingsLinksEnLightPhone() = shootSheet("viewer_settings_links_en_light_phone", "en", ThemeMode.LIGHT)
+
+    @Test
+    fun viewerSettingsLinksArDarkPhone() = shootSheet("viewer_settings_links_ar_dark_phone", "ar", ThemeMode.DARK)
 }

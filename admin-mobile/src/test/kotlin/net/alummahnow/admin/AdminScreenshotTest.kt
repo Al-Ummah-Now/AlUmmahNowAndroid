@@ -181,7 +181,8 @@ class AdminScreenshotTest {
             push = PushState.ON,
             onDark = {},
             onLanguage = {},
-            onSignOut = {}
+            onSignOut = {},
+            onTelemetryChanged = {}
         )
     }
 
@@ -247,9 +248,13 @@ class AdminScreenshotTest {
 
     @Test fun notStaffAr() = shoot("not_staff", Lang.AR, ThemeMode.DARK) { NotStaffScreen(onSignOut = {}) }
 
-    @Test fun settingsEn() = shoot("settings", Lang.EN, ThemeMode.LIGHT, content = settings(Lang.EN, ThemeMode.LIGHT))
+    @Test fun settingsEnLight() = shoot("settings", Lang.EN, ThemeMode.LIGHT, content = settings(Lang.EN, ThemeMode.LIGHT))
 
-    @Test fun settingsAr() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK))
+    @Test fun settingsEnDark() = shoot("settings", Lang.EN, ThemeMode.DARK, content = settings(Lang.EN, ThemeMode.DARK))
+
+    @Test fun settingsArLight() = shoot("settings", Lang.AR, ThemeMode.LIGHT, content = settings(Lang.AR, ThemeMode.LIGHT))
+
+    @Test fun settingsArDark() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK))
 
     private companion object {
         val FRAME_KEY = Regex("""review/([^/]+)/r1/frame-(\d+)\.jpg""")
