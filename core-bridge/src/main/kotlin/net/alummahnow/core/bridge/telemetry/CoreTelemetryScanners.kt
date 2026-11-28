@@ -15,6 +15,24 @@ internal val LOCAL_OR_SHARE_URI_PREFIXES = listOf(
     "sftp://", "ftps://", "ftp://", "davs://", "dav://", "webdavs://", "webdav://"
 )
 
+private val urlUserinfoRegex = Regex("""^([a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s?#]+)@""")
+private val oneDriveShareTokenRegex = Regex("""((?:/|%2[fF])s!)[^\s?#]+""", RegexOption.IGNORE_CASE)
+
+private fun skipOptionalUrlUserinfo(text: String, start: Int): Int {
+    var lastAt = -1
+    var q = start
+    while (q < text.length) {
+        val ch = text[q]
+        if (ch == '@') {
+            lastAt = q
+        } else if (ch.isWhitespace() || ch in "/?#\"'<>\\{}\r\n") {
+            break
+        }
+        q++
+    }
+    return if (lastAt > start) lastAt + 1 else start
+}
+
 private fun redactEncodedJoseTokensInUrl(
     url: String,
     decode: (String) -> Pair<String, IntArray>
@@ -106,7 +124,8 @@ internal object CoreTelemetryScanners {
         sep: Int,
         angleStopMask: Int = 3
     ): UrlSpan? {
-        val afterHost = scanUrlHost(text, sep + SCHEME_SEP_LEN) ?: return null
+        val hostStart = skipOptionalUrlUserinfo(text, sep + SCHEME_SEP_LEN)
+        val afterHost = scanUrlHost(text, hostStart) ?: return null
         val afterPort = scanOptionalPort(text, afterHost) ?: return null
         val (baseEnd, truncated) = if (afterPort < text.length && text[afterPort] == '/') {
             scanUrlPath(text, afterPort)
@@ -189,9 +208,11 @@ internal object CoreTelemetryScanners {
     )
 
     fun redactUrlPathSecrets(url: String): String {
-        var result = replaceUrlPathSecret(url, webhookPathTokenRegex)
+        var result = urlUserinfoRegex.replace(url, "$1[redacted]@")
+        result = replaceUrlPathSecret(result, webhookPathTokenRegex)
         result = redactSlackWebhookUrl(result)
         result = replaceUrlPathSecret(result, telegramBotTokenUrlRegex)
+        result = replaceUrlPathSecret(result, oneDriveShareTokenRegex)
         result = replaceUrlPathSecret(result, urlMatrixParamRegex)
         return redactEncodedJoseTokensInUrl(result, ::decodeUrlForPathSecretMatch)
     }

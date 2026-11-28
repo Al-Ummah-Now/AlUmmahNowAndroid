@@ -11,6 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 
 internal object CoreTelemetryPropertySanitizer {
     private const val MIN_PHONE_DIGITS = 9
+    private const val MIN_FORMATTED_PHONE_DIGITS = 8
     private const val MIN_SENSITIVE_INT_MAGNITUDE = 100_000_000L
     private val minSensitiveBigDecimal = BigDecimal.valueOf(MIN_SENSITIVE_INT_MAGNITUDE)
     private val minSensitiveBigInteger = BigInteger.valueOf(MIN_SENSITIVE_INT_MAGNITUDE)
@@ -31,7 +32,10 @@ internal object CoreTelemetryPropertySanitizer {
             """(?![A-Za-z0-9_]|:[0-9a-fA-F])"""
     )
     private val phoneInKeyRegex = Regex(
-        """(?<![A-Za-z0-9_])\+?\p{Nd}[\p{Nd}\s().\p{Pd}]{7,}\p{Nd}(?![A-Za-z0-9_])"""
+        """(?<![A-Za-z0-9_])\+?\p{Nd}[\p{Nd}\p{Zs}\t().\p{Pd}\u2212]{6,}\p{Nd}(?![A-Za-z0-9_])"""
+    )
+    private val isoDateExactRegex = Regex(
+        """^(?:\d{4}[-/.]\d{2}[-/.]\d{2}|\d{2}[-/.]\d{2}[-/.]\d{4})$"""
     )
     private val opaqueSecretInKeyRegex = Regex(
         """(?<![A-Za-z0-9_])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z0-9_])"""
@@ -41,7 +45,7 @@ internal object CoreTelemetryPropertySanitizer {
     )
 
     private val sensitiveSegments = setOf(
-        "token", "secret", "jwt", "bearer", "password", "passwd", "passphrase",
+        "token", "secret", "jwt", "bearer", "password", "passwd", "pwd", "passphrase",
         "credential", "credentials", "otp", "pin", "passcode", "cookie",
         "authorization", "signature", "apikey", "accesskey", "privatekey",
         "secretkey", "sessionid", "sessionkey", "codeverifier",
@@ -50,24 +54,40 @@ internal object CoreTelemetryPropertySanitizer {
     )
 
     private val keyValueCredentialRegex = Regex(
-        """(?<![A-Za-z0-9_])(token|secret|jwt|passphrase|credential|credentials|""" +
+        """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]*[._-])?(?:token|secret|jwt|passphrase|credential|credentials|""" +
             """verification[_-]?code|auth[_-]?code|recovery[_-]?code|passcode|otp|pin|""" +
             """client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|""" +
             """api[_-]?key|api[_-]?token|auth[_-]?token|session[_-]?token|security[_-]?token|""" +
             """private[_-]?key|secret[_-]?key|access[_-]?key|code[_-]?verifier|""" +
-            """session[_-]?id|session[_-]?key|password|passwd)(\s*[=:]\s*)""" +
-            """(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]]+)""",
+            """session[_-]?id|session[_-]?key|password|passwd|pwd)(?:\\?["'])?\s*[=:]\s*)""" +
+            """(?:\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]"']+)""",
         RegexOption.IGNORE_CASE
     )
 
+    private fun isRedactedPhoneMatch(match: String): Boolean {
+        val digits = match.codePoints().filter { Character.isDigit(it) }.count()
+        if (digits >= MIN_PHONE_DIGITS) return true
+        if (digits < MIN_FORMATTED_PHONE_DIGITS || isoDateExactRegex.matches(match)) return false
+        return match.startsWith("+") || match.codePoints().anyMatch(::isPhoneFormatCodePoint)
+    }
+
+    private fun isPhoneFormatCodePoint(cp: Int): Boolean {
+        val type = Character.getType(cp)
+        return cp == '('.code ||
+            cp == ')'.code ||
+            cp == '\u2212'.code ||
+            type == Character.SPACE_SEPARATOR.toInt() ||
+            type == Character.DASH_PUNCTUATION.toInt()
+    }
+
     fun sanitizeDiagnosticText(text: String): String {
-        var safe = CoreTelemetryService.sanitizeLocalPaths(text)
-        safe = keyValueCredentialRegex.replace(safe, "$1$2[redacted]")
+        val pre = keyValueCredentialRegex.replace(text, "$1[redacted]")
+        var safe = CoreTelemetryService.sanitizeLocalPaths(pre)
+        safe = keyValueCredentialRegex.replace(safe, "$1[redacted]")
         safe = ipv6InKeyRegex.replace(safe, "[redacted-ip]")
         safe = ipv4InKeyRegex.replace(safe, "[redacted-ip]")
         safe = phoneInKeyRegex.replace(safe) { m ->
-            val digits = m.value.codePoints().filter { Character.isDigit(it) }.count()
-            if (digits >= MIN_PHONE_DIGITS) "[redacted-phone]" else m.value
+            if (isRedactedPhoneMatch(m.value)) "[redacted-phone]" else m.value
         }
         return safe
     }
@@ -195,9 +215,10 @@ internal object CoreTelemetryPropertySanitizer {
         }
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private fun safeToString(value: Any): String? = try {
         value.toString()
-    } catch (_: RuntimeException) {
+    } catch (_: Exception) {
         null
     }
 

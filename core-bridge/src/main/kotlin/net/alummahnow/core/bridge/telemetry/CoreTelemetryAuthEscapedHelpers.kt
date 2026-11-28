@@ -13,16 +13,17 @@ internal object CoreTelemetryAuthEscapedHelpers {
     private data class ContainerFrame(val openPos: Int, val expectedClose: Char)
 
     private const val MIN_JOSE_HEADER_LEN = 8
+    private const val MAX_JOSE_HEADER_LEN = 8192
 
     val compactJoseTokenRegex = Regex(
-        """(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){1,3}(?![A-Za-z0-9_-])"""
+        """(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,}\.""" +
+            """(?:[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){1,3}|[A-Za-z0-9_-]+\.)(?![A-Za-z0-9_-])"""
     )
 
     fun isCompactJoseToken(token: String): Boolean {
         val dot = token.indexOf('.')
         if (dot < MIN_JOSE_HEADER_LEN) return false
         val header = token.substring(0, dot)
-        if (header.startsWith("eyJ")) return true
         val decoded = decodeBase64UrlPrefix(header) ?: return false
         val trimmed = decoded.trimStart()
         return trimmed.startsWith("{") &&
@@ -35,7 +36,7 @@ internal object CoreTelemetryAuthEscapedHelpers {
     }
 
     private fun decodeBase64UrlPrefix(segment: String): String? {
-        if (segment.length > 512) return null
+        if (segment.length > MAX_JOSE_HEADER_LEN) return null
         return try {
             val std = segment.replace('-', '+').replace('_', '/')
             val pad = (4 - (std.length % 4)) % 4
