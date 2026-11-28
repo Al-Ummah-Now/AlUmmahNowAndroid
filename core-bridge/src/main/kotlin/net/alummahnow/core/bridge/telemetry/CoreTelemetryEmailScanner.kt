@@ -8,8 +8,9 @@ import java.net.URI
 internal object CoreTelemetryEmailScanner {
     private const val ENCODED_AT_LEN = 3
     private const val UNICODE_AT_LEN = 6
+    private const val MAX_IP_LITERAL_LEN = 64
     private const val EMAIL_LOCAL_PUNCT = "._+-/!#$&'*=?^`{|}~"
-    private const val IPV6_FORBIDDEN = "[\"'<>\\{}\r\n"
+    private const val IPV6_FORBIDDEN = "[@\"'<>\\{}\r\n"
     private val LEADING_UNICODE_WRAPPER_CATEGORIES = setOf(
         Character.START_PUNCTUATION,
         Character.INITIAL_QUOTE_PUNCTUATION
@@ -191,8 +192,9 @@ internal object CoreTelemetryEmailScanner {
         val quotedEnd = matchQuotedEmail(text, i, copied, quoteCache)
         if (quotedEnd > 0) return i to quotedEnd
         val atLen = emailAtLength(text, i)
-        if (atLen == 0 || (i > copied && text[i - 1] == '/')) return null
-        val domEnd = findEmailDomainEnd(text, i + atLen)
+        if (atLen == 0) return null
+        val requireDot = i > copied && text[i - 1] == '/'
+        val domEnd = findEmailDomainEnd(text, i + atLen, requireDot)
         val localStart = if (domEnd > 0) scanEmailLocalStart(text, i, copied) else i
         return if (domEnd > 0 && localStart < i) localStart to domEnd else null
     }
@@ -413,8 +415,9 @@ internal object CoreTelemetryEmailScanner {
 
     private fun findIpLiteralDomainEnd(text: String, domStart: Int): Int {
         var close = domStart + 1
-        while (close < text.length && text[close] != ']' && !isForbiddenIpv6Char(text[close])) close++
-        if (close >= text.length || text[close] != ']' || close <= domStart + 1) return -1
+        val maxClose = minOf(text.length, domStart + 1 + MAX_IP_LITERAL_LEN)
+        while (close < maxClose && text[close] != ']' && !isForbiddenIpv6Char(text[close])) close++
+        if (close >= maxClose || text[close] != ']' || close <= domStart + 1) return -1
         val inner = text.substring(domStart + 1, close)
         val valid = if (inner.startsWith("IPv6:", ignoreCase = true)) {
             runCatching { URI("http://[${inner.substring(5)}]") }.isSuccess
@@ -434,17 +437,18 @@ internal object CoreTelemetryEmailScanner {
         }
     }
 
-    private fun findEmailDomainEnd(text: String, domStart: Int): Int =
+    private fun findEmailDomainEnd(text: String, domStart: Int, requireDot: Boolean = false): Int =
         if (domStart < text.length && text[domStart] == '[') {
             findIpLiteralDomainEnd(text, domStart)
         } else {
-            findNamedEmailDomainEnd(text, domStart)
+            findNamedEmailDomainEnd(text, domStart, requireDot)
         }
 
-    private fun findNamedEmailDomainEnd(text: String, domStart: Int): Int {
+    private fun findNamedEmailDomainEnd(text: String, domStart: Int, requireDot: Boolean): Int {
         var k = domStart
         var labelStart = domStart
         var labelHasLetter = false
+        var hasDot = false
         var lastKind = DomainCharKind.OTHER
         var bestEnd = -1
         var done = false
@@ -457,6 +461,7 @@ internal object CoreTelemetryEmailScanner {
                 } else {
                     labelStart = k + step
                     labelHasLetter = false
+                    hasDot = true
                 }
                 DomainCharKind.DIGIT -> Unit
                 DomainCharKind.HYPHEN -> done = k == labelStart
@@ -465,7 +470,8 @@ internal object CoreTelemetryEmailScanner {
             if (!done) {
                 lastKind = kind
                 k += step
-                if (isValidDomainLabelEnd(text, labelStart, k, labelHasLetter, lastKind == DomainCharKind.HYPHEN)) {
+                val allowEnd = !requireDot || hasDot
+                if (allowEnd && isValidDomainLabelEnd(text, labelStart, k, labelHasLetter, lastKind == DomainCharKind.HYPHEN)) {
                     bestEnd = k
                 }
             }

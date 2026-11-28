@@ -488,6 +488,52 @@ class CoreTelemetryServiceTest {
         assertEquals("""{"screen":"home","count":2,"ok":true}""", json)
     }
 
+    @Test
+    fun `sanitizeLocalPaths redacts quoted Bearer Basic slash-local emails and linear IP literals`() {
+        assertEquals(
+            "received Bearer \"[redacted]\" during handshake",
+            CoreTelemetryService.sanitizeLocalPaths("received Bearer \"opaqueSecret123\" during handshake")
+        )
+        assertEquals(
+            "received Bearer '[redacted]' during handshake",
+            CoreTelemetryService.sanitizeLocalPaths("received Bearer 'opaqueSecret123' during handshake")
+        )
+        assertEquals(
+            """{"m":"Basic \"[redacted]\""}""",
+            CoreTelemetryService.sanitizeLocalPaths("""{"m":"Basic \"dXNlcjpwYXNz\""}""")
+        )
+        assertEquals(
+            "received Basic \"[redacted]\" during handshake",
+            CoreTelemetryService.sanitizeLocalPaths("received Basic \"dXNlcjpwYXNz\" during handshake")
+        )
+        assertEquals(
+            "received Basic '[redacted]' during handshake",
+            CoreTelemetryService.sanitizeLocalPaths("received Basic 'dXNlcjpwYXNz' during handshake")
+        )
+        assertEquals(
+            "Bearer \"hello world\"",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer \"hello world\"")
+        )
+        assertEquals(
+            "https://[redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.org/users/alice/@example.com")
+        )
+        assertEquals(
+            "https://[redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.org/users/alice/%40example.com")
+        )
+        assertEquals(
+            "https://registry.npmjs.org/@angular/core",
+            CoreTelemetryService.sanitizeLocalPaths("https://registry.npmjs.org/@angular/core")
+        )
+        assertEquals(
+            "https://registry.npmjs.org/%40angular/core",
+            CoreTelemetryService.sanitizeLocalPaths("https://registry.npmjs.org/%40angular/core")
+        )
+        val repeatedOpen = "x@[".repeat(10_000)
+        assertEquals(repeatedOpen, CoreTelemetryService.sanitizeLocalPaths(repeatedOpen))
+    }
+
     private class FakeFailingSharedPreferences : android.content.SharedPreferences {
         private val data = mutableMapOf<String, Any?>()
         var failNextCommit = false

@@ -23,10 +23,6 @@ internal object CoreTelemetryAuthScanner {
         "Bearer", "Basic", "Digest", "Token", "Api-Key", "ApiKey",
         "OAuth", "Negotiate", "Mutual", "HOBA", "Vapid", "SCRAM-SHA-256", "AWS4-HMAC-SHA256"
     )
-    private val basicTokenRegex = Regex(
-        """\b(Basic)[\s\p{Zs}]+([A-Za-z0-9+/_-]{2,}={0,2})(?![A-Za-z0-9+/_=-])""",
-        RegexOption.IGNORE_CASE
-    )
 
     private class HeaderBuilder(
         private val text: String,
@@ -59,16 +55,9 @@ internal object CoreTelemetryAuthScanner {
         val escapedBearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBearerInBalancedQuotes(bearerScrubbed)
         val escapedBasicScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBasicInBalancedQuotes(
             escapedBearerScrubbed,
-            basicTokenRegex,
             ::isBasicCredentialToken
         )
-        return basicTokenRegex.replace(escapedBasicScrubbed) { match ->
-            if (isBasicCredentialToken(match.groupValues[2])) {
-                "${match.groupValues[1]} [redacted]"
-            } else {
-                match.value
-            }
-        }
+        return CoreTelemetryQuotedAuthHelpers.redactBasicTokens(escapedBasicScrubbed, ::isBasicCredentialToken)
     }
 
     private data class AuthValueContext(
