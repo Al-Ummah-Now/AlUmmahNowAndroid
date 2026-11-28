@@ -41,7 +41,13 @@ class StudioDiagnosticsScreenshotTest {
     @Test
     fun arabicDark() = shoot(StoreLocale.AR, ThemeMode.DARK)
 
-    private fun shoot(locale: StoreLocale, mode: ThemeMode) {
+    @Test
+    fun englishDarkEnabled() = shoot(StoreLocale.EN, ThemeMode.DARK, enabled = true)
+
+    @Test
+    fun arabicDarkEnabled() = shoot(StoreLocale.AR, ThemeMode.DARK, enabled = true)
+
+    private fun shoot(locale: StoreLocale, mode: ThemeMode, enabled: Boolean = false) {
         RuntimeEnvironment.setQualifiers("${locale.qualifier}-w411dp-h891dp-port-xxhdpi")
         val app = RuntimeEnvironment.getApplication()
         Settings.Global.putFloat(app.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
@@ -60,6 +66,7 @@ class StudioDiagnosticsScreenshotTest {
                         onSwitchChannel = {},
                         onDismiss = {},
                         webHost = "videos.alummahnow.net",
+                        telemetryEnabled = enabled,
                         onTelemetryChanged = {}
                     )
                 }
@@ -69,7 +76,8 @@ class StudioDiagnosticsScreenshotTest {
         val full = diagnostics.getUnclippedBoundsInRoot()
         val visible = diagnostics.getBoundsInRoot()
         assertEquals((full.bottom - full.top).value, (visible.bottom - visible.top).value, 1f)
-        val name = "studio_diagnostics_${locale.name.lowercase()}_${mode.name.lowercase()}"
+        val suffix = if (enabled) "_on" else ""
+        val name = "studio_diagnostics_${locale.name.lowercase()}_${mode.name.lowercase()}$suffix"
         compose.onNodeWithTag("account-sheet").captureRoboImage("src/test/screenshots/$name.png")
     }
 }

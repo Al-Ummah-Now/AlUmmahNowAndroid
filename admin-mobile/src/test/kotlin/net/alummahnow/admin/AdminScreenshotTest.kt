@@ -173,7 +173,7 @@ class AdminScreenshotTest {
     }
 
     /** Settings as the frame shows them: its own theme and language selected, alerts on (a release build with push set up). */
-    private fun settings(lang: Lang, mode: ThemeMode) = @Composable {
+    private fun settings(lang: Lang, mode: ThemeMode, enabled: Boolean = false) = @Composable {
         SettingsContent(
             "Fixture Senior".inLang(lang),
             dark = mode == ThemeMode.DARK,
@@ -182,6 +182,7 @@ class AdminScreenshotTest {
             onDark = {},
             onLanguage = {},
             onSignOut = {},
+            telemetryEnabled = enabled,
             onTelemetryChanged = {}
         )
     }
@@ -255,6 +256,12 @@ class AdminScreenshotTest {
     @Test fun settingsArLight() = shoot("settings", Lang.AR, ThemeMode.LIGHT, content = settings(Lang.AR, ThemeMode.LIGHT))
 
     @Test fun settingsArDark() = shoot("settings", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK))
+
+    @Test fun diagnosticsEnDarkEnabled() =
+        shoot("settings_on", Lang.EN, ThemeMode.DARK, content = settings(Lang.EN, ThemeMode.DARK, enabled = true))
+
+    @Test fun diagnosticsArDarkEnabled() =
+        shoot("settings_on", Lang.AR, ThemeMode.DARK, content = settings(Lang.AR, ThemeMode.DARK, enabled = true))
 
     private companion object {
         val FRAME_KEY = Regex("""review/([^/]+)/r1/frame-(\d+)\.jpg""")

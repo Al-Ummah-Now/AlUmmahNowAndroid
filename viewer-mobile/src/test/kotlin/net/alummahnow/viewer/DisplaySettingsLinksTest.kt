@@ -67,7 +67,7 @@ class DisplaySettingsLinksTest {
         )
     }
 
-    private fun shootSheet(name: String, lang: String, mode: ThemeMode) {
+    private fun shootSheet(name: String, lang: String, mode: ThemeMode, enabled: Boolean = false) {
         val dir = if (lang == "ar") "ar-ldrtl" else "en-ldltr"
         RuntimeEnvironment.setQualifiers("$dir-w411dp-h891dp-port-xxhdpi")
         Settings.Global.putFloat(RuntimeEnvironment.getApplication().contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
@@ -90,6 +90,7 @@ class DisplaySettingsLinksTest {
                             onDismiss = {},
                             onOpenUrl = {},
                             webHost = "videos.alummahnow.net",
+                            telemetryEnabled = enabled,
                             onTelemetryChanged = {}
                         )
                     }
@@ -109,4 +110,10 @@ class DisplaySettingsLinksTest {
 
     @Test
     fun viewerSettingsLinksArDarkPhone() = shootSheet("viewer_settings_links_ar_dark_phone", "ar", ThemeMode.DARK)
+
+    @Test
+    fun diagnosticsEnDarkEnabled() = shootSheet("viewer_settings_links_en_dark_phone_on", "en", ThemeMode.DARK, enabled = true)
+
+    @Test
+    fun diagnosticsArDarkEnabled() = shootSheet("viewer_settings_links_ar_dark_phone_on", "ar", ThemeMode.DARK, enabled = true)
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -114,8 +115,16 @@ fun TvApp(
                             val stateText = stringResource(
                                 if (telemetryEnabled) DesignR.string.aun_diagnostics_on else DesignR.string.aun_diagnostics_off
                             )
-                            TvAction("${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText") {
-                                onToggleTelemetry()
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                TvAction("${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText") {
+                                    onToggleTelemetry()
+                                }
+                                Text(
+                                    text = stringResource(DesignR.string.aun_diagnostics_description),
+                                    modifier = Modifier.widthIn(max = 640.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
                             }
                         }
                     }
