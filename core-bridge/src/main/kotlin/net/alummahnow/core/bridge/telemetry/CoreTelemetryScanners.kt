@@ -141,7 +141,9 @@ internal object CoreTelemetryScanners {
         """((?:^|/|%2[fF])(?:webhooks?|reset|reset-password|password-reset|forgot-password|""" +
             """verify|verify-email|confirm|confirm-email|activate|magic|magic-link|""" +
             """invite|invitations?|tokens?|auth|oauth2?|callback|sessions?|unsubscribe|""" +
-            """secrets?|keys?|api-?keys?|credentials?|sign-?in|login|sso|redeem|claim|recovery?|passwords?)""" +
+            """secrets?|keys?|api-?keys?|credentials?|sign-?in|login|sso|redeem|claim|recovery?|passwords?|""" +
+            """share|shared|sh|s|scl|dl|link|private|join|otp|passkey|code|folders|""" +
+            """file/d|document/d|spreadsheets/d|presentation/d)""" +
             """(?:/|%2[fF]))[^\s?#]+""",
         RegexOption.IGNORE_CASE
     )

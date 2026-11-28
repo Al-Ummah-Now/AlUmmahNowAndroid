@@ -154,4 +154,40 @@ class CoreTelemetryQuotedAuthTest {
         assertTrue(stack.contains("IllegalStateException"))
         assertFalse(stack.contains("Jane Doe"))
     }
+
+    @Test
+    fun `property keys identifiers numeric values and share links scrub PII and short tokens`() {
+        assertEquals(
+            """{"[redacted-phone]":true}""",
+            CoreTelemetryService.serializeProperties(mapOf("+٩٧١٥٠١٢٣٤٥٦" to true))
+        )
+        assertEquals(
+            """{"[redacted]":"failed"}""",
+            CoreTelemetryService.serializeProperties(mapOf("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig_part-1" to "failed"))
+        )
+        assertEquals(
+            """{"[redacted-ip]":true,"recipient":"[redacted-number]"}""",
+            CoreTelemetryService.serializeProperties(mapOf("192.0.2.10" to true, "recipient" to 12025550148L))
+        )
+        assertEquals("[redacted-phone]", CoreTelemetryService.sanitizePropertyKey("2025550148"))
+        assertEquals(
+            "https://share.example.com/s/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://share.example.com/s/V8r2Qp6Lm4")
+        )
+        assertEquals(
+            "https://www.dropbox.com/scl/[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths(
+                "https://www.dropbox.com/scl/fi/a1b2c3d4e5f6g7h8i9j0/PrivateAcquisition.pdf"
+            )
+        )
+        assertEquals("[redacted-ip]", CoreTelemetryService.sanitizePropertyKey("fe80::1"))
+        assertEquals("[redacted-ip]", CoreTelemetryService.sanitizePropertyKey("2001:db8::beef:cafe"))
+        val detailProps = CoreTelemetryService.serializeProperties(
+            mapOf("detail" to "Peer 192.168.42.17 called +٩٧١٥٠١٢٣٤٥٦٧ from fe80::1")
+        )
+        assertEquals(
+            """{"detail":"Peer [redacted-ip] called [redacted-phone] from [redacted-ip]"}""",
+            detailProps
+        )
+    }
 }

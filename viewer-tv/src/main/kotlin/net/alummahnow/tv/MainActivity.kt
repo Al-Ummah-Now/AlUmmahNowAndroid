@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -184,7 +186,11 @@ fun TvApp(
     AunTheme(mode = mode) {
         Surface(Modifier.fillMaxSize()) {
             Column(
-                Modifier.safeDrawingPadding().padding(horizontal = 48.dp, vertical = 32.dp),
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .safeDrawingPadding()
+                    .padding(horizontal = 48.dp, vertical = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 when (screen) {

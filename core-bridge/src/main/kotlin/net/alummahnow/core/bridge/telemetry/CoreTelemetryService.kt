@@ -17,8 +17,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import net.alummahnow.core.AunException
 import net.alummahnow.core.TelemetryAppInfo
 import net.alummahnow.core.TelemetryBreadcrumbLevel
@@ -188,7 +186,7 @@ class CoreTelemetryService(
             if (!isActiveConsentLocked(requiresFull = true)) return
             analyticsEpoch
         }
-        val safeName = sanitizeLocalPaths(name)
+        val safeName = sanitizePropertyKey(name)
         if (safeName.isBlank()) return
         val json = serializeProperties(properties)
         synchronized(gate) {
@@ -207,7 +205,7 @@ class CoreTelemetryService(
             if (!isActiveConsentLocked(requiresFull = true)) return
             analyticsEpoch
         }
-        val safeCode = sanitizeLocalPaths(code)
+        val safeCode = sanitizePropertyKey(code)
         if (safeCode.isBlank()) return
         val json = serializeProperties(properties)
         synchronized(gate) {
@@ -232,8 +230,8 @@ class CoreTelemetryService(
             TelemetryBreadcrumbSeverity.WARNING -> TelemetryBreadcrumbLevel.WARNING
             TelemetryBreadcrumbSeverity.ERROR -> TelemetryBreadcrumbLevel.ERROR
         }
-        val safeCategory = sanitizeLocalPaths(category)
-        val safeMessage = sanitizeLocalPaths(message)
+        val safeCategory = sanitizePropertyKey(category)
+        val safeMessage = CoreTelemetryPropertySanitizer.sanitizeDiagnosticText(message)
         synchronized(gate) {
             if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
             client.addBreadcrumb(safeCategory, safeMessage, mapped)
@@ -245,9 +243,13 @@ class CoreTelemetryService(
             if (!isActiveConsentLocked(requiresFull = false)) return
             consentEpoch
         }
-        val safeKind = if (kind.isBlank()) "UnhandledException" else sanitizeLocalPaths(kind)
-        val safeMessage = if (message.isBlank()) "Unhandled exception" else sanitizeLocalPaths(message)
-        val safeStack = stack?.let(::sanitizeLocalPaths)
+        val safeKind = if (kind.isBlank()) "UnhandledException" else sanitizePropertyKey(kind)
+        val safeMessage = if (message.isBlank()) {
+            "Unhandled exception"
+        } else {
+            CoreTelemetryPropertySanitizer.sanitizeDiagnosticText(message)
+        }
+        val safeStack = stack?.let(CoreTelemetryPropertySanitizer::sanitizeDiagnosticText)
         val report = TelemetryCrashReport(
             kind = safeKind,
             message = safeMessage,
@@ -1132,93 +1134,10 @@ class CoreTelemetryService(
             return sb.toString()
         }
 
-        private fun isAuthHeaderPropertyKey(key: String): Boolean {
-            val trimmed = key.trim()
-            if (CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(trimmed) != null) return true
-            val lower = trimmed.lowercase(java.util.Locale.ROOT)
-            return lower == "token" ||
-                lower == "secret" ||
-                lower == "jwt" ||
-                lower == "bearer" ||
-                lower.endsWith("_token") ||
-                lower.endsWith("-token") ||
-                lower.endsWith("_secret") ||
-                lower.endsWith("-secret") ||
-                lower.endsWith("_password") ||
-                lower.endsWith("-password") ||
-                lower.endsWith("_credential") ||
-                lower.endsWith("-credential")
-        }
+        internal fun serializeProperties(properties: Map<String, Any?>): String? =
+            CoreTelemetryPropertySanitizer.serializeProperties(properties)
 
-        private fun resolveUniquePropertyKey(
-            usedKeys: MutableSet<String>,
-            nextSuffixByBase: MutableMap<String, Int>,
-            base: String
-        ): String {
-            if (usedKeys.add(base)) return base
-            var suffix = nextSuffixByBase[base] ?: 2
-            while (!usedKeys.add("$base#$suffix")) suffix++
-            nextSuffixByBase[base] = suffix + 1
-            return "$base#$suffix"
-        }
-
-        internal fun serializeProperties(properties: Map<String, Any?>): String? {
-            if (properties.isEmpty()) return null
-            val usedKeys = HashSet<String>(properties.size)
-            val nextSuffixByBase = HashMap<String, Int>()
-            val obj = buildJsonObject {
-                for ((key, value) in properties) {
-                    if (key.isNotBlank() && value != null) {
-                        putSanitizedProperty(key, value, usedKeys, nextSuffixByBase)
-                    }
-                }
-            }
-            return if (obj.isEmpty()) null else obj.toString()
-        }
-
-        private val phoneInKeyRegex = Regex("""(?<![A-Za-z0-9_])\+?\d[\d\s().-]{7,}\d(?![A-Za-z0-9_])""")
-        private val opaqueSecretInKeyRegex = Regex("""(?<![A-Za-z0-9_])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z0-9_])""")
-        private val uuidRegex = Regex("""^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$""")
-
-        private fun sanitizePropertyKey(key: String): String {
-            var safe = sanitizeLocalPaths(key)
-            safe = phoneInKeyRegex.replace(safe) { m ->
-                val digits = m.value.count { it in '0'..'9' }
-                if (digits >= MIN_PHONE_DIGITS) "[redacted-phone]" else m.value
-            }
-            safe = opaqueSecretInKeyRegex.replace(safe) { m ->
-                val v = m.value
-                val hasLetter = v.any { it in 'a'..'z' || it in 'A'..'Z' }
-                val hasDigit = v.any { it in '0'..'9' }
-                if (hasLetter && hasDigit && !uuidRegex.matches(v)) "[redacted]" else v
-            }
-            return safe
-        }
-
-        private const val MIN_PHONE_DIGITS = 9
-
-        private fun kotlinx.serialization.json.JsonObjectBuilder.putSanitizedProperty(
-            key: String,
-            value: Any,
-            usedKeys: MutableSet<String>,
-            nextSuffixByBase: MutableMap<String, Int>
-        ) {
-            val safeKey = sanitizePropertyKey(key)
-            if (safeKey.isBlank()) return
-            val uniqueKey = resolveUniquePropertyKey(usedKeys, nextSuffixByBase, safeKey)
-            if (isAuthHeaderPropertyKey(key)) {
-                put(uniqueKey, JsonPrimitive("[redacted]"))
-                return
-            }
-            when (value) {
-                is String -> put(uniqueKey, JsonPrimitive(sanitizeLocalPaths(value)))
-                is Boolean -> put(uniqueKey, JsonPrimitive(value))
-                is Int -> put(uniqueKey, JsonPrimitive(value))
-                is Long -> put(uniqueKey, JsonPrimitive(value))
-                is Double -> if (value.isFinite()) put(uniqueKey, JsonPrimitive(value))
-                is Float -> if (value.isFinite()) put(uniqueKey, JsonPrimitive(value.toDouble()))
-                else -> put(uniqueKey, JsonPrimitive(sanitizeLocalPaths(value.toString())))
-            }
-        }
+        internal fun sanitizePropertyKey(key: String): String =
+            CoreTelemetryPropertySanitizer.sanitizePropertyKey(key)
     }
 }
