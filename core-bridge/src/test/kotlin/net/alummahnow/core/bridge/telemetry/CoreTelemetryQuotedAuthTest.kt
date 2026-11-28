@@ -71,6 +71,14 @@ class CoreTelemetryQuotedAuthTest {
             CoreTelemetryService.sanitizeLocalPaths("jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.sigSecret")
         )
         assertEquals(
+            "https://[redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/users/alice%40%65xample.com")
+        )
+        assertEquals(
+            "https://[redacted-email]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/users/alice%40b%C3%BCcher.example")
+        )
+        assertEquals(
             "https://hooks.slack.com:/services/[redacted]",
             CoreTelemetryService.sanitizeLocalPaths("https://hooks.slack.com:/services/T000/B000/Canary")
         )

@@ -328,15 +328,82 @@ internal object CoreTelemetryEmailScanner {
 
     private fun classifyDomainCharAt(text: String, pos: Int): Pair<DomainCharKind, Int> {
         val ch = text[pos]
-        if (ch == '\\' && pos + 5 < text.length && text[pos + 1] == 'u') {
-            val code = CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2)
-            if (code >= 0) return classifyEscapedDomainChar(text, pos, code.toChar())
+        val escaped = if (ch == '\\' && pos + 5 < text.length && text[pos + 1] == 'u') {
+            CoreTelemetryQuotedPathRedactor.parseHex4(text, pos + 2).takeIf { it >= 0 }
+                ?.let { classifyEscapedDomainChar(text, pos, it.toChar()) }
+        } else if (ch == '%' && pos + 2 < text.length) {
+            classifyPercentDomainChar(text, pos)
+        } else {
+            null
         }
-        if (ch.code < 0x80) return classifyAsciiDomainChar(ch) to 1
-        if (isEmailDomainDot(ch)) return DomainCharKind.DOT to 1
-        val cp = Character.codePointAt(text, pos)
-        val step = Character.charCount(cp)
-        return classifyUnicodeCodePoint(cp) to step
+        return escaped ?: when {
+            ch.code < 0x80 -> classifyAsciiDomainChar(ch) to 1
+            isEmailDomainDot(ch) -> DomainCharKind.DOT to 1
+            else -> {
+                val cp = Character.codePointAt(text, pos)
+                classifyUnicodeCodePoint(cp) to Character.charCount(cp)
+            }
+        }
+    }
+
+    private fun classifyPercentDomainChar(text: String, pos: Int): Pair<DomainCharKind, Int>? {
+        val b0 = parsePercentByte(text, pos)
+        return when {
+            b0 < 0 -> null
+            b0 < 0x80 -> classifyAsciiDomainChar(b0.toChar()) to 3
+            else -> classifyPercentUtf8DomainChar(text, pos, b0)
+        }
+    }
+
+    private fun classifyPercentUtf8DomainChar(text: String, pos: Int, b0: Int): Pair<DomainCharKind, Int>? {
+        val count = utf8PercentSeqLen(b0)
+        if (count == 0 || pos + count * 3 > text.length) return null
+        val bytes = ByteArray(count)
+        bytes[0] = b0.toByte()
+        for (i in 1 until count) {
+            val next = parsePercentByte(text, pos + i * 3)
+            if (next < 0x80 || next > 0xBF) return null
+            bytes[i] = next.toByte()
+        }
+        val decoded = decodeStrictUtf8SingleCp(bytes) ?: return null
+        val kind = if (decoded <= 0xFFFF && isEmailDomainDot(decoded.toChar())) {
+            DomainCharKind.DOT
+        } else {
+            classifyUnicodeCodePoint(decoded)
+        }
+        return kind to (count * 3)
+    }
+
+    private fun hexNibble(ch: Char): Int = when (ch) {
+        in '0'..'9' -> ch - '0'
+        in 'a'..'f' -> ch - 'a' + 10
+        in 'A'..'F' -> ch - 'A' + 10
+        else -> -1
+    }
+
+    private fun parsePercentByte(text: String, pos: Int): Int {
+        if (pos + 2 >= text.length || text[pos] != '%') return -1
+        val hi = hexNibble(text[pos + 1])
+        val lo = hexNibble(text[pos + 2])
+        return if (hi >= 0 && lo >= 0) (hi shl 4) or lo else -1
+    }
+
+    private fun utf8PercentSeqLen(b0: Int): Int = when {
+        b0 in 0xC2..0xDF -> 2
+        b0 in 0xE0..0xEF -> 3
+        b0 in 0xF0..0xF4 -> 4
+        else -> 0
+    }
+
+    private fun decodeStrictUtf8SingleCp(bytes: ByteArray): Int? {
+        val decoder = java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+        val decoded = runCatching { decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString() }.getOrNull()
+            ?: return null
+        if (decoded.isEmpty()) return null
+        val cp = Character.codePointAt(decoded, 0)
+        return if (Character.charCount(cp) == decoded.length) cp else null
     }
 
     private fun classifyEscapedDomainChar(text: String, pos: Int, ch: Char): Pair<DomainCharKind, Int> {
