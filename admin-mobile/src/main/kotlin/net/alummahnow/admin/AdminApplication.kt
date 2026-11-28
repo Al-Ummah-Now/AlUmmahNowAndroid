@@ -24,6 +24,9 @@ class AdminApplication :
     SingletonImageLoader.Factory {
     val prefs: AdminPrefs by lazy { AdminPrefs(this) }
 
+    private fun telemetryBufferPath(): String =
+        File(applicationContext.noBackupFilesDir, "admin-telemetry-buffer.json").absolutePath
+
     val telemetry: TelemetryService by lazy {
         val initialEnabled = prefs.telemetryEnabled
         CoreTelemetryService.createOrNull(
@@ -32,7 +35,7 @@ class AdminApplication :
             videosApiBaseUrl = BuildConfig.API_BASE_URL,
             userAgent = "AlUmmahNow-Admin-Android/${BuildConfig.VERSION_NAME}",
             clientHeader = AunClient.value("admin", BuildConfig.VERSION_NAME),
-            bufferPath = File(applicationContext.noBackupFilesDir, "admin-telemetry-buffer.json").absolutePath,
+            bufferPath = telemetryBufferPath(),
             initialEnabled = initialEnabled
         ).also { service ->
             if (initialEnabled && service.consent == TelemetryConsent.OFF && !prefs.setTelemetryEnabled(false)) {
@@ -52,7 +55,11 @@ class AdminApplication :
     override fun onCreate() {
         super.onCreate()
         AunLog.enabled = BuildConfig.DEBUG
-        if (prefs.telemetryEnabled) telemetry
+        if (prefs.telemetryEnabled) {
+            telemetry
+        } else {
+            CoreTelemetryService.purgePersistedBuffer(telemetryBufferPath())
+        }
         registerActivityLifecycleCallbacks(SecureWindows)
         AdminNotifications.ensureChannel(this)
     }

@@ -100,24 +100,19 @@ class MainActivity : ComponentActivity() {
 
     private fun toggleTelemetry(telemetry: TelemetryService, consentStore: TelemetryConsentStore, currentlyEnabled: Boolean) {
         if (!currentlyEnabled) {
-            if (telemetry.setConsent(TelemetryConsent.FULL)) {
-                if (consentStore.setEnabled(true)) {
-                    telemetryEnabledState.value = true
-                    telemetrySaveUncertainState.value = false
-                    telemetryWarningResState.value = null
-                } else {
-                    val (rolledBack, _) = consentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
-                    if (rolledBack) telemetryEnabledState.value = false
-                    telemetrySaveUncertainState.value = !rolledBack
-                    telemetryWarningResState.value = if (rolledBack) {
-                        DesignR.string.aun_diagnostics_enable_error
-                    } else {
-                        DesignR.string.aun_diagnostics_disable_error
-                    }
-                }
+            if (consentStore.setEnabled(true) && telemetry.setConsent(TelemetryConsent.FULL)) {
+                telemetryEnabledState.value = true
+                telemetrySaveUncertainState.value = false
+                telemetryWarningResState.value = null
             } else {
-                telemetry.setConsent(TelemetryConsent.OFF)
-                telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
+                val (rolledBack, _) = consentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
+                if (rolledBack) telemetryEnabledState.value = false
+                telemetrySaveUncertainState.value = !rolledBack
+                telemetryWarningResState.value = if (rolledBack) {
+                    DesignR.string.aun_diagnostics_enable_error
+                } else {
+                    DesignR.string.aun_diagnostics_disable_error
+                }
             }
         } else {
             disableTelemetry(telemetry, consentStore)

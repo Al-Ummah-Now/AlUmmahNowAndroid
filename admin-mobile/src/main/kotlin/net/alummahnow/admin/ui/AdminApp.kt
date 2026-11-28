@@ -288,26 +288,35 @@ private fun rememberAdminTelemetryWarning(warningRes: Int?, lastPurgeFailed: Boo
 
 private fun applyAdminTelemetryChange(services: AdminServices, enabled: Boolean) {
     if (enabled) {
-        if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
-            if (services.prefs.setTelemetryEnabled(true)) {
-                services.prefs.setTelemetrySaveUncertain(false)
-                services.prefs.setTelemetryWarningRes(null)
-            } else {
-                val (rolledBack, _) = services.prefs.disableTelemetry {
-                    services.telemetry.setConsent(TelemetryConsent.OFF)
-                }
-                services.prefs.setTelemetrySaveUncertain(!rolledBack)
-                services.prefs.setTelemetryWarningRes(
-                    if (rolledBack) {
-                        DesignR.string.aun_diagnostics_enable_error
-                    } else {
-                        DesignR.string.aun_diagnostics_disable_error
-                    }
-                )
+        if (!services.prefs.setTelemetryEnabled(true)) {
+            val (rolledBack, _) = services.prefs.disableTelemetry {
+                services.telemetry.setConsent(TelemetryConsent.OFF)
             }
+            services.prefs.setTelemetrySaveUncertain(!rolledBack)
+            services.prefs.setTelemetryWarningRes(
+                if (rolledBack) {
+                    DesignR.string.aun_diagnostics_enable_error
+                } else {
+                    DesignR.string.aun_diagnostics_disable_error
+                }
+            )
+            return
+        }
+        if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
+            services.prefs.setTelemetrySaveUncertain(false)
+            services.prefs.setTelemetryWarningRes(null)
         } else {
-            services.telemetry.setConsent(TelemetryConsent.OFF)
-            services.prefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
+            val (rolledBack, _) = services.prefs.disableTelemetry {
+                services.telemetry.setConsent(TelemetryConsent.OFF)
+            }
+            services.prefs.setTelemetrySaveUncertain(!rolledBack)
+            services.prefs.setTelemetryWarningRes(
+                if (rolledBack) {
+                    DesignR.string.aun_diagnostics_enable_error
+                } else {
+                    DesignR.string.aun_diagnostics_disable_error
+                }
+            )
         }
     } else {
         val (saved, purged) = services.prefs.disableTelemetry {

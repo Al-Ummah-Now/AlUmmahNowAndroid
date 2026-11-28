@@ -126,12 +126,18 @@ class AppContainer(context: Context) : StudioContainer {
         if (enabled) enableTelemetry() else disableTelemetry()
 
     private fun enableTelemetry(): Boolean {
-        if (!telemetry.setConsent(TelemetryConsent.FULL)) {
-            telemetry.setConsent(TelemetryConsent.OFF)
-            telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
+        if (!telemetryConsentStore.setEnabled(true)) {
+            val (rolledBack, _) = telemetryConsentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
+            if (rolledBack) telemetryEnabledState.value = false
+            telemetrySaveFailedState.value = !rolledBack
+            telemetryWarningResState.value = if (rolledBack) {
+                DesignR.string.aun_diagnostics_enable_error
+            } else {
+                DesignR.string.aun_diagnostics_disable_error
+            }
             return false
         }
-        if (!telemetryConsentStore.setEnabled(true)) {
+        if (!telemetry.setConsent(TelemetryConsent.FULL)) {
             val (rolledBack, _) = telemetryConsentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
             if (rolledBack) telemetryEnabledState.value = false
             telemetrySaveFailedState.value = !rolledBack

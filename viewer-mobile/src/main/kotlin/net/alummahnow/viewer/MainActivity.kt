@@ -379,26 +379,22 @@ internal fun ViewerNavHost(
             showPurgeRetry = !(telemetryEnabled || telemetrySaveUncertain) && lastPurgeFailed,
             onTelemetryChanged = { enabled ->
                 if (enabled) {
-                    if (container.telemetry.setConsent(TelemetryConsent.FULL)) {
-                        if (container.displayPrefs.setTelemetryEnabled(true)) {
-                            container.displayPrefs.setTelemetrySaveUncertain(false)
-                            container.displayPrefs.setTelemetryWarningRes(null)
-                        } else {
-                            val (rolledBack, _) = container.displayPrefs.disableTelemetry {
-                                container.telemetry.setConsent(TelemetryConsent.OFF)
-                            }
-                            container.displayPrefs.setTelemetrySaveUncertain(!rolledBack)
-                            container.displayPrefs.setTelemetryWarningRes(
-                                if (rolledBack) {
-                                    DesignR.string.aun_diagnostics_enable_error
-                                } else {
-                                    DesignR.string.aun_diagnostics_disable_error
-                                }
-                            )
-                        }
+                    val saved = container.displayPrefs.setTelemetryEnabled(true)
+                    if (saved && container.telemetry.setConsent(TelemetryConsent.FULL)) {
+                        container.displayPrefs.setTelemetrySaveUncertain(false)
+                        container.displayPrefs.setTelemetryWarningRes(null)
                     } else {
-                        container.telemetry.setConsent(TelemetryConsent.OFF)
-                        container.displayPrefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
+                        val (rolledBack, _) = container.displayPrefs.disableTelemetry {
+                            container.telemetry.setConsent(TelemetryConsent.OFF)
+                        }
+                        container.displayPrefs.setTelemetrySaveUncertain(!rolledBack)
+                        container.displayPrefs.setTelemetryWarningRes(
+                            if (rolledBack) {
+                                DesignR.string.aun_diagnostics_enable_error
+                            } else {
+                                DesignR.string.aun_diagnostics_disable_error
+                            }
+                        )
                     }
                 } else {
                     val (saved, purged) = container.displayPrefs.disableTelemetry {

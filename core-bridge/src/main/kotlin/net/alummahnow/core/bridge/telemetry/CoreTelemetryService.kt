@@ -655,6 +655,21 @@ class CoreTelemetryService(
                 totalFrames < MAX_CRASH_STACK_FRAMES &&
                 chars < MAX_CRASH_STACK_CHARS
 
+        private val safeSourceFileRegex = Regex("""^[A-Za-z0-9_.-]{1,64}\.(?:kt|java)$""")
+
+        internal fun formatSafeStackFrame(frame: StackTraceElement): String {
+            val cls = sanitizeCrashKindIdentifier(frame.className)
+            val method = sanitizeCrashKindIdentifier(frame.methodName)
+            val file = frame.fileName?.takeIf { safeSourceFileRegex.matches(it) }
+            val location = when {
+                frame.isNativeMethod -> "Native Method"
+                file != null && frame.lineNumber >= 0 -> "$file:${frame.lineNumber}"
+                file != null -> file
+                else -> "Unknown Source"
+            }
+            return "$cls.$method($location)"
+        }
+
         internal fun formatSanitizedCrashStack(throwable: Throwable): String {
             val sb = StringBuilder()
             val seen = java.util.IdentityHashMap<Throwable, Boolean>()
@@ -663,11 +678,11 @@ class CoreTelemetryService(
             var totalFrames = 0
             while (current != null && hasCrashStackBudget(depth, totalFrames, sb.length) && seen.put(current, true) == null) {
                 if (depth > 0) sb.append("Caused by: ")
-                sb.append(current.javaClass.name).append('\n')
+                sb.append(sanitizeCrashKindIdentifier(current.javaClass.name)).append('\n')
                 val frames = current.stackTrace
                 var idx = 0
                 while (idx < frames.size && hasCrashStackBudget(depth, totalFrames, sb.length)) {
-                    sb.append("\tat ").append(frames[idx].toString()).append('\n')
+                    sb.append("\tat ").append(formatSafeStackFrame(frames[idx])).append('\n')
                     idx++
                     totalFrames++
                 }
@@ -676,6 +691,10 @@ class CoreTelemetryService(
             }
             return sb.toString().trimEnd()
         }
+
+        /** Best-effort pure-JVM purge of any leftover buffer and sibling temp files without loading native JNI. */
+        fun purgePersistedBuffer(bufferPath: String?): Boolean =
+            UnavailableNativeTelemetryService(bufferPath).setConsent(TelemetryConsent.OFF)
 
         private const val MAX_CRASH_CAUSE_DEPTH = 16
         private const val MAX_CRASH_STACK_FRAMES = 128
