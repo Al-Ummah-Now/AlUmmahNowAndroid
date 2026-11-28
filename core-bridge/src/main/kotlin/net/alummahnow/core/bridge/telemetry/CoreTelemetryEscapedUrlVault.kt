@@ -2,6 +2,14 @@ package net.alummahnow.core.bridge.telemetry
 
 internal object CoreTelemetryEscapedUrlVault {
     private const val ESC_VAULT_PREFIX = "\u001EAUNESC"
+    private const val MAX_VAULT_INDEX_DIGITS = 10
+
+    fun scanVaultIndexEnd(text: String, numStart: Int, limit: Int): Int {
+        var pos = numStart
+        val maxEnd = minOf(limit, numStart + MAX_VAULT_INDEX_DIGITS)
+        while (pos < maxEnd && text[pos] in '0'..'9') pos++
+        return if (pos > numStart && pos < limit && text[pos] == '\u001F') pos else -1
+    }
 
     fun vaultJsonEscapedUrlsInBalancedQuotes(
         text: String,
@@ -77,8 +85,8 @@ internal object CoreTelemetryEscapedUrlVault {
             }
             out.append(text, pos, found)
             val numStart = found + ESC_VAULT_PREFIX.length
-            val numEnd = text.indexOf('\u001F', numStart)
-            val innerIdx = if (numEnd in (numStart + 1) until end) {
+            val numEnd = scanVaultIndexEnd(text, numStart, end)
+            val innerIdx = if (numEnd > numStart) {
                 text.substring(numStart, numEnd).toIntOrNull()
             } else {
                 null

@@ -398,7 +398,15 @@ internal object CoreTelemetryAuthScanner {
             isNull || token == "true" || token == "false" || CoreTelemetryAuthJsonHelpers.isJsonNumber(token)
         if (!isPrimitive) return -1
         val next = skipAuthWhitespace(text, tokenEnd, allowNewlines = true)
-        if (next < text.length && !CoreTelemetryAuthJsonHelpers.isJsonMemberContinuationDelimiter(text, next)) return -1
+        if (next < text.length &&
+            !CoreTelemetryAuthJsonHelpers.isJsonMemberContinuationDelimiter(
+                text,
+                next,
+                builder.jsonCache.allowTrailingProse
+            )
+        ) {
+            return -1
+        }
         if (!isNull) builder.appendRedacted(valStart, tokenEnd, "\"[redacted]\"")
         return tokenEnd
     }
@@ -418,7 +426,7 @@ internal object CoreTelemetryAuthScanner {
         failedTopEnd: Int,
         builder: HeaderBuilder
     ): Int {
-        val tailStart = findTrailingPlainAuthStart(text, afterPos, isJsonMember)
+        val tailStart = findTrailingPlainAuthStart(text, afterPos, isJsonMember, builder.jsonCache.allowTrailingProse)
         if (tailStart >= 0) return redactPlainAuthSpan(text, tailStart, failedTopEnd, builder)
         if (!isJsonMember && failedTopEnd > afterPos) {
             val nextStart = CoreTelemetryAuthJsonHelpers.skipJsonWhitespace(text, afterPos)
@@ -427,7 +435,12 @@ internal object CoreTelemetryAuthScanner {
         return afterPos
     }
 
-    private fun findTrailingPlainAuthStart(text: String, afterPos: Int, isJsonMember: Boolean): Int {
+    private fun findTrailingPlainAuthStart(
+        text: String,
+        afterPos: Int,
+        isJsonMember: Boolean,
+        allowTrailingProse: Boolean
+    ): Int {
         var pos = afterPos
         var advancing = true
         while (pos < text.length && advancing) {
@@ -435,10 +448,9 @@ internal object CoreTelemetryAuthScanner {
             val fold = advanceObsFold(text, pos)
             if (fold > pos) pos = fold else advancing = false
         }
-        val stopsHere =
-            pos >= text.length ||
-                isNewline(text[pos]) ||
-                (isJsonMember && CoreTelemetryAuthJsonHelpers.isJsonMemberContinuationDelimiter(text, pos))
+        val isContinuation = isJsonMember &&
+            CoreTelemetryAuthJsonHelpers.isJsonMemberContinuationDelimiter(text, pos, allowTrailingProse)
+        val stopsHere = pos >= text.length || isNewline(text[pos]) || isContinuation
         return if (stopsHere) -1 else pos
     }
 

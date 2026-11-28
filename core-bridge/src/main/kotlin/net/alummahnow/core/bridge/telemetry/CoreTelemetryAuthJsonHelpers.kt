@@ -330,8 +330,12 @@ internal object CoreTelemetryAuthJsonHelpers {
     private fun isJsonValuePrefixStop(ch: Char): Boolean =
         isJsonWhitespace(ch) || ch == ':' || ch == ',' || ch == '['
 
-    fun isJsonMemberContinuationDelimiter(text: String, pos: Int): Boolean = when (text[pos]) {
-        '}', ']' -> pos + 1 >= text.length || isClosingBraceFollower(text[pos + 1])
+    fun isJsonMemberContinuationDelimiter(
+        text: String,
+        pos: Int,
+        allowTrailingProse: Boolean = false
+    ): Boolean = when (text[pos]) {
+        '}', ']' -> allowTrailingProse || pos + 1 >= text.length || isClosingBraceFollower(text[pos + 1])
         ',' -> isFollowedByJsonMemberKey(text, pos + 1)
         else -> false
     }

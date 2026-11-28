@@ -1042,7 +1042,7 @@ class CoreTelemetryService(
                 }
                 sb.append(text, pos, idx)
                 val numStart = idx + prefix.length
-                val numEnd = text.indexOf('\u001F', numStart)
+                val numEnd = CoreTelemetryEscapedUrlVault.scanVaultIndexEnd(text, numStart, text.length)
                 val urlIndex = if (numEnd > numStart) text.substring(numStart, numEnd).toIntOrNull() else null
                 if (urlIndex != null && urlIndex in vaultedUrls.indices) {
                     sb.append(vaultedUrls[urlIndex])

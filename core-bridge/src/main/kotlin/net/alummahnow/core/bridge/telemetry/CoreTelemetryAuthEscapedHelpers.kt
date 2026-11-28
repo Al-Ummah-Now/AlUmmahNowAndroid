@@ -14,13 +14,11 @@ internal object CoreTelemetryAuthEscapedHelpers {
 
     fun matchCanonicalAuthHeaderName(raw: String): String? {
         val trimmed = raw.trim { it == ' ' || it == '\t' }
-        return when {
-            trimmed.equals("authorization", ignoreCase = true) -> "Authorization"
-            trimmed.equals("proxy-authorization", ignoreCase = true) -> "Proxy-Authorization"
-            trimmed.equals("cookie", ignoreCase = true) -> "Cookie"
-            trimmed.equals("set-cookie", ignoreCase = true) -> "Set-Cookie"
-            else -> null
-        }
+        val isAuthHeader = trimmed.equals("authorization", ignoreCase = true) ||
+            trimmed.equals("proxy-authorization", ignoreCase = true) ||
+            trimmed.equals("cookie", ignoreCase = true) ||
+            trimmed.equals("set-cookie", ignoreCase = true)
+        return if (isAuthHeader) trimmed else null
     }
 
     fun decodeSimpleJsonEscape(next: Char): Pair<Char, Boolean> = when (next) {

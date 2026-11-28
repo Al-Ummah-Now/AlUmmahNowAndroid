@@ -67,6 +67,10 @@ class CoreTelemetryQuotedEscapedTest {
                 "{\"m\":\"before {\\\"Cookie\\\":\\\"[redacted]\\\"} after\",\"next\":1}",
             "{\"m\":\"{\\\"Authorization\\\":\\\"opaqueSecret123\\\"} after\",\"next\":1}" to
                 "{\"m\":\"{\\\"Authorization\\\":\\\"[redacted]\\\"} after\",\"next\":1}",
+            "{\"m\":\"{\\\"Authorization\\\":\\\"opaqueSecret123\\\"}after\",\"next\":1}" to
+                "{\"m\":\"{\\\"Authorization\\\":\\\"[redacted]\\\"}after\",\"next\":1}",
+            "{\"\\u0063ookie\":\"firstSecret\",\"Cookie\":\"secondSecret\"}" to
+                "{\"cookie\":\"[redacted]\",\"Cookie\":\"[redacted]\"}",
             "{\\\"\tCookie\t\\\":\\\"opaqueSecret123\\\"}" to "{\\\"\tCookie\t\\\":\\\"[redacted]\\\"}",
             "[[\\\"Authorization\\\",\\\"opaqueSecret123\\\"\\n]]" to "[[\\\"Authorization\\\",\\\"[redacted]\\\"\\n]]"
         )
@@ -76,5 +80,7 @@ class CoreTelemetryQuotedEscapedTest {
         assertTrue(!CoreTelemetryService.sanitizeLocalPaths("{\"\tCookie\t\":\"opaqueSecret123\"}").contains("opaqueSecret123"))
         val malformedEscaped = "{\\\"Authorization\\\":[" + "{,".repeat(2000) + "]"
         assertTrue(CoreTelemetryService.sanitizeLocalPaths(malformedEscaped).startsWith("{\\\"Authorization\\\":[\\\"[redacted]\\\""))
+        val repeatedVaultPrefix = "\u001EAUNURLx ".repeat(5000) + "https://example/path"
+        assertEquals(repeatedVaultPrefix, CoreTelemetryService.sanitizeLocalPaths(repeatedVaultPrefix))
     }
 }
