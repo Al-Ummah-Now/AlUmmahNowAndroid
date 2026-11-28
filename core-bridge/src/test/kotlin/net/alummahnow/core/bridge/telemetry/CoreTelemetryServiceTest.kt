@@ -531,6 +531,18 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("Bearer Basic \"dXNlcjpwYXNz\"")
         )
         assertEquals(
+            "Bearer [redacted]\n",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer Basic\n")
+        )
+        assertEquals(
+            "Bearer [redacted]\n",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer Bearer\n")
+        )
+        assertEquals(
+            "Bearer [redacted] auth",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer Basic auth")
+        )
+        assertEquals(
             "Basic Basic \"[redacted]\"",
             CoreTelemetryService.sanitizeLocalPaths("Basic Basic \"dXNlcjpwYXNz\"")
         )

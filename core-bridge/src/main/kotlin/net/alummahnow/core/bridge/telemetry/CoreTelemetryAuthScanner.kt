@@ -51,8 +51,11 @@ internal object CoreTelemetryAuthScanner {
 
     fun redactAuthCredentials(text: String): String {
         val headerScrubbed = redactAuthHeaders(text)
-        val bearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactBearerTokens(headerScrubbed)
-        val escapedBearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBearerInBalancedQuotes(bearerScrubbed)
+        val bearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactBearerTokens(headerScrubbed, ::isBasicCredentialToken)
+        val escapedBearerScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBearerInBalancedQuotes(
+            bearerScrubbed,
+            ::isBasicCredentialToken
+        )
         val escapedBasicScrubbed = CoreTelemetryQuotedAuthHelpers.redactEscapedBasicInBalancedQuotes(
             escapedBearerScrubbed,
             ::isBasicCredentialToken
