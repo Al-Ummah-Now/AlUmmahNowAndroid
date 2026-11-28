@@ -250,4 +250,24 @@ class CoreTelemetryQuotedAuthTest {
         assertTrue(props.contains("\"tinyScale\":0.0"))
         assertEquals("[redacted]", CoreTelemetryService.sanitizePropertyKey(wsJwe))
     }
+
+    @Test
+    fun `crash stack sanitizer rejects single-token headers and arbitrary filenames`() {
+        assertEquals(null, CoreTelemetryService.sanitizeCrashStackText("AliceJohnson"))
+        assertEquals(
+            "com.example.Worker.run(line:42)",
+            CoreTelemetryService.formatSafeStackFrame(
+                StackTraceElement("com.example.Worker", "run", "AliceJohnson.kt", 42)
+            )
+        )
+        assertEquals(
+            "java.lang.IllegalStateException\n\tat com.example.Worker.run(line:42)",
+            CoreTelemetryService.sanitizeCrashStackText(
+                "java.lang.IllegalStateException\n" +
+                    "\tat com.example.Worker.run(AliceJohnson.kt:42)\n" +
+                    "\tat com.example.Worker.run(line:42)\n" +
+                    "AliceJohnson"
+            )
+        )
+    }
 }

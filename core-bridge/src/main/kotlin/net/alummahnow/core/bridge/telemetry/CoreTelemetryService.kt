@@ -62,7 +62,7 @@ class CoreTelemetryService(
     private val flushScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile
-    private var fastConsent: TelemetryConsent = TelemetryConsent.OFF
+    private var fastConsentEpoch: Long = CONSENT_OFF_EPOCH
     private var _consent: TelemetryConsent = TelemetryConsent.OFF
     private var revoked: Boolean = false
     private var closed: Boolean = false
@@ -139,7 +139,7 @@ class CoreTelemetryService(
                             analyticsEpoch++
                         }
                         _consent = consent
-                        fastConsent = consent
+                        fastConsentEpoch = consentEpoch
                         revoked = false
                         true
                     } catch (e: AunException) {
@@ -161,7 +161,7 @@ class CoreTelemetryService(
     /** Must be called while holding [gate]. */
     private fun revokeLocked(failureMessage: String): Pair<Boolean, List<Job>> {
         _consent = TelemetryConsent.OFF
-        fastConsent = TelemetryConsent.OFF
+        fastConsentEpoch = CONSENT_OFF_EPOCH
         revoked = true
         consentEpoch++
         analyticsEpoch++
@@ -285,7 +285,7 @@ class CoreTelemetryService(
     }
 
     override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
-        if (fastConsent == TelemetryConsent.OFF) return
+        if (fastConsentEpoch < 0L) return
         val captureEpoch = gate.withLock {
             if (!isActiveConsentLocked(requiresFull = false)) return
             consentEpoch
@@ -303,15 +303,15 @@ class CoreTelemetryService(
     }
 
     internal fun isUncaughtCrashEligible(): Boolean =
-        fastConsent != TelemetryConsent.OFF && !gate.isHeldByCurrentThread
+        fastConsentEpoch >= 0L && !gate.isHeldByCurrentThread
 
     internal fun captureUncaughtCrashEpoch(): Long? {
-        if (fastConsent == TelemetryConsent.OFF || gate.isHeldByCurrentThread) return null
-        return tryCaptureCrashEpochBounded()
+        val epoch = fastConsentEpoch
+        return if (epoch >= 0L && !gate.isHeldByCurrentThread) epoch else null
     }
 
     internal fun reportCrashFromUncaughtHandler(kind: String, message: String, stack: String?, captureEpoch: Long) {
-        if (fastConsent == TelemetryConsent.OFF || gate.isHeldByCurrentThread) return
+        if (fastConsentEpoch != captureEpoch || gate.isHeldByCurrentThread) return
         val report = buildSanitizedCrashReport(kind, message, stack, fromPreviousSession = false)
         if (!tryLockUninterruptibly(CRASH_LOCK_TIMEOUT_MS)) return
         try {
@@ -320,15 +320,6 @@ class CoreTelemetryService(
             client.persist()
         } catch (e: AunException) {
             AunLog.w("telemetry", "telemetry crash skipped", "error" to e.message)
-        } finally {
-            gate.unlock()
-        }
-    }
-
-    private fun tryCaptureCrashEpochBounded(): Long? {
-        if (!tryLockUninterruptibly(CRASH_LOCK_TIMEOUT_MS)) return null
-        return try {
-            if (isActiveConsentLocked(requiresFull = false)) consentEpoch else null
         } finally {
             gate.unlock()
         }
@@ -389,7 +380,7 @@ class CoreTelemetryService(
             if (closed) return
             closed = true
             _consent = TelemetryConsent.OFF
-            fastConsent = TelemetryConsent.OFF
+            fastConsentEpoch = CONSENT_OFF_EPOCH
             jobsToCancel = buildList {
                 addAll(flushJobs)
                 retryFlushJob?.let { add(it) }
@@ -659,11 +650,12 @@ class CoreTelemetryService(
                 totalFrames < MAX_CRASH_STACK_FRAMES &&
                 chars < MAX_CRASH_STACK_CHARS
 
-        private val safeSourceFileRegex = Regex("""^[A-Za-z0-9_.-]{1,64}\.(?:kt|java)$""")
         private val safeStackFrameLineRegex = Regex(
-            """^\s*at\s+[A-Za-z0-9_.$:-]{1,128}\((?:[A-Za-z0-9_.-]{1,64}\.(?:kt|java)(?::\d{1,7})?|Unknown Source|Native Method)\)$"""
+            """^\s*at\s+(?:[a-z][a-z0-9_]*\.)+[A-Za-z0-9_.$:-]{1,128}\((?:line:\d{1,7}|Unknown Source|Native Method)\)$"""
         )
-        private val safeStackHeaderLineRegex = Regex("""^(?:Caused by:\s*)?[A-Za-z][A-Za-z0-9_.$:-]{0,127}$""")
+        private val safeStackHeaderLineRegex = Regex(
+            """^(?:Caused by:\s*)?(?:[a-z][a-z0-9_]*\.)+[A-Za-z][A-Za-z0-9_$]{0,96}(?:Exception|Error|Throwable)$"""
+        )
 
         internal fun sanitizeCrashStackText(stack: String): String? {
             val safeLines = stack.lineSequence()
@@ -679,11 +671,9 @@ class CoreTelemetryService(
         internal fun formatSafeStackFrame(frame: StackTraceElement): String {
             val cls = sanitizeCrashKindIdentifier(frame.className)
             val method = sanitizeCrashKindIdentifier(frame.methodName)
-            val file = frame.fileName?.takeIf { safeSourceFileRegex.matches(it) }
             val location = when {
                 frame.isNativeMethod -> "Native Method"
-                file != null && frame.lineNumber >= 0 -> "$file:${frame.lineNumber}"
-                file != null -> file
+                frame.lineNumber >= 0 -> "line:${frame.lineNumber}"
                 else -> "Unknown Source"
             }
             return "$cls.$method($location)"
@@ -715,6 +705,7 @@ class CoreTelemetryService(
         fun purgePersistedBuffer(bufferPath: String?): Boolean =
             UnavailableNativeTelemetryService(bufferPath).setConsent(TelemetryConsent.OFF)
 
+        private const val CONSENT_OFF_EPOCH = -1L
         private const val MAX_CRASH_CAUSE_DEPTH = 16
         private const val MAX_CRASH_STACK_FRAMES = 128
         private const val MAX_CRASH_STACK_CHARS = 16_384
