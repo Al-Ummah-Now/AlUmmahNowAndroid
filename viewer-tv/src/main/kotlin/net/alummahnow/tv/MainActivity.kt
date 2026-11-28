@@ -112,8 +112,8 @@ class MainActivity : ComponentActivity() {
                 telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
             }
         } else {
-            val saved = consentStore.setEnabled(false)
             val purged = telemetry.setConsent(TelemetryConsent.OFF)
+            val saved = consentStore.setEnabled(false)
             if (saved) telemetryEnabledState.value = false
             telemetrySaveUncertainState.value = !saved
             telemetryWarningResState.value = when {

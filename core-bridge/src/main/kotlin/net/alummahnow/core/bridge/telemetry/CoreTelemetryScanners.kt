@@ -532,8 +532,21 @@ internal object CoreTelemetryScanners {
 
     fun scanQueryOrFragment(text: String, start: Int, angleStopMask: Int = 3): Int {
         var p = start + 1
-        while (p < text.length && !isQueryOrFragmentStopAt(text, start, p, angleStopMask)) {
-            p++
+        while (p < text.length) {
+            val embeddedNext = CoreTelemetryQuotedPathRedactor.tryScanEmbeddedQueryQuote(
+                text,
+                start,
+                p,
+                angleStopMask,
+                ::isUnescapedQueryQuote
+            )
+            if (embeddedNext > p) {
+                p = embeddedNext
+            } else if (isQueryOrFragmentStopAt(text, start, p, angleStopMask)) {
+                break
+            } else {
+                p++
+            }
         }
         return p
     }

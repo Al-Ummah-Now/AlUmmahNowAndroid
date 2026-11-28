@@ -263,6 +263,37 @@ internal object CoreTelemetryQuotedPathRedactor {
         return sb.append(text, copied, text.length).toString()
     }
 
+    fun tryScanEmbeddedQueryQuote(
+        text: String,
+        start: Int,
+        p: Int,
+        angleStopMask: Int,
+        isUnescapedQuote: (String, Int, Int) -> Boolean
+    ): Int {
+        val eligible = (angleStopMask and 4) == 0 && p > start && text[p - 1] in "=?&#"
+        val ch = if (eligible) text[p] else '\u0000'
+        return when {
+            ch == '"' && isUnescapedQuote(text, start, p) ->
+                scanEmbeddedQueryQuoteEnd(text, p, '"', requireClose = false)
+            ch == '\'' ->
+                scanEmbeddedQueryQuoteEnd(text, p, '\'', requireClose = true)
+            else -> p
+        }
+    }
+
+    private fun scanEmbeddedQueryQuoteEnd(text: String, openPos: Int, quote: Char, requireClose: Boolean): Int {
+        var idx = openPos + 1
+        var escaped = false
+        while (idx < text.length) {
+            val c = text[idx]
+            if (c == '\r' || c == '\n') return if (requireClose) openPos else idx
+            if (c == quote && !escaped) return idx + 1
+            escaped = c == '\\' && !escaped
+            idx++
+        }
+        return if (requireClose) openPos else idx
+    }
+
     fun collectBalancedDoubleQuoteSpans(text: String): List<QuotedPathSpan> {
         val spans = ArrayList<QuotedPathSpan>()
         var idx = 0

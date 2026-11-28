@@ -84,5 +84,23 @@ class CoreTelemetryQuotedAuthTest {
         )
         val longProto = "(HTTP/1" + ".1".repeat(50_000) + "x)"
         assertEquals("([redacted-path])", CoreTelemetryService.sanitizeLocalPaths(longProto))
+        assertEquals(
+            "https://example.com/?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("""https://example.com/?access_token="super secret"""")
+        )
+        assertEquals(
+            "https://example.com/?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("""https://example.com/?session_key="super secret"""")
+        )
+        assertEquals(
+            "https://example.com/?[redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("https://example.com/?session_key='super secret'")
+        )
+        assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(".env"))
+        val stack = CoreTelemetryService.formatSanitizedCrashStack(
+            IllegalStateException("Could not load profile for Jane Doe")
+        )
+        assertTrue(stack.contains("IllegalStateException"))
+        assertFalse(stack.contains("Jane Doe"))
     }
 }

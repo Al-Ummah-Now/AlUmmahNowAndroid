@@ -412,7 +412,7 @@ class CoreTelemetryService(
                 "jpg|jpeg|png|gif|webp|heic|svg|pdf|txt|md|rtf|doc|docx|xls|xlsx|ppt|pptx|" +
                 "csv|json|xml|yaml|yml|toml|ini|cfg|conf|log|srt|vtt|ass|ssa|" +
                 "zip|tar|gz|tgz|bz2|xz|7z|rar|dmg|pkg|msi|exe|apk|aab|ipa|" +
-                "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun"
+                "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun|env"
         private val sourceLineExtSet = setOf(
             "kt", "java", "swift", "cs", "cpp", "cc", "c", "h", "hpp", "rs", "py", "js", "ts", "go", "rb", "m", "mm"
         )
@@ -512,6 +512,25 @@ class CoreTelemetryService(
          * previously installed handler. Subsequent calls swap the active service without chaining
          * stale instances.
          */
+        internal fun formatSanitizedCrashStack(throwable: Throwable): String {
+            val sb = StringBuilder()
+            val seen = java.util.IdentityHashMap<Throwable, Boolean>()
+            var current: Throwable? = throwable
+            var depth = 0
+            while (current != null && depth < MAX_CRASH_CAUSE_DEPTH && seen.put(current, true) == null) {
+                if (depth > 0) sb.append("Caused by: ")
+                sb.append(current.javaClass.name).append('\n')
+                for (frame in current.stackTrace) {
+                    sb.append("\tat ").append(frame.toString()).append('\n')
+                }
+                current = current.cause
+                depth++
+            }
+            return sb.toString().trimEnd()
+        }
+
+        private const val MAX_CRASH_CAUSE_DEPTH = 16
+
         fun installUncaughtExceptionHandler(service: TelemetryService) {
             synchronized(crashHandlerLock) {
                 activeCrashService = service
@@ -520,10 +539,12 @@ class CoreTelemetryService(
                 val previous = Thread.getDefaultUncaughtExceptionHandler()
                 Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     runCatching {
+                        val kind = throwable.javaClass.name
+                        val simple = throwable.javaClass.simpleName.ifBlank { kind }
                         activeCrashService?.reportCrash(
-                            kind = throwable.javaClass.name,
-                            message = throwable.message ?: throwable.javaClass.simpleName,
-                            stack = throwable.stackTraceToString(),
+                            kind = kind,
+                            message = simple,
+                            stack = formatSanitizedCrashStack(throwable),
                             fromPreviousSession = false
                         )
                     }

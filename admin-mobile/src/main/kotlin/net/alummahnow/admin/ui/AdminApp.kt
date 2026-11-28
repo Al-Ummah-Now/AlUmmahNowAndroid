@@ -426,8 +426,8 @@ private fun StaffHome(
                         services.prefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
                     }
                 } else {
-                    val saved = services.prefs.setTelemetryEnabled(false)
                     val purged = services.telemetry.setConsent(TelemetryConsent.OFF)
+                    val saved = services.prefs.setTelemetryEnabled(false)
                     services.prefs.setTelemetrySaveUncertain(!saved)
                     services.prefs.setTelemetryWarningRes(
                         when {

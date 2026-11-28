@@ -148,8 +148,8 @@ class AppContainer(context: Context) : StudioContainer {
     }
 
     private fun disableTelemetry(): Boolean {
-        val saved = telemetryConsentStore.setEnabled(false)
         val purged = telemetry.setConsent(TelemetryConsent.OFF)
+        val saved = telemetryConsentStore.setEnabled(false)
         if (saved) telemetryEnabledState.value = false
         telemetrySaveFailedState.value = !saved
         telemetryWarningResState.value = when {
