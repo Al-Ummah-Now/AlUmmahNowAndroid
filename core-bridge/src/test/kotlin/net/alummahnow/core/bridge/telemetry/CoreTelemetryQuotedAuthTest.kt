@@ -125,6 +125,10 @@ class CoreTelemetryQuotedAuthTest {
                 )
             )
         )
+        assertEquals(
+            """{"[redacted-path]":"[redacted]"}""",
+            CoreTelemetryService.serializeProperties(mapOf("/storage/emulated/0/Acquisition/client_token" to "dummy"))
+        )
         val stack = CoreTelemetryService.formatSanitizedCrashStack(
             IllegalStateException("Could not load profile for Jane Doe")
         )

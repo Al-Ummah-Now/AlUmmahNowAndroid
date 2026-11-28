@@ -1182,13 +1182,13 @@ class CoreTelemetryService(
             usedKeys: MutableSet<String>,
             nextSuffixByBase: MutableMap<String, Int>
         ) {
-            if (isAuthHeaderPropertyKey(key)) {
-                put(resolveUniquePropertyKey(usedKeys, nextSuffixByBase, key), JsonPrimitive("[redacted]"))
-                return
-            }
             val safeKey = sanitizeLocalPaths(key)
             if (safeKey.isBlank()) return
             val uniqueKey = resolveUniquePropertyKey(usedKeys, nextSuffixByBase, safeKey)
+            if (isAuthHeaderPropertyKey(key)) {
+                put(uniqueKey, JsonPrimitive("[redacted]"))
+                return
+            }
             when (value) {
                 is String -> put(uniqueKey, JsonPrimitive(sanitizeLocalPaths(value)))
                 is Boolean -> put(uniqueKey, JsonPrimitive(value))

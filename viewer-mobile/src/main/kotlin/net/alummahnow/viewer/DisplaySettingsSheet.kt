@@ -16,6 +16,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +43,8 @@ fun DisplaySettingsSheet(
     webHost: String,
     telemetryEnabled: Boolean = false,
     onTelemetryChanged: ((Boolean) -> Unit)? = null,
-    telemetryWarning: String? = null
+    telemetryWarning: String? = null,
+    showPurgeRetry: Boolean = false
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         DisplaySettingsSheetContent(
@@ -57,7 +59,8 @@ fun DisplaySettingsSheet(
             webHost = webHost,
             telemetryEnabled = telemetryEnabled,
             onTelemetryChanged = onTelemetryChanged,
-            telemetryWarning = telemetryWarning
+            telemetryWarning = telemetryWarning,
+            showPurgeRetry = showPurgeRetry
         )
     }
 }
@@ -75,7 +78,8 @@ internal fun DisplaySettingsSheetContent(
     webHost: String,
     telemetryEnabled: Boolean = false,
     onTelemetryChanged: ((Boolean) -> Unit)? = null,
-    telemetryWarning: String? = null
+    telemetryWarning: String? = null,
+    showPurgeRetry: Boolean = false
 ) {
     val langCode = language ?: currentLocale().language
     Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -125,6 +129,14 @@ internal fun DisplaySettingsSheetContent(
                     }
                 }
                 Switch(checked = telemetryEnabled, onCheckedChange = null)
+            }
+            if (showPurgeRetry && !telemetryEnabled) {
+                TextButton(
+                    onClick = { onTelemetryChanged(false) },
+                    modifier = Modifier.padding(horizontal = 16.dp).testTag("settings-diagnostics-retry-purge")
+                ) {
+                    Text(stringResource(DesignR.string.aun_retry))
+                }
             }
         }
         if (onOpenBlockedList != null) {

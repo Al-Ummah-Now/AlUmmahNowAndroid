@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,7 +84,8 @@ fun AccountSheet(
     deletionStarted: Set<String> = emptySet(),
     telemetryEnabled: Boolean = false,
     onTelemetryChanged: ((Boolean) -> Unit)? = null,
-    telemetryWarning: String? = null
+    telemetryWarning: String? = null,
+    showPurgeRetry: Boolean = false
 ) {
     var confirmSignOut by remember { mutableStateOf<StudioAccount?>(null) }
     ModalBottomSheet(
@@ -107,7 +109,8 @@ fun AccountSheet(
             deletionStarted = deletionStarted,
             telemetryEnabled = telemetryEnabled,
             onTelemetryChanged = onTelemetryChanged,
-            telemetryWarning = telemetryWarning
+            telemetryWarning = telemetryWarning,
+            showPurgeRetry = showPurgeRetry
         )
     }
     confirmSignOut?.let { a ->
@@ -143,7 +146,8 @@ internal fun AccountSheetContent(
     deletionStarted: Set<String> = emptySet(),
     telemetryEnabled: Boolean = false,
     onTelemetryChanged: ((Boolean) -> Unit)? = null,
-    telemetryWarning: String? = null
+    telemetryWarning: String? = null,
+    showPurgeRetry: Boolean = false
 ) {
     val lang = currentLocale().language
     Column(
@@ -237,6 +241,16 @@ internal fun AccountSheetContent(
                         .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.xs)
                         .testTag("studio-diagnostics-warning")
                 )
+            }
+            if (showPurgeRetry && !telemetryEnabled) {
+                TextButton(
+                    onClick = { onTelemetryChanged(false) },
+                    modifier = Modifier
+                        .padding(horizontal = FanousTokens.Spacing.sm)
+                        .testTag("studio-diagnostics-retry-purge")
+                ) {
+                    Text(stringResource(DesignR.string.aun_retry))
+                }
             }
         }
         if (onOpenUrl != null) {

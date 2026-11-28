@@ -209,7 +209,8 @@ fun SettingsSheet(
     onAddPasskey: (() -> Unit)? = null,
     telemetryEnabled: Boolean = false,
     onTelemetryChanged: ((Boolean) -> Unit)? = null,
-    telemetryWarning: String? = null
+    telemetryWarning: String? = null,
+    showPurgeRetry: Boolean = false
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         SettingsContent(
@@ -223,7 +224,8 @@ fun SettingsSheet(
             onAddPasskey = onAddPasskey,
             telemetryEnabled = telemetryEnabled,
             onTelemetryChanged = onTelemetryChanged,
-            telemetryWarning = telemetryWarning
+            telemetryWarning = telemetryWarning,
+            showPurgeRetry = showPurgeRetry
         )
     }
 }
@@ -240,7 +242,8 @@ fun SettingsContent(
     onAddPasskey: (() -> Unit)? = null,
     telemetryEnabled: Boolean = false,
     onTelemetryChanged: ((Boolean) -> Unit)? = null,
-    telemetryWarning: String? = null
+    telemetryWarning: String? = null,
+    showPurgeRetry: Boolean = false
 ) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(
@@ -325,6 +328,14 @@ fun SettingsContent(
                     }
                 }
                 Switch(checked = telemetryEnabled, onCheckedChange = null)
+            }
+            if (showPurgeRetry && !telemetryEnabled) {
+                TextButton(
+                    onClick = { onTelemetryChanged(false) },
+                    modifier = Modifier.testTag("admin-diagnostics-retry-purge")
+                ) {
+                    Text(stringResource(DesignR.string.aun_retry))
+                }
             }
         }
         HorizontalDivider()

@@ -369,6 +369,7 @@ internal fun ViewerNavHost(
             webHost = BuildConfig.WEB_HOST,
             telemetryEnabled = telemetryEnabled || telemetrySaveUncertain,
             telemetryWarning = telemetryWarning,
+            showPurgeRetry = !(telemetryEnabled || telemetrySaveUncertain) && lastPurgeFailed,
             onTelemetryChanged = { enabled ->
                 if (enabled) {
                     if (container.telemetry.setConsent(TelemetryConsent.FULL)) {

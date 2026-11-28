@@ -84,7 +84,9 @@ class MainActivity : ComponentActivity() {
             TvApp(
                 telemetryEnabled = telemetryEnabled,
                 telemetryWarning = telemetryWarning,
-                onToggleTelemetry = { toggleTelemetry(telemetry, consentStore, telemetryEnabled) }
+                showPurgeRetry = !telemetryEnabled && lastPurgeFailed,
+                onToggleTelemetry = { toggleTelemetry(telemetry, consentStore, telemetryEnabled) },
+                onRetryPurge = { disableTelemetry(telemetry, consentStore) }
             )
         }
     }
@@ -111,14 +113,18 @@ class MainActivity : ComponentActivity() {
                 telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
             }
         } else {
-            val (saved, purged) = consentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
-            if (saved) telemetryEnabledState.value = false
-            telemetrySaveUncertainState.value = !saved
-            telemetryWarningResState.value = when {
-                !saved -> DesignR.string.aun_diagnostics_disable_error
-                !purged -> DesignR.string.aun_diagnostics_purge_warning
-                else -> null
-            }
+            disableTelemetry(telemetry, consentStore)
+        }
+    }
+
+    private fun disableTelemetry(telemetry: TelemetryService, consentStore: TelemetryConsentStore) {
+        val (saved, purged) = consentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
+        if (saved) telemetryEnabledState.value = false
+        telemetrySaveUncertainState.value = !saved
+        telemetryWarningResState.value = when {
+            !saved -> DesignR.string.aun_diagnostics_disable_error
+            !purged -> DesignR.string.aun_diagnostics_purge_warning
+            else -> null
         }
     }
 
@@ -167,7 +173,9 @@ fun TvApp(
     mode: ThemeMode? = null,
     telemetryEnabled: Boolean = false,
     telemetryWarning: String? = null,
-    onToggleTelemetry: (() -> Unit)? = null
+    showPurgeRetry: Boolean = false,
+    onToggleTelemetry: (() -> Unit)? = null,
+    onRetryPurge: (() -> Unit)? = null
 ) {
     var screen by rememberSaveable { mutableStateOf(TvScreen.Home) }
     BackHandler(screen != TvScreen.Home) {
@@ -209,6 +217,11 @@ fun TvApp(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error
                                 )
+                            }
+                            if (showPurgeRetry && onRetryPurge != null) {
+                                TvAction(stringResource(DesignR.string.aun_retry)) {
+                                    onRetryPurge()
+                                }
                             }
                         }
                     }

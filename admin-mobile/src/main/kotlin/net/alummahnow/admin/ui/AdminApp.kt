@@ -262,6 +262,7 @@ private fun AdminContent(
             },
             telemetryEnabled = telemetryEnabled,
             telemetryWarning = telemetryWarning,
+            showPurgeRetry = !telemetryEnabled && lastPurgeFailed,
             onTelemetryChanged = onTelemetryChanged
         )
     }
@@ -330,6 +331,7 @@ private fun StaffHome(
     onAddPasskey: (() -> Unit)?,
     telemetryEnabled: Boolean,
     telemetryWarning: String?,
+    showPurgeRetry: Boolean,
     onTelemetryChanged: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -482,6 +484,7 @@ private fun StaffHome(
             },
             telemetryEnabled = telemetryEnabled,
             telemetryWarning = telemetryWarning,
+            showPurgeRetry = showPurgeRetry,
             onTelemetryChanged = onTelemetryChanged
         )
     }

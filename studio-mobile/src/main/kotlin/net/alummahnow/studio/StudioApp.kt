@@ -460,6 +460,7 @@ fun StudioApp(
             deletionStarted = openDeletions.map { it.userId }.toSet(),
             telemetryEnabled = telemetryEnabled,
             telemetryWarning = telemetryWarning,
+            showPurgeRetry = !telemetryEnabled && lastPurgeFailed,
             onTelemetryChanged = { enabled -> container.setTelemetryEnabled(enabled) }
         )
     }
