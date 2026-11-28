@@ -1,6 +1,5 @@
 package net.alummahnow.design.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -76,8 +76,13 @@ private fun DiagnosticsOptOutBar(
             val rowModifier = if (telemetryEnabled) {
                 Modifier
                     .fillMaxWidth()
-                    .clickable(role = Role.Switch) { onDisableTelemetry() }
+                    .toggleable(
+                        value = true,
+                        role = Role.Switch,
+                        onValueChange = { if (!it) onDisableTelemetry() }
+                    )
                     .padding(horizontal = FanousTokens.Spacing.lg, vertical = FanousTokens.Spacing.md)
+                    .testTag("diagnostics-opt-out-switch")
             } else {
                 Modifier
                     .fillMaxWidth()
@@ -101,8 +106,7 @@ private fun DiagnosticsOptOutBar(
                 if (telemetryEnabled) {
                     Switch(
                         checked = true,
-                        onCheckedChange = { if (!it) onDisableTelemetry() },
-                        modifier = Modifier.testTag("diagnostics-opt-out-switch")
+                        onCheckedChange = null
                     )
                 } else if (lastPurgeFailed) {
                     TextButton(

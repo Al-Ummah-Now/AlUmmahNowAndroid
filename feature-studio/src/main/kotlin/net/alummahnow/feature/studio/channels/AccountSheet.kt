@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -219,9 +220,13 @@ internal fun AccountSheetContent(
                 title = stringResource(DesignR.string.aun_diagnostics_toggle),
                 subtitle = stringResource(DesignR.string.aun_diagnostics_description),
                 modifier = Modifier
-                    .clickable(role = Role.Switch) { onTelemetryChanged(!telemetryEnabled) }
+                    .toggleable(
+                        value = telemetryEnabled,
+                        role = Role.Switch,
+                        onValueChange = onTelemetryChanged
+                    )
                     .testTag("studio-diagnostics"),
-                trailing = { Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged) }
+                trailing = { Switch(checked = telemetryEnabled, onCheckedChange = null) }
             )
             if (!telemetryWarning.isNullOrEmpty()) {
                 Text(

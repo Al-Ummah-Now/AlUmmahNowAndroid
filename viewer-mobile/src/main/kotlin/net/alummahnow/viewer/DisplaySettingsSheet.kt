@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -94,7 +95,11 @@ internal fun DisplaySettingsSheetContent(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable(role = Role.Switch) { onTelemetryChanged(!telemetryEnabled) }
+                    .toggleable(
+                        value = telemetryEnabled,
+                        role = Role.Switch,
+                        onValueChange = onTelemetryChanged
+                    )
                     .padding(horizontal = 24.dp, vertical = 12.dp)
                     .testTag("settings-diagnostics"),
                 verticalAlignment = Alignment.CenterVertically
@@ -119,7 +124,7 @@ internal fun DisplaySettingsSheetContent(
                         )
                     }
                 }
-                Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged)
+                Switch(checked = telemetryEnabled, onCheckedChange = null)
             }
         }
         if (onOpenBlockedList != null) {

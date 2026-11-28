@@ -194,6 +194,11 @@ fun TvApp(
                             TvAction("${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText") {
                                 onToggleTelemetry()
                             }
+                            Text(
+                                stringResource(DesignR.string.aun_diagnostics_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             if (!telemetryWarning.isNullOrEmpty()) {
                                 Text(
                                     telemetryWarning,

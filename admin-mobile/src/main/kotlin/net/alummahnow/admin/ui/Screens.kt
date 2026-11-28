@@ -5,7 +5,6 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -296,7 +296,11 @@ fun SettingsContent(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable(role = Role.Switch) { onTelemetryChanged(!telemetryEnabled) }
+                    .toggleable(
+                        value = telemetryEnabled,
+                        role = Role.Switch,
+                        onValueChange = onTelemetryChanged
+                    )
                     .padding(vertical = FanousTokens.Spacing.xs)
                     .testTag("admin-diagnostics"),
                 verticalAlignment = Alignment.CenterVertically
@@ -320,7 +324,7 @@ fun SettingsContent(
                         )
                     }
                 }
-                Switch(checked = telemetryEnabled, onCheckedChange = onTelemetryChanged)
+                Switch(checked = telemetryEnabled, onCheckedChange = null)
             }
         }
         HorizontalDivider()
