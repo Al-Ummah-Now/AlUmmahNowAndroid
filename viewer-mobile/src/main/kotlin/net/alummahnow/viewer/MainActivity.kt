@@ -225,7 +225,10 @@ internal fun ViewerNavHost(
     }.takeIf { it.isNotEmpty() }?.joinToString("\n")
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabled) {
-        if (telemetryEnabled) container.telemetry.flush()
+        if (telemetryEnabled) {
+            container.telemetry.track("app_open")
+            container.telemetry.flush()
+        }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         if (telemetryEnabled) scope.launch { container.telemetry.flush() }

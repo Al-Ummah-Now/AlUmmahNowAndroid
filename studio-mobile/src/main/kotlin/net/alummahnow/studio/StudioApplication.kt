@@ -11,6 +11,7 @@ import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.studio.UploadItem
 import net.alummahnow.core.bridge.studio.deletion.DeletionStage
 import net.alummahnow.core.bridge.telemetry.CoreTelemetryService
+import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.feature.upload.UploadHost
 import net.alummahnow.feature.upload.UploadNotifications
 import net.alummahnow.feature.upload.UploadScheduler
@@ -28,6 +29,9 @@ class StudioApplication :
         AunLog.enabled = BuildConfig.DEBUG
         container = AppContainer(this)
         CoreTelemetryService.installUncaughtExceptionHandler(container.telemetry)
+        if (container.telemetry.consent != TelemetryConsent.OFF) {
+            container.appScope.launch(Dispatchers.IO) { container.telemetry.flush() }
+        }
         UploadNotifications.ensureChannel(this)
         // A deletion that succeeded just before the app was killed: its uploads, session and record go first.
         if (container.deletionRecords.records.value.any { it.stage == DeletionStage.DELETED }) {

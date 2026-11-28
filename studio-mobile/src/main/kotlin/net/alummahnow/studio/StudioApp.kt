@@ -166,6 +166,12 @@ fun StudioApp(
     )
 
     val telemetryEnabledPref by container.telemetryEnabledFlow.collectAsStateWithLifecycle()
+    LaunchedEffect(telemetryEnabledPref) {
+        if (telemetryEnabledPref) {
+            container.telemetry.track("app_open")
+            container.appScope.launch(Dispatchers.IO) { container.telemetry.flush() }
+        }
+    }
     val telemetrySaveFailed by container.telemetrySaveFailedFlow.collectAsStateWithLifecycle()
     val telemetryWarningRes by container.telemetryWarningResFlow.collectAsStateWithLifecycle()
     val lastPurgeFailed by container.telemetry.lastPurgeFailedFlow.collectAsStateWithLifecycle()

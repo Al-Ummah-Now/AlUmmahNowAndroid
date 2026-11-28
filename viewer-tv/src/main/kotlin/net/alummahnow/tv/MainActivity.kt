@@ -67,7 +67,10 @@ class MainActivity : ComponentActivity() {
             }.takeIf { it.isNotEmpty() }?.joinToString("\n")
             val scope = rememberCoroutineScope()
             LaunchedEffect(telemetryEnabledPref) {
-                if (telemetryEnabledPref) telemetry.flush()
+                if (telemetryEnabledPref) {
+                    telemetry.track("app_open")
+                    telemetry.flush()
+                }
             }
             DisposableEffect(this@MainActivity) {
                 val observer = LifecycleEventObserver { _, event ->

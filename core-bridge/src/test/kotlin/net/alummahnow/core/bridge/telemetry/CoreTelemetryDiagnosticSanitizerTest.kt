@@ -34,6 +34,9 @@ class CoreTelemetryDiagnosticSanitizerTest {
                 "p\\u0061ssword" to "violet-sparrow",
                 "token violet7" to "ok",
                 "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K " +
+                    "alummahnow://watch/v1 " +
+                    "https://uploads.example.test/upload/853876e8-cc19-465d-bafa-7459aba00936 " +
+                    "https://example.org/assets/%41bCdEfGhIjKlMnOpQrStUvWxYz0123456789 " +
                     "https://example.test/password%3Dshortcredential " +
                     "https%3A%2F%2Fexample.test%2F%3Fcode%3Dorchid-meadow",
                 "badVal" to throwingProp
@@ -46,7 +49,8 @@ class CoreTelemetryDiagnosticSanitizerTest {
             "482731", "first;second", "second", "alice123", "alice42", "bob73", "violet-sparrow", "秘密", "12 Cedar Rd",
             "orchid", "velvet", "shortcredential", "horse battery staple", "word phrase",
             "Alice", "Wonderland", "Smith", "Jane", "Doe", "ProjectCodename", "violet7",
-            "orchid-meadow", "shortsecret", "u:p@localhost", "u:[redacted-email]", "Aq82F1ZLPx0K"
+            "orchid-meadow", "shortsecret", "u:p@localhost", "u:[redacted-email]", "Aq82F1ZLPx0K",
+            "watch/v1", "853876e8-cc19-465d-bafa-7459aba00936", "bCdEfGhIjKlMnOpQrStUvWxYz0123456789"
         )
         for (token in forbidden) {
             assertFalse("Expected redacted token: $token", json.contains(token))

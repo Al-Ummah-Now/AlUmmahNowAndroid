@@ -223,6 +223,131 @@ private fun scrubSensitiveContainerValues(
     return out.append(text, copied, text.length).toString()
 }
 
+private const val MIN_OPAQUE_URL_SEGMENT_LEN = 32
+private const val UUID_SEGMENT_LEN = 36
+
+private fun parseUrlHexByte(hi: Char, lo: Char): Int? {
+    val h = hi.digitToIntOrNull(16) ?: return null
+    val l = lo.digitToIntOrNull(16) ?: return null
+    return (h shl 4) or l
+}
+
+private fun decodeUrlSegmentFull(raw: String): Pair<String, IntArray> {
+    val sb = StringBuilder(raw.length)
+    val offsets = IntArray(raw.length + 1)
+    var outLen = 0
+    var i = 0
+    while (i < raw.length) {
+        offsets[outLen++] = i
+        val decodedByte = if (raw[i] == '%' && i + 2 < raw.length) {
+            parseUrlHexByte(raw[i + 1], raw[i + 2])
+        } else {
+            null
+        }
+        val decodable = decodedByte != null &&
+            decodedByte in 0x21..0x7E &&
+            decodedByte != '?'.code &&
+            decodedByte != '#'.code
+        if (decodable) {
+            sb.append(decodedByte!!.toChar())
+            i += 3
+        } else {
+            sb.append(raw[i])
+            i++
+        }
+    }
+    offsets[outLen] = raw.length
+    return sb.toString() to offsets
+}
+
+private fun isUuidSegment(seg: String): Boolean {
+    if (seg.length != UUID_SEGMENT_LEN) return false
+    for (i in seg.indices) {
+        val c = seg[i]
+        val isDash = i == 8 || i == 13 || i == 18 || i == 23
+        val ok = if (isDash) c == '-' else c.digitToIntOrNull(16) != null
+        if (!ok) return false
+    }
+    return true
+}
+
+private fun isOpaqueUrlSecretSegment(seg: String): Boolean {
+    if (seg.length < MIN_OPAQUE_URL_SEGMENT_LEN || isUuidSegment(seg)) return false
+    var hasLetter = false
+    var hasDigit = false
+    for (c in seg) {
+        when {
+            c in 'A'..'Z' || c in 'a'..'z' -> hasLetter = true
+            c in '0'..'9' -> hasDigit = true
+            c !in "-_+/=" -> return false
+        }
+    }
+    return hasLetter && hasDigit
+}
+
+private fun collectOpaqueSegmentSpans(rawSeg: String, baseOffset: Int): List<IntRange> {
+    val (decoded, offsets) = decodeUrlSegmentFull(rawSeg)
+    if (!decoded.startsWith("[redacted") && isOpaqueUrlSecretSegment(decoded)) {
+        return listOf(baseOffset until (baseOffset + rawSeg.length))
+    }
+    if (decoded.indexOf('/') < 0) return emptyList()
+    val spans = ArrayList<IntRange>()
+    var subStart = 0
+    while (subStart < decoded.length) {
+        val slash = decoded.indexOf('/', subStart)
+        val subEnd = if (slash < 0) decoded.length else slash
+        val sub = decoded.substring(subStart, subEnd)
+        if (sub.isNotEmpty() && !sub.startsWith("[redacted") && isOpaqueUrlSecretSegment(sub)) {
+            spans.add((baseOffset + offsets[subStart]) until (baseOffset + offsets[subEnd]))
+        }
+        subStart = if (slash < 0) decoded.length else slash + 1
+    }
+    return spans
+}
+
+private fun findUrlPathBounds(url: String): IntRange? {
+    if (url.indexOf('%') < 0) return null
+    val schemeIdx = url.indexOf("://")
+    val pathSlash = if (schemeIdx >= 0) url.indexOf('/', schemeIdx + 3) else -1
+    if (pathSlash < 0) return null
+    val qf = url.indexOfAny(charArrayOf('?', '#'), pathSlash)
+    val pathEnd = if (qf < 0) url.length else qf
+    return (pathSlash + 1) until pathEnd
+}
+
+private fun collectOpaqueSpansInUrl(url: String, pathRange: IntRange): List<IntRange> {
+    val spans = ArrayList<IntRange>()
+    val pathEnd = pathRange.last + 1
+    var segStart = pathRange.first
+    while (segStart < pathEnd) {
+        val slash = url.indexOf('/', segStart)
+        val segEnd = if (slash < 0 || slash > pathEnd) pathEnd else slash
+        val semi = url.indexOf(';', segStart)
+        val coreEnd = if (semi < 0 || semi > segEnd) segEnd else semi
+        val rawSeg = url.substring(segStart, coreEnd)
+        if (rawSeg.indexOf('%') >= 0) {
+            spans.addAll(collectOpaqueSegmentSpans(rawSeg, segStart))
+        }
+        segStart = if (segEnd >= pathEnd) pathEnd else segEnd + 1
+    }
+    return spans
+}
+
+internal fun redactEncodedOpaqueSegmentsInUrl(url: String): String {
+    val pathRange = findUrlPathBounds(url) ?: return url
+    val spans = collectOpaqueSpansInUrl(url, pathRange)
+    if (spans.isEmpty()) return url
+    val sb = StringBuilder(url.length)
+    var copied = 0
+    for (span in spans) {
+        if (span.first >= copied) {
+            sb.append(url, copied, span.first).append("[redacted]")
+            copied = span.last + 1
+        }
+    }
+    return sb.append(url, copied, url.length).toString()
+}
+
 internal object CoreTelemetryPropertySanitizer {
     private const val MIN_PHONE_DIGITS = 9
     private const val MIN_FORMATTED_PHONE_DIGITS = 8

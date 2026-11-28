@@ -193,6 +193,12 @@ private fun AdminContent(
     )
 
     val telemetryEnabledPref by services.prefs.telemetryEnabledFlow.collectAsStateWithLifecycle()
+    LaunchedEffect(telemetryEnabledPref) {
+        if (telemetryEnabledPref) {
+            services.telemetry.track("app_open")
+            services.telemetry.flush()
+        }
+    }
     val telemetrySaveUncertain by services.prefs.telemetrySaveUncertain.collectAsStateWithLifecycle()
     val telemetryWarningRes by services.prefs.telemetryWarningRes.collectAsStateWithLifecycle()
     val lastPurgeFailed by services.telemetry.lastPurgeFailedFlow.collectAsStateWithLifecycle()
