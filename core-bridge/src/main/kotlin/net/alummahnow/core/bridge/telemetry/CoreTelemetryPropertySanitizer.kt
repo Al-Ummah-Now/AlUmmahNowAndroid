@@ -32,7 +32,7 @@ internal object CoreTelemetryPropertySanitizer {
             """(?![A-Za-z0-9_]|:[0-9a-fA-F])"""
     )
     private val phoneInKeyRegex = Regex(
-        """(?<![A-Za-z0-9_])\+?\p{Nd}[\p{Nd}\p{Zs}\t().\p{Pd}\u2212]{6,}\p{Nd}(?![A-Za-z0-9_])"""
+        """(?<![A-Za-z0-9])\+?\p{Nd}[\p{Nd}\p{Zs}\t().\p{Pd}\u2212]{6,}\p{Nd}(?![A-Za-z0-9])"""
     )
     private val isoDateExactRegex = Regex(
         """^(?:\d{4}[-/.]\d{2}[-/.]\d{2}|\d{2}[-/.]\d{2}[-/.]\d{4})$"""
@@ -45,24 +45,58 @@ internal object CoreTelemetryPropertySanitizer {
     )
 
     private val sensitiveSegments = setOf(
-        "token", "secret", "jwt", "bearer", "password", "passwd", "pwd", "passphrase",
+        "token", "secret", "jwt", "bearer", "password", "passwd", "pwd", "pass", "passphrase",
         "credential", "credentials", "otp", "pin", "passcode", "cookie",
-        "authorization", "signature", "apikey", "accesskey", "privatekey",
-        "secretkey", "sessionid", "sessionkey", "codeverifier",
+        "authorization", "auth", "signature", "sig", "apikey", "accesskey", "key", "privatekey",
+        "secretkey", "session", "sessionid", "sessionkey", "codeverifier",
         "verificationcode", "authcode", "recoverycode", "clientsecret",
-        "accesstoken", "refreshtoken", "idtoken", "sessiontoken", "securitytoken"
+        "accesstoken", "refreshtoken", "idtoken", "sessiontoken", "securitytoken",
+        "apitoken", "authtoken",
+        "email", "mail", "phone", "phonenumber", "msisdn", "mobile", "tel", "telephone",
+        "ssn", "ip", "ipaddress", "address", "street", "streetaddress", "homeaddress",
+        "card", "creditcard", "cvv", "cvc", "iban", "pan",
+        "dob", "birthdate", "dateofbirth",
+        "firstname", "lastname", "fullname", "displayname", "givenname", "familyname",
+        "username", "login", "passport"
+    )
+
+    private val highValueKeySubstrings = listOf(
+        "apikey", "accesskey", "secret", "token", "password", "passwd",
+        "credential", "authorization", "privatekey", "cookie", "signature"
     )
 
     private val keyValueCredentialRegex = Regex(
-        """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]*[._-])?(?:token|secret|jwt|passphrase|credential|credentials|""" +
-            """verification[_-]?code|auth[_-]?code|recovery[_-]?code|passcode|otp|pin|""" +
-            """client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|""" +
-            """api[_-]?key|api[_-]?token|auth[_-]?token|session[_-]?token|security[_-]?token|""" +
-            """private[_-]?key|secret[_-]?key|access[_-]?key|code[_-]?verifier|""" +
-            """session[_-]?id|session[_-]?key|password|passwd|pwd)(?:\\?["'])?\s*[=:]\s*)""" +
-            """(?:\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]"']+)""",
-        RegexOption.IGNORE_CASE
+        """(?<![A-Za-z0-9_])([A-Za-z0-9_.-]{2,64})((?:\\?["'])?\s*[=:]\s*)""" +
+            """(?:\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]"']+)"""
     )
+
+    private fun isSensitiveKeyName(key: String): Boolean {
+        val squashed = buildString(key.length) {
+            for (c in key) {
+                if (c.isLetterOrDigit()) append(c.lowercaseChar())
+            }
+        }
+        if (highValueKeySubstrings.any { squashed.contains(it) }) return true
+        val segments = splitKeySegments(key)
+        for (i in segments.indices) {
+            if (segments[i] in sensitiveSegments) return true
+            if (i + 1 < segments.size && (segments[i] + segments[i + 1]) in sensitiveSegments) return true
+        }
+        return false
+    }
+
+    private fun scrubSensitiveKeyValues(text: String): String =
+        keyValueCredentialRegex.replace(text) { m ->
+            val key = m.groupValues[1]
+            val lower = key.lowercase(Locale.ROOT)
+            if (lower == "authorization" || lower == "proxy-authorization") {
+                m.value
+            } else if (isSensitiveKeyName(key)) {
+                key + m.groupValues[2] + "[redacted]"
+            } else {
+                m.value
+            }
+        }
 
     private fun isRedactedPhoneMatch(match: String): Boolean {
         val digits = match.codePoints().filter { Character.isDigit(it) }.count()
@@ -81,9 +115,9 @@ internal object CoreTelemetryPropertySanitizer {
     }
 
     fun sanitizeDiagnosticText(text: String): String {
-        val pre = keyValueCredentialRegex.replace(text, "$1[redacted]")
+        val pre = scrubSensitiveKeyValues(text)
         var safe = CoreTelemetryService.sanitizeLocalPaths(pre)
-        safe = keyValueCredentialRegex.replace(safe, "$1[redacted]")
+        safe = scrubSensitiveKeyValues(safe)
         safe = ipv6InKeyRegex.replace(safe, "[redacted-ip]")
         safe = ipv4InKeyRegex.replace(safe, "[redacted-ip]")
         safe = phoneInKeyRegex.replace(safe) { m ->
@@ -120,13 +154,8 @@ internal object CoreTelemetryPropertySanitizer {
 
     private fun isAuthHeaderPropertyKey(key: String): Boolean {
         val trimmed = key.trim()
-        if (CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(trimmed) != null) return true
-        val segments = splitKeySegments(trimmed)
-        for (i in segments.indices) {
-            if (segments[i] in sensitiveSegments) return true
-            if (i + 1 < segments.size && (segments[i] + segments[i + 1]) in sensitiveSegments) return true
-        }
-        return false
+        return CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(trimmed) != null ||
+            isSensitiveKeyName(trimmed)
     }
 
     private fun splitKeySegments(key: String): List<String> {

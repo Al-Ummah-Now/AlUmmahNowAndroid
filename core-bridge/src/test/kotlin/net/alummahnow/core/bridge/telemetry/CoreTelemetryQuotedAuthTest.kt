@@ -162,7 +162,7 @@ class CoreTelemetryQuotedAuthTest {
             CoreTelemetryService.serializeProperties(mapOf("+٩٧١٥٠١٢٣٤٥٦" to true))
         )
         assertEquals(
-            """{"[redacted]":"failed"}""",
+            """{"[redacted]":"[redacted]"}""",
             CoreTelemetryService.serializeProperties(mapOf("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig_part-1" to "failed"))
         )
         assertEquals(

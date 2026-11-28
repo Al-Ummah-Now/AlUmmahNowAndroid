@@ -23,9 +23,10 @@ class CoreTelemetryDiagnosticSanitizerTest {
                 "algNone" to "IHsiYWxnIjoibm9uZSJ9.eyJzdWIiOiJhbGljZSJ9.",
                 "longJwt" to longSignedJwt,
                 "safeId" to "eyJunction.load.failed",
-                "nbPhone" to "+33\u202F6\u202F12\u202F34\u202F56\u202F78",
-                "shortPhone" to "12 34 56 78 and 2026-11-27",
-                "creds" to """{"challenge.verificationCode":"482731"} pwd=shortsecret""",
+                "nbText" to "+33\u202F6\u202F12\u202F34\u202F56\u202F78",
+                "detailText" to "12 34 56 78 and 2026-11-27",
+                "creds" to """{"challenge.verificationCode":"482731"} pass="correct horse battery staple" """ +
+                    """{"pass":"multi word phrase"} fullName="Alice Wonderland" pwd=shortsecret""",
                 "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K",
                 "badVal" to throwingProp
             )
@@ -39,10 +40,15 @@ class CoreTelemetryDiagnosticSanitizerTest {
         assertFalse(json.contains("12 34 56 78"))
         assertTrue(json.contains("2026-11-27"))
         assertFalse(json.contains("482731"))
+        assertFalse(json.contains("horse battery staple"))
+        assertFalse(json.contains("word phrase"))
+        assertFalse(json.contains("Alice"))
+        assertFalse(json.contains("Wonderland"))
         assertFalse(json.contains("shortsecret"))
         assertFalse(json.contains("u:p@localhost"))
         assertFalse(json.contains("u:[redacted-email]"))
         assertFalse(json.contains("Aq82F1ZLPx0K"))
+        assertFalse(CoreTelemetryService.sanitizePropertyKey("phone_2025550123").contains("2025550123"))
         assertEquals(
             "http://[redacted]@localhost/x",
             CoreTelemetryService.sanitizeLocalPaths("http://u:p@localhost/x")
