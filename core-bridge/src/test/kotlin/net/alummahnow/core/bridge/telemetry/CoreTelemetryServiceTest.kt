@@ -571,6 +571,14 @@ class CoreTelemetryServiceTest {
             CoreTelemetryService.sanitizeLocalPaths("""{"m":"Basic Basic \"dXNlcjpwYXNz\""}""")
         )
         assertEquals(
+            """{"msg":"Bearer Basic \u0022[redacted]\""}""",
+            CoreTelemetryService.sanitizeLocalPaths("""{"msg":"Bearer Basic \u0022dTpw\""}""")
+        )
+        assertEquals(
+            """Basic \u0022[redacted]\"""",
+            CoreTelemetryService.sanitizeLocalPaths("""Basic \u0022dTpw\"""")
+        )
+        assertEquals(
             "https://[redacted-email]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.org/users/alice/@example.com")
         )
