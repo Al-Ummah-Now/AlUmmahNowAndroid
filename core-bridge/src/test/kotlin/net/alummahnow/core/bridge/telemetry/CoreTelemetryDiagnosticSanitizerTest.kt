@@ -26,11 +26,12 @@ class CoreTelemetryDiagnosticSanitizerTest {
                 "nbText" to "+33\u202F6\u202F12\u202F34\u202F56\u202F78",
                 "detailText" to "12 34 56 78 and 2026-11-27",
                 "creds" to """{"challenge.verificationCode":"482731"} {"home\u0041ddress":"12 Cedar Rd"} """ +
-                    """status="password=first;second" """ +
-                    "password=\u201Corchid velvet\u201D displayName=Alice Smith username=Jane Doe C:ProjectCodename " +
+                    """{"userId":["alice42", "bob73"]} status="password=first;second" """ +
+                    "password=\u201Corchid velvet\u201D displayName=Alice Smith username=Jane Doe C:ProjectCodename C:秘密 " +
                     """pass="correct horse battery staple" """ +
                     """{"pass":"multi word phrase"} fullName="Alice Wonderland" pwd=shortsecret""",
                 "user_id" to "alice123",
+                "p\\u0061ssword" to "violet-sparrow",
                 "token violet7" to "ok",
                 "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K " +
                     "https://example.test/password%3Dshortcredential " +
@@ -42,7 +43,7 @@ class CoreTelemetryDiagnosticSanitizerTest {
         val json = props!!
         val forbidden = listOf(
             "eyJzdWIiOiJhbGljZSJ9", "sigValue123", "56\u202F78", "12 34 56 78",
-            "482731", "first;second", "second", "alice123", "12 Cedar Rd",
+            "482731", "first;second", "second", "alice123", "alice42", "bob73", "violet-sparrow", "秘密", "12 Cedar Rd",
             "orchid", "velvet", "shortcredential", "horse battery staple", "word phrase",
             "Alice", "Wonderland", "Smith", "Jane", "Doe", "ProjectCodename", "violet7",
             "orchid-meadow", "shortsecret", "u:p@localhost", "u:[redacted-email]", "Aq82F1ZLPx0K"

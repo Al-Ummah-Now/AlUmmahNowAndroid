@@ -23,7 +23,8 @@ private val multiWordSensitiveSegments = setOf(
 )
 
 private val windowsDriveRelativePathRegex = Regex(
-    """(?<![A-Za-z0-9_:])[A-Za-z]:(?![/\\])(?!\d+:\d+)[A-Za-z_.][A-Za-z0-9_.\\/-]+"""
+    """(?<![A-Za-z0-9_:])[A-Za-z]:(?![/\\])(?!\d+:\d+)""" +
+        """(?:[\p{L}\p{M}_.][\p{L}\p{M}\p{Nd}_.\\/-]+|[^\u0000-\u007F\s,;}\]"'<>()]+)"""
 )
 
 private val spaceDelimitedCredentialRegex = Regex(
@@ -129,6 +130,92 @@ private fun scrubUnquotedMultiWordSensitiveValues(
                 copied = valEnd
                 nextPos = valEnd
             }
+        }
+        match = if (nextPos < text.length) multiWordKeySepRegex.find(text, nextPos) else null
+    }
+    val out = sb ?: return text
+    return out.append(text, copied, text.length).toString()
+}
+
+private class ContainerScanState(val open: Char) {
+    val close: Char = if (open == '[') ']' else '}'
+    var depth: Int = 0
+    var inQuote: Char = '\u0000'
+}
+
+private fun stepContainerQuote(text: String, pos: Int, state: ContainerScanState): Int {
+    val ch = text[pos]
+    if (ch == '\\' && pos + 1 < text.length) {
+        if (state.inQuote == '\u0001' && text[pos + 1] == '"') state.inQuote = '\u0000'
+        return pos + 2
+    }
+    if ((state.inQuote == '\u0001' && ch == '"') || ch == state.inQuote) state.inQuote = '\u0000'
+    return pos + 1
+}
+
+private fun stepContainerUnquoted(text: String, pos: Int, state: ContainerScanState): Int {
+    val ch = text[pos]
+    if (ch == '\\' && pos + 1 < text.length && text[pos + 1] == '"') {
+        state.inQuote = '\u0001'
+        return pos + 2
+    }
+    when (ch) {
+        '"', '\'' -> state.inQuote = ch
+        state.open -> state.depth++
+        state.close -> state.depth--
+    }
+    return pos + 1
+}
+
+private fun scanBalancedContainerEnd(text: String, start: Int): Int {
+    val state = ContainerScanState(text[start])
+    var pos = start
+    while (pos < text.length) {
+        pos = if (state.inQuote != '\u0000') {
+            stepContainerQuote(text, pos, state)
+        } else {
+            stepContainerUnquoted(text, pos, state)
+        }
+        if (state.inQuote == '\u0000' && state.depth == 0) return pos
+    }
+    return text.length
+}
+
+private fun shouldScrubContainerKey(
+    rawKey: String,
+    text: String,
+    valStart: Int,
+    decode: (String) -> String,
+    isSensitive: (String) -> Boolean
+): Boolean {
+    val open = text[valStart]
+    if (open != '[' && open != '{') return false
+    if (text.startsWith("[redacted", valStart)) return false
+    val decoded = decode(rawKey)
+    val lower = decoded.trim('"', '\'').lowercase(Locale.ROOT)
+    return lower != "authorization" && lower != "proxy-authorization" && isSensitive(decoded)
+}
+
+private fun scrubSensitiveContainerValues(
+    text: String,
+    replacement: String,
+    decode: (String) -> String,
+    isSensitive: (String) -> Boolean
+): String {
+    if (text.indexOf('[') < 0 && text.indexOf('{') < 0) return text
+    var sb: StringBuilder? = null
+    var copied = 0
+    var match = multiWordKeySepRegex.find(text, 0)
+    while (match != null) {
+        val valStart = match.range.last + 1
+        var nextPos = valStart
+        val matchKey = match.groupValues[1]
+        if (valStart < text.length && shouldScrubContainerKey(matchKey, text, valStart, decode, isSensitive)) {
+            val valEnd = scanBalancedContainerEnd(text, valStart)
+            val out = sb ?: StringBuilder(text.length).also { sb = it }
+            out.append(text, copied, valStart).append('"').append(replacement).append('"')
+            copied = valEnd
+            nextPos = valEnd
         }
         match = if (nextPos < text.length) multiWordKeySepRegex.find(text, nextPos) else null
     }
@@ -277,9 +364,11 @@ internal object CoreTelemetryPropertySanitizer {
 
     fun sanitizeDiagnosticText(text: String): String {
         var pre = redactPercentEncodedUrls(text)
+        pre = scrubSensitiveContainerValues(pre, REDACTED_SENTINEL, ::decodeJsonUnicodeEscapes, ::isSensitiveKeyName)
         pre = scrubUnquotedMultiWordSensitiveValues(pre, REDACTED_SENTINEL, ::decodeJsonUnicodeEscapes, ::splitKeySegments)
         pre = scrubSensitiveKeyValues(pre, REDACTED_SENTINEL)
         var safe = CoreTelemetryService.sanitizeLocalPaths(pre).replace(REDACTED_SENTINEL, "[redacted]")
+        safe = scrubSensitiveContainerValues(safe, "[redacted]", ::decodeJsonUnicodeEscapes, ::isSensitiveKeyName)
         safe = scrubUnquotedMultiWordSensitiveValues(safe, "[redacted]", ::decodeJsonUnicodeEscapes, ::splitKeySegments)
         safe = scrubSensitiveKeyValues(safe, "[redacted]")
         safe = spaceDelimitedCredentialRegex.replace(safe, "$1[redacted]")
@@ -319,9 +408,9 @@ internal object CoreTelemetryPropertySanitizer {
     }
 
     private fun isAuthHeaderPropertyKey(key: String): Boolean {
-        val trimmed = key.trim()
-        return CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(trimmed) != null ||
-            isSensitiveKeyName(trimmed)
+        val decoded = decodeJsonUnicodeEscapes(key).trim()
+        return CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(decoded) != null ||
+            isSensitiveKeyName(decoded)
     }
 
     private fun splitKeySegments(key: String): List<String> {
