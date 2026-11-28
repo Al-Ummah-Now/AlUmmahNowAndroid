@@ -72,7 +72,29 @@ class CoreTelemetryQuotedEscapedTest {
             "{\"\\u0063ookie\":\"firstSecret\",\"Cookie\":\"secondSecret\"}" to
                 "{\"cookie\":\"[redacted]\",\"Cookie\":\"[redacted]\"}",
             "{\\\"\tCookie\t\\\":\\\"opaqueSecret123\\\"}" to "{\\\"\tCookie\t\\\":\\\"[redacted]\\\"}",
-            "[[\\\"Authorization\\\",\\\"opaqueSecret123\\\"\\n]]" to "[[\\\"Authorization\\\",\\\"[redacted]\\\"\\n]]"
+            "[[\\\"Authorization\\\",\\\"opaqueSecret123\\\"\\n]]" to "[[\\\"Authorization\\\",\\\"[redacted]\\\"\\n]]",
+            "https://hooks.slack.com/./services/T000/B000/fakeWebhookSecret" to
+                "https://hooks.slack.com/./services/[redacted]",
+            "https://hooks.slack.com/a/../services/T000/B000/fakeWebhookSecret" to
+                "https://hooks.slack.com/a/../services/[redacted]",
+            "https://hooks.slack.com/%2e/services/T000/B000/fakeWebhookSecret" to
+                "https://hooks.slack.com/%2e/services/[redacted]",
+            "https://hooks.slack.com//services/T000/B000/fakeWebhookSecret" to
+                "https://hooks.slack.com//services/[redacted]",
+            "https://example.com/projectc:/foo" to "https://example.com/projectc:/foo",
+            "https://example.com/my-c:/foo" to "https://example.com/my-c:/foo",
+            "content://com.android.externalstorage.documents/document/primary%3ADownload%2FPrivateAcquisition.mov" to
+                "[redacted-path]",
+            (
+                "{\"uri\":\"content://com.android.externalstorage.documents/document/" +
+                    "primary%3ADownload%2FPrivateAcquisition.mov\",\"ok\":true}"
+                ) to
+                "{\"uri\":\"[redacted-path]\",\"ok\":true}",
+            (
+                "{\"uri\":\"content:\\/\\/com.android.externalstorage.documents\\/document\\/" +
+                    "primary%3ADownload%2FPrivateAcquisition.mov\",\"ok\":true}"
+                ) to
+                "{\"uri\":\"[redacted-path]\",\"ok\":true}"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))

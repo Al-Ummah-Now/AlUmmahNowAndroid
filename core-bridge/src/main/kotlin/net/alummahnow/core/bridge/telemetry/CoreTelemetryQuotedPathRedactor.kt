@@ -428,7 +428,7 @@ internal object CoreTelemetryQuotedPathRedactor {
         val dec0 = decodeJsonCharAt(text, pos, end)
         val driveAfter = if (tokenStart < 0) matchDecodedWindowsDrive(text, pos, end, dec0) else -1
         val isFileScheme = tokenStart < 0 &&
-            (dec0.ch == 'f' || dec0.ch == 'F') &&
+            (dec0.ch == 'f' || dec0.ch == 'F' || dec0.ch == 'c' || dec0.ch == 'C') &&
             matchDecodedFileScheme(text, pos, end)
         val homeAfter = if (tokenStart < 0) matchDecodedHome(text, pos, end, dec0) else -1
         val isBackslashSep = dec0.ch == '\\' && (tokenStart >= 0 || dec0.len > 1)
@@ -478,8 +478,11 @@ internal object CoreTelemetryQuotedPathRedactor {
         return if (prefix == "http" || prefix == "tls" || prefix == "ssl") pos else -1
     }
 
-    private fun matchDecodedFileScheme(text: String, pos: Int, end: Int): Boolean {
-        val target = "file://"
+    private fun matchDecodedFileScheme(text: String, pos: Int, end: Int): Boolean =
+        matchDecodedSchemePrefix(text, pos, end, "file://") ||
+            matchDecodedSchemePrefix(text, pos, end, "content://")
+
+    private fun matchDecodedSchemePrefix(text: String, pos: Int, end: Int, target: String): Boolean {
         var cursor = pos
         for (expected in target) {
             if (cursor >= end) return false

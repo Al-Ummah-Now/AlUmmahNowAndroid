@@ -851,8 +851,7 @@ class CoreTelemetryService(
         private fun isPathSep(ch: Char): Boolean = CoreTelemetryScanners.isPathSep(ch)
 
         private fun redactFileUris(text: String, vaultPrefix: String): String {
-            val schemeLen = 7
-            if (text.length < schemeLen) return text
+            if (text.length < 7) return text
             var checkedQuotes = false
             var quoteSpans: List<CoreTelemetryQuotedPathRedactor.QuotedPathSpan>? = null
             val spanCursor = IntArray(1)
@@ -860,7 +859,8 @@ class CoreTelemetryService(
             var copyStart = 0
             var pos = 0
             while (pos < text.length) {
-                if (CoreTelemetryScanners.isFileSchemeAt(text, pos)) {
+                val schemeLen = CoreTelemetryScanners.localUriSchemeLengthAt(text, pos)
+                if (schemeLen > 0) {
                     if (!checkedQuotes) {
                         checkedQuotes = true
                         if (text.indexOf('"') >= 0) {

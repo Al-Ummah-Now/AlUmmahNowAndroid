@@ -521,8 +521,7 @@ internal object CoreTelemetryUrlContinuation {
     }
 
     private fun isDriveBoundary(text: String, p: Int): Boolean =
-        (p == 0 || !CoreTelemetryScanners.isAsciiAlphaNum(text[p - 1])) &&
-            CoreTelemetryScanners.isWindowsDriveAt(text, p)
+        CoreTelemetryScanners.isUrlWindowsDriveStopAt(text, p)
 
     private fun stepSpacedQuotedEscape(text: String, p: Int, wrappedInAngle: Boolean): Int {
         val esc = text[p + 1]

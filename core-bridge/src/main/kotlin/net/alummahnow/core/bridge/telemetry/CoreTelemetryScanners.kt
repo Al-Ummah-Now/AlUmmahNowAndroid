@@ -25,6 +25,7 @@ internal object CoreTelemetryScanners {
     private const val OPENING_WRAPPERS = "([{\"'"
     private const val SCHEME_PUNCT = "+.-"
     private const val FILE_SCHEME_PREFIX = "file://"
+    private const val CONTENT_SCHEME_PREFIX = "content://"
 
     internal data class UrlSpan(val start: Int, val baseEnd: Int, val totalEnd: Int, val hasQf: Boolean)
 
@@ -35,8 +36,10 @@ internal object CoreTelemetryScanners {
         start = adjusted
         val validPrefix = sep - start >= 2 && isAsciiLetter(text[start])
         val prevBlocked = !stepped && start > 0 && isBlockedBeforeScheme(text[start - 1])
-        val isFile = sep - start == 4 && text.regionMatches(start, "file", 0, 4, ignoreCase = true)
-        return if (validPrefix && !prevBlocked && !isFile) start else null
+        val schemeLen = sep - start
+        val isLocal = (schemeLen == 4 && text.regionMatches(start, "file", 0, 4, ignoreCase = true)) ||
+            (schemeLen == 7 && text.regionMatches(start, "content", 0, 7, ignoreCase = true))
+        return if (validPrefix && !prevBlocked && !isLocal) start else null
     }
 
     @Suppress("LongParameterList")
@@ -130,7 +133,8 @@ internal object CoreTelemetryScanners {
     private val urlPathSecretRules: List<Regex> = listOf(
         Regex("""((?:^|/|%2[fF])webhooks?(?:/|%2[fF]))[^\s?#]+""", RegexOption.IGNORE_CASE),
         Regex(
-            """(https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?(?:/|%2[fF])(?:services|workflows|triggers)(?:/|%2[fF]))[^\s?#]+""",
+            """(https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?""" +
+                """(?:(?:/|%2[fF])[^\s?#]*?)?(?:/|%2[fF])(?:services|workflows|triggers)(?:/|%2[fF]))[^\s?#]+""",
             RegexOption.IGNORE_CASE
         ),
         Regex("""((?:/|%2[fF])bot\d+:)[^/\s?#]+""", RegexOption.IGNORE_CASE)
@@ -270,13 +274,12 @@ internal object CoreTelemetryScanners {
 
     private fun isPathStopChar(text: String, pos: Int, ch: Char): Boolean {
         val stopChar = ch.isWhitespace() || ch in URL_PATH_STOP
-        return stopChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
+        return stopChar || isFileSchemeAt(text, pos) || isUrlWindowsDriveStopAt(text, pos)
     }
 
     private fun isContStopChar(text: String, pos: Int, ch: Char): Boolean {
         val stopChar = ch.isWhitespace() || ch in URL_CONT_STOP
-        val isDrive = (pos == 0 || !isAsciiAlphaNum(text[pos - 1])) && isWindowsDriveAt(text, pos)
-        return stopChar || isFileSchemeAt(text, pos) || isDrive
+        return stopChar || isFileSchemeAt(text, pos) || isUrlWindowsDriveStopAt(text, pos)
     }
 
     internal class ContScanState(
@@ -521,7 +524,7 @@ internal object CoreTelemetryScanners {
     private fun isUrlEndBoundary(text: String, pos: Int): Boolean {
         val ch = text[pos]
         val boundaryChar = ch.isWhitespace() || ch in URL_END_BOUNDARY
-        return boundaryChar || isFileSchemeAt(text, pos) || isWindowsDriveAt(text, pos)
+        return boundaryChar || isFileSchemeAt(text, pos) || isUrlWindowsDriveStopAt(text, pos)
     }
 
     fun isQuotedSegStop(ch: Char): Boolean = ch in QUOTED_SEG_STOP
@@ -577,9 +580,24 @@ internal object CoreTelemetryScanners {
         return trimmedEnd
     }
 
-    fun isFileSchemeAt(text: String, pos: Int): Boolean {
-        val boundaryOk = pos == 0 || !isUrlSchemeChar(text[pos - 1])
-        return boundaryOk && text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true)
+    fun isFileSchemeAt(text: String, pos: Int): Boolean = localUriSchemeLengthAt(text, pos) > 0
+
+    fun localUriSchemeLengthAt(text: String, pos: Int): Int {
+        if (pos > 0 && isUrlSchemeChar(text[pos - 1])) return 0
+        if (text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true)) {
+            return FILE_SCHEME_PREFIX.length
+        }
+        if (text.regionMatches(pos, CONTENT_SCHEME_PREFIX, 0, CONTENT_SCHEME_PREFIX.length, ignoreCase = true)) {
+            return CONTENT_SCHEME_PREFIX.length
+        }
+        return 0
+    }
+
+    fun isUrlWindowsDriveStopAt(text: String, pos: Int): Boolean {
+        if (!isWindowsDriveAt(text, pos)) return false
+        if (pos == 0 || text[pos + 2] == '\\') return true
+        val prev = text[pos - 1]
+        return !(isAsciiAlphaNum(prev) || prev == '-' || prev == '_' || prev == '.' || prev == '~')
     }
 
     fun isWindowsDriveAt(text: String, pos: Int): Boolean {
