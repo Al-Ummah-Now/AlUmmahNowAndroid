@@ -105,6 +105,8 @@ import net.alummahnow.feature.upload.UploadRoute
 import net.alummahnow.feature.upload.UploadViewModel
 
 /** Studio's top level: sign-in, then the channel picker, then the channel's Studio. */
+private val studioAppOpenTracked = java.util.concurrent.atomic.AtomicBoolean(false)
+
 @Composable
 fun StudioApp(
     container: StudioContainer,
@@ -168,7 +170,9 @@ fun StudioApp(
     val telemetryEnabledPref by container.telemetryEnabledFlow.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabledPref) {
         if (telemetryEnabledPref) {
-            container.telemetry.track("app_open")
+            if (studioAppOpenTracked.compareAndSet(false, true)) {
+                container.telemetry.track("app_open")
+            }
             container.appScope.launch(Dispatchers.IO) { container.telemetry.flush() }
         }
     }

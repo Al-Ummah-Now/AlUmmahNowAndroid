@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 private val percentEncodedUrlRegex = Regex(
-    """(?<![A-Za-z0-9+.-])(?:[a-zA-Z][a-zA-Z0-9+.-]*(?:%3[aA]%2[fF]%2[fF]|%253[aA]%252[fF]%252[fF]))[^\s"'<>]+"""
+    """(?<![A-Za-z0-9+.-])(?:[a-zA-Z][a-zA-Z0-9+.-]*(?:%(?:25)*3[aA]%(?:25)*2[fF]%(?:25)*2[fF]))[^\s"'<>]+"""
 )
 
 private val multiWordSensitiveSegments = setOf(
@@ -38,13 +38,22 @@ private val spaceDelimitedCredentialRegex = Regex(
     RegexOption.IGNORE_CASE
 )
 
+private val knownPrefixCredentialRegex = Regex(
+    """(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|""" +
+        """glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|""" +
+        """(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|""" +
+        """(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|""" +
+        """hf_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{20,}|""" +
+        """SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|sq0(?:atp|csp)-[A-Za-z0-9_-]{20,})(?![A-Za-z0-9_])"""
+)
+
 private const val REDACTED_SENTINEL = "__AUN_REDACTED__"
 
 private fun redactPercentEncodedUrls(text: String): String {
     if (text.indexOf('%') < 0) return text
     return percentEncodedUrlRegex.replace(text) { m ->
         val raw = m.value
-        if (raw.contains("%253", ignoreCase = true)) {
+        if (raw.contains("%25", ignoreCase = true)) {
             "[redacted-url]"
         } else {
             runCatching {
@@ -285,9 +294,35 @@ private fun isOpaqueUrlSecretSegment(seg: String): Boolean {
     return hasLetter && hasDigit
 }
 
+private const val MIN_PHONE_URL_DIGITS = 9
+private const val MIN_FORMATTED_PHONE_URL_DIGITS = 8
+private val urlIsoDateExactRegex = Regex(
+    """^(?:\d{4}[-/.]\d{2}[-/.]\d{2}|\d{2}[-/.]\d{2}[-/.]\d{4})$"""
+)
+
+private fun isDecodedPhoneUrlSegment(seg: String): Boolean {
+    if (seg.length < MIN_FORMATTED_PHONE_URL_DIGITS) return false
+    var digits = 0
+    var hasFormatting = false
+    for (c in seg) {
+        when {
+            c in '0'..'9' -> digits++
+            c in "+-(). " -> if (c != '.') hasFormatting = true
+            else -> return false
+        }
+    }
+    return digits >= MIN_PHONE_URL_DIGITS ||
+        (digits == MIN_FORMATTED_PHONE_URL_DIGITS && hasFormatting && !urlIsoDateExactRegex.matches(seg))
+}
+
+private fun isDecodedSensitiveUrlSegment(seg: String): Boolean =
+    isOpaqueUrlSecretSegment(seg) ||
+        isDecodedPhoneUrlSegment(seg) ||
+        CoreTelemetryPropertySanitizer.matchesIpLiteral(seg)
+
 private fun collectOpaqueSegmentSpans(rawSeg: String, baseOffset: Int): List<IntRange> {
     val (decoded, offsets) = decodeUrlSegmentFull(rawSeg)
-    if (!decoded.startsWith("[redacted") && isOpaqueUrlSecretSegment(decoded)) {
+    if (!decoded.startsWith("[redacted") && isDecodedSensitiveUrlSegment(decoded)) {
         return listOf(baseOffset until (baseOffset + rawSeg.length))
     }
     if (decoded.indexOf('/') < 0) return emptyList()
@@ -297,7 +332,7 @@ private fun collectOpaqueSegmentSpans(rawSeg: String, baseOffset: Int): List<Int
         val slash = decoded.indexOf('/', subStart)
         val subEnd = if (slash < 0) decoded.length else slash
         val sub = decoded.substring(subStart, subEnd)
-        if (sub.isNotEmpty() && !sub.startsWith("[redacted") && isOpaqueUrlSecretSegment(sub)) {
+        if (sub.isNotEmpty() && !sub.startsWith("[redacted") && isDecodedSensitiveUrlSegment(sub)) {
             spans.add((baseOffset + offsets[subStart]) until (baseOffset + offsets[subEnd]))
         }
         subStart = if (slash < 0) decoded.length else slash + 1
@@ -487,6 +522,9 @@ internal object CoreTelemetryPropertySanitizer {
             type == Character.DASH_PUNCTUATION.toInt()
     }
 
+    internal fun matchesIpLiteral(text: String): Boolean =
+        ipv4InKeyRegex.containsMatchIn(text) || ipv6InKeyRegex.containsMatchIn(text)
+
     fun sanitizeDiagnosticText(text: String): String {
         var pre = redactPercentEncodedUrls(text)
         pre = scrubSensitiveContainerValues(pre, REDACTED_SENTINEL, ::decodeJsonUnicodeEscapes, ::isSensitiveKeyName)
@@ -497,6 +535,7 @@ internal object CoreTelemetryPropertySanitizer {
         safe = scrubUnquotedMultiWordSensitiveValues(safe, "[redacted]", ::decodeJsonUnicodeEscapes, ::splitKeySegments)
         safe = scrubSensitiveKeyValues(safe, "[redacted]")
         safe = spaceDelimitedCredentialRegex.replace(safe, "$1[redacted]")
+        safe = knownPrefixCredentialRegex.replace(safe, "[redacted]")
         safe = ipv6InKeyRegex.replace(safe, "[redacted-ip]")
         safe = ipv4InKeyRegex.replace(safe, "[redacted-ip]")
         safe = windowsDriveRelativePathRegex.replace(safe, "[redacted-path]")

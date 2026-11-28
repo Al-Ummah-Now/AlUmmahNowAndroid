@@ -68,7 +68,9 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             LaunchedEffect(telemetryEnabledPref) {
                 if (telemetryEnabledPref) {
-                    telemetry.track("app_open")
+                    if (appOpenTracked.compareAndSet(false, true)) {
+                        telemetry.track("app_open")
+                    }
                     telemetry.flush()
                 }
             }
@@ -137,6 +139,7 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "aun_tv_prefs"
         private const val KEY_TELEMETRY = "telemetry_enabled"
         private val telemetryLock = Any()
+        private val appOpenTracked = java.util.concurrent.atomic.AtomicBoolean(false)
         private val telemetryEnabledState = MutableStateFlow(false)
         private val telemetrySaveUncertainState = MutableStateFlow(false)
         private val telemetryWarningResState = MutableStateFlow<Int?>(null)

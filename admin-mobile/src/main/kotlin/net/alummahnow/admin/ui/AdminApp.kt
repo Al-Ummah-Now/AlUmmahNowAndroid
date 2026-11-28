@@ -90,6 +90,8 @@ const val REVEAL_IDLE_MS = 60_000L
  * The Admin app: sign-in (staff only), device unlock, the review queue and the review screen. Light or Dark only: the
  * first launch follows the device, then the reviewer's explicit choice.
  */
+private val adminAppOpenTracked = java.util.concurrent.atomic.AtomicBoolean(false)
+
 @Composable
 fun AdminApp(
     services: AdminServices,
@@ -195,7 +197,9 @@ private fun AdminContent(
     val telemetryEnabledPref by services.prefs.telemetryEnabledFlow.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabledPref) {
         if (telemetryEnabledPref) {
-            services.telemetry.track("app_open")
+            if (adminAppOpenTracked.compareAndSet(false, true)) {
+                services.telemetry.track("app_open")
+            }
             services.telemetry.flush()
         }
     }

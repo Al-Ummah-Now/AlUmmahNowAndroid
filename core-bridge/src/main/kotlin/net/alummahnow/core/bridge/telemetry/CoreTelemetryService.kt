@@ -7,6 +7,9 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -54,9 +57,11 @@ class CoreTelemetryService(
     initialEnabled: Boolean = false
 ) : TelemetryService {
     private val client: TelemetryClient
-    private val gate = Any()
+    private val gate = ReentrantLock()
     private val flushScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile
+    private var fastConsent: TelemetryConsent = TelemetryConsent.OFF
     private var _consent: TelemetryConsent = TelemetryConsent.OFF
     private var revoked: Boolean = false
     private var closed: Boolean = false
@@ -90,10 +95,10 @@ class CoreTelemetryService(
     }
 
     override val consent: TelemetryConsent
-        get() = synchronized(gate) { if (closed) TelemetryConsent.OFF else _consent }
+        get() = gate.withLock { if (closed) TelemetryConsent.OFF else _consent }
 
     override val pendingCount: Int
-        get() = synchronized(gate) {
+        get() = gate.withLock {
             if (closed || clientClosed || _consent == TelemetryConsent.OFF) 0 else client.pendingCount().toInt()
         }
 
@@ -111,7 +116,7 @@ class CoreTelemetryService(
 
         val jobsToCancel: List<Job>
         val succeeded: Boolean
-        synchronized(gate) {
+        gate.withLock {
             if (consent == TelemetryConsent.OFF) {
                 val (purged, cancelList) = revokeLocked("telemetry disk purge failed on opt-out")
                 jobsToCancel = cancelList
@@ -130,6 +135,7 @@ class CoreTelemetryService(
                             analyticsEpoch++
                         }
                         _consent = consent
+                        fastConsent = consent
                         revoked = false
                         true
                     } catch (e: AunException) {
@@ -151,6 +157,7 @@ class CoreTelemetryService(
     /** Must be called while holding [gate]. */
     private fun revokeLocked(failureMessage: String): Pair<Boolean, List<Job>> {
         _consent = TelemetryConsent.OFF
+        fastConsent = TelemetryConsent.OFF
         revoked = true
         consentEpoch++
         analyticsEpoch++
@@ -182,14 +189,14 @@ class CoreTelemetryService(
 
     override fun track(name: String, properties: Map<String, Any?>) {
         if (name.isBlank()) return
-        val captureEpoch = synchronized(gate) {
+        val captureEpoch = gate.withLock {
             if (!isActiveConsentLocked(requiresFull = true)) return
             analyticsEpoch
         }
         val safeName = sanitizePropertyKey(name)
         if (safeName.isBlank()) return
         val json = serializeProperties(properties)
-        synchronized(gate) {
+        gate.withLock {
             if (!isActiveConsentLocked(requiresFull = true, expectedEpoch = captureEpoch)) return
             try {
                 client.track(safeName, json)
@@ -201,14 +208,14 @@ class CoreTelemetryService(
 
     override fun trackError(code: String, properties: Map<String, Any?>) {
         if (code.isBlank()) return
-        val captureEpoch = synchronized(gate) {
+        val captureEpoch = gate.withLock {
             if (!isActiveConsentLocked(requiresFull = true)) return
             analyticsEpoch
         }
         val safeCode = sanitizePropertyKey(code)
         if (safeCode.isBlank()) return
         val json = serializeProperties(properties)
-        synchronized(gate) {
+        gate.withLock {
             if (!isActiveConsentLocked(requiresFull = true, expectedEpoch = captureEpoch)) return
             try {
                 client.trackError(safeCode, json)
@@ -220,7 +227,7 @@ class CoreTelemetryService(
 
     override fun addBreadcrumb(category: String, message: String, level: TelemetryBreadcrumbSeverity) {
         if (category.isBlank()) return
-        val captureEpoch = synchronized(gate) {
+        val captureEpoch = gate.withLock {
             if (!isActiveConsentLocked(requiresFull = false)) return
             consentEpoch
         }
@@ -232,17 +239,18 @@ class CoreTelemetryService(
         }
         val safeCategory = sanitizePropertyKey(category)
         val safeMessage = CoreTelemetryPropertySanitizer.sanitizeDiagnosticText(message)
-        synchronized(gate) {
+        gate.withLock {
             if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
             client.addBreadcrumb(safeCategory, safeMessage, mapped)
         }
     }
 
-    override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
-        val captureEpoch = synchronized(gate) {
-            if (!isActiveConsentLocked(requiresFull = false)) return
-            consentEpoch
-        }
+    private fun buildSanitizedCrashReport(
+        kind: String,
+        message: String,
+        stack: String?,
+        fromPreviousSession: Boolean
+    ): TelemetryCrashReport {
         val safeKind = if (kind.isBlank()) "UnhandledException" else sanitizePropertyKey(kind)
         val safeMessage = if (message.isBlank()) {
             "Unhandled exception"
@@ -250,7 +258,7 @@ class CoreTelemetryService(
             CoreTelemetryPropertySanitizer.sanitizeDiagnosticText(message)
         }
         val safeStack = stack?.let(CoreTelemetryPropertySanitizer::sanitizeDiagnosticText)
-        val report = TelemetryCrashReport(
+        return TelemetryCrashReport(
             kind = safeKind,
             message = safeMessage,
             stack = safeStack,
@@ -258,7 +266,16 @@ class CoreTelemetryService(
             fromPreviousSession = fromPreviousSession,
             propertiesJson = null
         )
-        synchronized(gate) {
+    }
+
+    override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) {
+        if (fastConsent == TelemetryConsent.OFF) return
+        val captureEpoch = gate.withLock {
+            if (!isActiveConsentLocked(requiresFull = false)) return
+            consentEpoch
+        }
+        val report = buildSanitizedCrashReport(kind, message, stack, fromPreviousSession)
+        gate.withLock {
             if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
             try {
                 client.reportCrash(report)
@@ -269,8 +286,33 @@ class CoreTelemetryService(
         }
     }
 
+    internal fun reportCrashFromUncaughtHandler(kind: String, message: String, stack: String?) {
+        if (fastConsent == TelemetryConsent.OFF || gate.isHeldByCurrentThread) return
+        val captureEpoch = tryCaptureCrashEpochBounded() ?: return
+        val report = buildSanitizedCrashReport(kind, message, stack, fromPreviousSession = false)
+        if (!gate.tryLock(CRASH_LOCK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) return
+        try {
+            if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
+            client.reportCrash(report)
+            client.persist()
+        } catch (e: AunException) {
+            AunLog.w("telemetry", "telemetry crash skipped", "error" to e.message)
+        } finally {
+            gate.unlock()
+        }
+    }
+
+    private fun tryCaptureCrashEpochBounded(): Long? {
+        if (!gate.tryLock(CRASH_LOCK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) return null
+        return try {
+            if (isActiveConsentLocked(requiresFull = false)) consentEpoch else null
+        } finally {
+            gate.unlock()
+        }
+    }
+
     override fun persist() {
-        synchronized(gate) {
+        gate.withLock {
             if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
             try {
                 client.persist()
@@ -282,7 +324,7 @@ class CoreTelemetryService(
 
     override suspend fun flush() {
         val job: Job
-        synchronized(gate) {
+        gate.withLock {
             if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
             inFlightFlushes++
             val flushEpoch = consentEpoch
@@ -292,7 +334,7 @@ class CoreTelemetryService(
                 } catch (_: CancellationException) {
                     // Cancelled by opt-out or shutdown.
                 } catch (e: AunException) {
-                    val isRevoked = synchronized(gate) { revoked || closed }
+                    val isRevoked = gate.withLock { revoked || closed }
                     if (!isRevoked) {
                         AunLog.w("telemetry", "telemetry flush skipped", "error" to e.message)
                     }
@@ -308,10 +350,11 @@ class CoreTelemetryService(
 
     override fun close() {
         val jobsToCancel: List<Job>
-        synchronized(gate) {
+        gate.withLock {
             if (closed) return
             closed = true
             _consent = TelemetryConsent.OFF
+            fastConsent = TelemetryConsent.OFF
             jobsToCancel = flushJobs.toList()
             flushJobs.clear()
             if (inFlightFlushes == 0 && !clientClosed) {
@@ -323,7 +366,7 @@ class CoreTelemetryService(
     }
 
     private fun releaseInFlightFlush(job: Job, flushEpoch: Long) {
-        synchronized(gate) {
+        gate.withLock {
             flushJobs.remove(job)
             inFlightFlushes = (inFlightFlushes - 1).coerceAtLeast(0)
             if (flushEpoch < consentEpoch) {
@@ -538,6 +581,7 @@ class CoreTelemetryService(
         }
 
         private const val MAX_CRASH_CAUSE_DEPTH = 16
+        private const val CRASH_LOCK_TIMEOUT_MS = 250L
 
         fun installUncaughtExceptionHandler(service: TelemetryService) {
             synchronized(crashHandlerLock) {
@@ -549,12 +593,16 @@ class CoreTelemetryService(
                     runCatching {
                         val kind = throwable.javaClass.name
                         val simple = throwable.javaClass.simpleName.ifBlank { kind }
-                        activeCrashService?.reportCrash(
-                            kind = kind,
-                            message = simple,
-                            stack = formatSanitizedCrashStack(throwable),
-                            fromPreviousSession = false
-                        )
+                        val stack = formatSanitizedCrashStack(throwable)
+                        when (val current = activeCrashService) {
+                            is CoreTelemetryService -> current.reportCrashFromUncaughtHandler(kind, simple, stack)
+                            else -> current?.reportCrash(
+                                kind = kind,
+                                message = simple,
+                                stack = stack,
+                                fromPreviousSession = false
+                            )
+                        }
                     }
                     previous?.uncaughtException(thread, throwable)
                 }

@@ -77,6 +77,8 @@ import net.alummahnow.feature.watch.WatchUiState
 import net.alummahnow.feature.watch.WatchViewModel
 import net.alummahnow.player.ui.rememberMediaController
 
+private val viewerAppOpenTracked = java.util.concurrent.atomic.AtomicBoolean(false)
+
 class MainActivity : ComponentActivity() {
     /** True while a video is playing on the watch page, so leaving the app enters picture-in-picture. */
     private var pipEligible = false
@@ -226,7 +228,9 @@ internal fun ViewerNavHost(
     val blockedEntries by container.blockStore.entries.collectAsStateWithLifecycle()
     LaunchedEffect(telemetryEnabled) {
         if (telemetryEnabled) {
-            container.telemetry.track("app_open")
+            if (viewerAppOpenTracked.compareAndSet(false, true)) {
+                container.telemetry.track("app_open")
+            }
             container.telemetry.flush()
         }
     }

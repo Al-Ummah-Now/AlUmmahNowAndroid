@@ -37,6 +37,9 @@ class CoreTelemetryDiagnosticSanitizerTest {
                     "alummahnow://watch/v1 " +
                     "https://uploads.example.test/upload/853876e8-cc19-465d-bafa-7459aba00936 " +
                     "https://example.org/assets/%41bCdEfGhIjKlMnOpQrStUvWxYz0123456789 " +
+                    "https://example.test/lookup/%2B%31%32%30%32%35%35%35%30%31%32%33 " +
+                    "https%25253A%25252F%25252Fexample.test%25252Flogin%25253Ftoken%25253Ds3cr3t " +
+                    "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ " +
                     "https://example.test/password%3Dshortcredential " +
                     "https%3A%2F%2Fexample.test%2F%3Fcode%3Dorchid-meadow",
                 "badVal" to throwingProp
@@ -50,7 +53,8 @@ class CoreTelemetryDiagnosticSanitizerTest {
             "orchid", "velvet", "shortcredential", "horse battery staple", "word phrase",
             "Alice", "Wonderland", "Smith", "Jane", "Doe", "ProjectCodename", "violet7",
             "orchid-meadow", "shortsecret", "u:p@localhost", "u:[redacted-email]", "Aq82F1ZLPx0K",
-            "watch/v1", "853876e8-cc19-465d-bafa-7459aba00936", "bCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+            "watch/v1", "853876e8-cc19-465d-bafa-7459aba00936", "bCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+            "%2B%31%32%30%32", "s3cr3t", "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ"
         )
         for (token in forbidden) {
             assertFalse("Expected redacted token: $token", json.contains(token))
