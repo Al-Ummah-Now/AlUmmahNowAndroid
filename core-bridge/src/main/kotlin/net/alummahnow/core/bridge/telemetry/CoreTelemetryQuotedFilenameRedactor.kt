@@ -366,7 +366,7 @@ internal object CoreTelemetryQuotedFilenameRedactor {
             return redactKeywordUnquotedOnSource(text, text, kwRegex, findLastExt)
         }
         val masked = CoreTelemetryQuotedPathRedactor.buildMaskedDoubleQuotes(text, spans)
-        val afterUnquoted = redactKeywordUnquotedOnSource(text, masked, kwRegex, findLastExt)
+        val afterUnquoted = redactKeywordUnquotedOnSource(text, masked, kwRegex, findLastExt, stopAtDoubleQuote = true)
         if (afterUnquoted !== text) {
             if (afterUnquoted.indexOf('"') < 0) return afterUnquoted
             spans = CoreTelemetryQuotedPathRedactor.collectBalancedDoubleQuoteSpans(afterUnquoted)
@@ -378,7 +378,8 @@ internal object CoreTelemetryQuotedFilenameRedactor {
         text: String,
         scanSource: String,
         kwRegex: Regex,
-        findLastExt: (String, Int, Int) -> Pair<Int, Int>?
+        findLastExt: (String, Int, Int) -> Pair<Int, Int>?,
+        stopAtDoubleQuote: Boolean = false
     ): String {
         if (scanSource.indexOf('.') < 0) return text
         val hasAt = CoreTelemetryEmailScanner.hasEmailAt(scanSource)
@@ -387,7 +388,7 @@ internal object CoreTelemetryQuotedFilenameRedactor {
         var segStart = 0
         while (segStart < scanSource.length) {
             var segEnd = segStart
-            while (segEnd < scanSource.length && scanSource[segEnd] !in "\r\n\u001E\u001F") segEnd++
+            while (segEnd < scanSource.length && !isKeywordSegStop(scanSource[segEnd], stopAtDoubleQuote)) segEnd++
             val bounds = findKeywordUnquotedMatch(scanSource, segStart, segEnd, hasAt, kwRegex, findLastExt)
             if (bounds != null) {
                 val out = sb ?: StringBuilder(text.length).also { sb = it }
@@ -399,6 +400,9 @@ internal object CoreTelemetryQuotedFilenameRedactor {
         val out = sb ?: return text
         return out.append(text, copied, text.length).toString()
     }
+
+    private fun isKeywordSegStop(ch: Char, stopAtDoubleQuote: Boolean): Boolean =
+        ch in "\r\n\u001E\u001F" || (stopAtDoubleQuote && ch == '"')
 
     private fun redactKeywordUnquotedInSpans(
         current: String,

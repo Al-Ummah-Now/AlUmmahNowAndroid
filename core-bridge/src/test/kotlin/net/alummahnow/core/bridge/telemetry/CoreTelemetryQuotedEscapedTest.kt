@@ -119,7 +119,16 @@ class CoreTelemetryQuotedEscapedTest {
                 "{\"X-API-Key\":\"[redacted]\",\"Api-Key\":\"[redacted]\",\"X-Auth-Token\":\"[redacted]\"}",
             "https://example.com:/api?token=secret123" to "https://example.com:/api?[redacted]",
             "https://example.com:?token=secret123" to "https://example.com:?[redacted]",
-            "https://example.com:#secret123" to "https://example.com:#[redacted]"
+            "https://example.com:#secret123" to "https://example.com:#[redacted]",
+            "HTTP/1/PrivateReorganization" to "[redacted-path]",
+            "(HTTP/1/PrivateReorganization)" to "([redacted-path])",
+            "HTTP/1.1 503 Service Unavailable" to "HTTP/1.1 503 Service Unavailable",
+            "open \"proposal.pdf\" then completed in 3.14 seconds" to
+                "open \"[redacted-path]\" then completed in 3.14 seconds",
+            "open failed after 3.14 seconds" to "open failed after 3.14 seconds",
+            "failed file:/Users/alice/secret.txt" to "failed [redacted-path]",
+            "{\"uri\":\"file:\\/Users\\/alice\\/secret.txt\",\"ok\":true}" to
+                "{\"uri\":\"[redacted-path]\",\"ok\":true}"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))

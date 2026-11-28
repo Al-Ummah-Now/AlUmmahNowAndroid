@@ -479,7 +479,7 @@ internal object CoreTelemetryQuotedPathRedactor {
     }
 
     private fun matchDecodedFileScheme(text: String, pos: Int, end: Int): Boolean =
-        matchDecodedSchemePrefix(text, pos, end, "file://") ||
+        matchDecodedSchemePrefix(text, pos, end, "file:/") ||
             matchDecodedSchemePrefix(text, pos, end, "content://")
 
     private fun matchDecodedSchemePrefix(text: String, pos: Int, end: Int, target: String): Boolean {

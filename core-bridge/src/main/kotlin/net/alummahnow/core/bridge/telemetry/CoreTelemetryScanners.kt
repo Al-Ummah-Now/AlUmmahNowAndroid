@@ -25,6 +25,7 @@ internal object CoreTelemetryScanners {
     private const val OPENING_WRAPPERS = "([{\"'"
     private const val SCHEME_PUNCT = "+.-"
     private const val FILE_SCHEME_PREFIX = "file://"
+    private const val SINGLE_FILE_SCHEME_PREFIX = "file:/"
     private const val CONTENT_SCHEME_PREFIX = "content://"
 
     internal data class UrlSpan(val start: Int, val baseEnd: Int, val totalEnd: Int, val hasQf: Boolean)
@@ -620,13 +621,15 @@ internal object CoreTelemetryScanners {
 
     fun localUriSchemeLengthAt(text: String, pos: Int): Int {
         if (pos > 0 && isUrlSchemeChar(text[pos - 1])) return 0
-        if (text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true)) {
-            return FILE_SCHEME_PREFIX.length
+        return when {
+            text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true) ->
+                FILE_SCHEME_PREFIX.length
+            text.regionMatches(pos, SINGLE_FILE_SCHEME_PREFIX, 0, SINGLE_FILE_SCHEME_PREFIX.length, ignoreCase = true) ->
+                SINGLE_FILE_SCHEME_PREFIX.length
+            text.regionMatches(pos, CONTENT_SCHEME_PREFIX, 0, CONTENT_SCHEME_PREFIX.length, ignoreCase = true) ->
+                CONTENT_SCHEME_PREFIX.length
+            else -> 0
         }
-        if (text.regionMatches(pos, CONTENT_SCHEME_PREFIX, 0, CONTENT_SCHEME_PREFIX.length, ignoreCase = true)) {
-            return CONTENT_SCHEME_PREFIX.length
-        }
-        return 0
     }
 
     fun isUrlWindowsDriveStopAt(text: String, pos: Int): Boolean {

@@ -399,7 +399,7 @@ class CoreTelemetryService(
         private val parenPathRegexes: List<Regex> = listOf(
             Regex("""(\()(?:/|~/|[A-Za-z]:[\\/]|\\\\)[^()\r\n\u001E]+(\))""", RegexOption.IGNORE_CASE),
             Regex(
-                """(\()(?![ \t]*(?:HTTP|TLS|SSL)/\d)(?![ \t]*\d+/\d+[.,;:!?\s]*\))""" +
+                """(\()(?![ \t]*(?:HTTP|TLS|SSL)/\d+(?:\.\d+)*[.,;:!?\s]*\))(?![ \t]*\d+/\d+[.,;:!?\s]*\))""" +
                     """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^()\r\n\u001E]+(\))""",
                 RegexOption.IGNORE_CASE
             )
@@ -423,7 +423,8 @@ class CoreTelemetryService(
                     """(?:[^\r\n\u001E]*[^\r\n\u001E\s\p{Zs}])?"""
             ) to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{)\]}<>"'=,:;\u001F])(?!(?<!['"])(?:HTTP|TLS|SSL)/\d)""" +
+                """(^|[\s(\[{)\]}<>"'=,:;\u001F])""" +
+                    """(?!(?<!['"])(?:HTTP|TLS|SSL)/\d+(?:\.\d+)*(?:$|[\s(\[{)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
                     """(?!(?<!['"])\d+/\d+(?:$|[\s)\]},;:!?]|\.(?![A-Za-z0-9])))""" +
                     """[^\s/\\"'<>()\[\]{}:,;=\u001E\u001F]+/[^\r\n\u001E\u001F\s\p{Zs}"]""" +
                     """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?""",
@@ -572,11 +573,28 @@ class CoreTelemetryService(
                 val extLen = extEnd - extStart
                 val validEnd = extEnd == text.length ||
                     (!CoreTelemetryScanners.isAsciiWordChar(text[extEnd]) && text[extEnd] != '(')
-                if (extLen in 1..MAX_FILENAME_EXT_LEN && validEnd && !isSourceLineReference(text, extStart, extEnd)) {
+                val validExt = extLen in 1..MAX_FILENAME_EXT_LEN &&
+                    validEnd &&
+                    !isSourceLineReference(text, extStart, extEnd) &&
+                    !isNumericDotToken(text, segStart, dot, extStart, extEnd)
+                if (validExt) {
                     return dot to extEnd
                 }
             }
             return null
+        }
+
+        private fun isNumericDotToken(text: String, segStart: Int, dot: Int, extStart: Int, extEnd: Int): Boolean {
+            for (i in extStart until extEnd) {
+                if (text[i] !in '0'..'9') return false
+            }
+            var p = dot - 1
+            var hasDigitBefore = false
+            while (p >= segStart && (text[p] in '0'..'9' || text[p] == '.')) {
+                if (text[p] in '0'..'9') hasDigitBefore = true
+                p--
+            }
+            return hasDigitBefore && (p < segStart || !CoreTelemetryScanners.isAsciiWordChar(text[p]))
         }
 
         private fun isSourceLineReference(text: String, extStart: Int, extEnd: Int): Boolean {
@@ -851,7 +869,7 @@ class CoreTelemetryService(
         private fun isPathSep(ch: Char): Boolean = CoreTelemetryScanners.isPathSep(ch)
 
         private fun redactFileUris(text: String, vaultPrefix: String): String {
-            if (text.length < 7) return text
+            if (text.length < 6) return text
             var checkedQuotes = false
             var quoteSpans: List<CoreTelemetryQuotedPathRedactor.QuotedPathSpan>? = null
             val spanCursor = IntArray(1)
