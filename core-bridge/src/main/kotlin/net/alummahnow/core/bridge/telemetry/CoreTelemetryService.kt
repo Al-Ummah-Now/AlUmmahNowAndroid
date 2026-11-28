@@ -273,7 +273,7 @@ class CoreTelemetryService(
         // Never persist arbitrary free-form crash message prose (which may contain user names
         // or other personal text that regexes cannot reliably distinguish from English prose).
         val safeMessage = if (message.isBlank()) safeKind else safeKind
-        val safeStack = stack?.let(CoreTelemetryPropertySanitizer::sanitizeDiagnosticText)
+        val safeStack = stack?.let(::sanitizeCrashStackText)
         return TelemetryCrashReport(
             kind = safeKind,
             message = safeMessage,
@@ -305,9 +305,13 @@ class CoreTelemetryService(
     internal fun isUncaughtCrashEligible(): Boolean =
         fastConsent != TelemetryConsent.OFF && !gate.isHeldByCurrentThread
 
-    internal fun reportCrashFromUncaughtHandler(kind: String, message: String, stack: String?) {
+    internal fun captureUncaughtCrashEpoch(): Long? {
+        if (fastConsent == TelemetryConsent.OFF || gate.isHeldByCurrentThread) return null
+        return tryCaptureCrashEpochBounded()
+    }
+
+    internal fun reportCrashFromUncaughtHandler(kind: String, message: String, stack: String?, captureEpoch: Long) {
         if (fastConsent == TelemetryConsent.OFF || gate.isHeldByCurrentThread) return
-        val captureEpoch = tryCaptureCrashEpochBounded() ?: return
         val report = buildSanitizedCrashReport(kind, message, stack, fromPreviousSession = false)
         if (!tryLockUninterruptibly(CRASH_LOCK_TIMEOUT_MS)) return
         try {
@@ -656,6 +660,21 @@ class CoreTelemetryService(
                 chars < MAX_CRASH_STACK_CHARS
 
         private val safeSourceFileRegex = Regex("""^[A-Za-z0-9_.-]{1,64}\.(?:kt|java)$""")
+        private val safeStackFrameLineRegex = Regex(
+            """^\s*at\s+[A-Za-z0-9_.$:-]{1,128}\((?:[A-Za-z0-9_.-]{1,64}\.(?:kt|java)(?::\d{1,7})?|Unknown Source|Native Method)\)$"""
+        )
+        private val safeStackHeaderLineRegex = Regex("""^(?:Caused by:\s*)?[A-Za-z][A-Za-z0-9_.$:-]{0,127}$""")
+
+        internal fun sanitizeCrashStackText(stack: String): String? {
+            val safeLines = stack.lineSequence()
+                .map { it.trimEnd() }
+                .filter { line ->
+                    safeStackFrameLineRegex.matches(line) || safeStackHeaderLineRegex.matches(line)
+                }
+                .take(MAX_CRASH_STACK_FRAMES + MAX_CRASH_CAUSE_DEPTH)
+                .toList()
+            return if (safeLines.isEmpty()) null else safeLines.joinToString("\n").take(MAX_CRASH_STACK_CHARS)
+        }
 
         internal fun formatSafeStackFrame(frame: StackTraceElement): String {
             val cls = sanitizeCrashKindIdentifier(frame.className)
@@ -746,17 +765,21 @@ class CoreTelemetryService(
 
         private fun recordUncaughtCrashIfEnabled(current: TelemetryService?, throwable: Throwable) {
             if (current == null) return
-            val eligible = when (current) {
-                is CoreTelemetryService -> current.isUncaughtCrashEligible()
-                else -> current.consent != TelemetryConsent.OFF
-            }
-            if (!eligible) return
-            val kind = throwable.javaClass.name
-            val simple = throwable.javaClass.simpleName.ifBlank { kind }
-            val stack = formatSanitizedCrashStack(throwable)
             when (current) {
-                is CoreTelemetryService -> current.reportCrashFromUncaughtHandler(kind, simple, stack)
-                else -> current.reportCrash(kind = kind, message = simple, stack = stack, fromPreviousSession = false)
+                is CoreTelemetryService -> {
+                    val captureEpoch = current.captureUncaughtCrashEpoch() ?: return
+                    val kind = throwable.javaClass.name
+                    val simple = throwable.javaClass.simpleName.ifBlank { kind }
+                    val stack = formatSanitizedCrashStack(throwable)
+                    current.reportCrashFromUncaughtHandler(kind, simple, stack, captureEpoch)
+                }
+                else -> {
+                    if (current.consent == TelemetryConsent.OFF) return
+                    val kind = throwable.javaClass.name
+                    val simple = throwable.javaClass.simpleName.ifBlank { kind }
+                    val stack = formatSanitizedCrashStack(throwable)
+                    current.reportCrash(kind = kind, message = simple, stack = stack, fromPreviousSession = false)
+                }
             }
         }
 
