@@ -547,6 +547,7 @@ class CoreTelemetryUrlContinuationTest {
         val manyJson = CoreTelemetryService.serializeProperties(manyColliding)
         assertTrue(manyJson != null)
         assertTrue(!manyJson!!.contains("alice", ignoreCase = true))
-        assertTrue(manyJson.contains("\"[redacted-path]#5000\":4999"))
+        assertTrue(manyJson.contains("\"[redacted-path]#50\":49"))
+        assertTrue(!manyJson.contains("\"[redacted-path]#51\""))
     }
 }

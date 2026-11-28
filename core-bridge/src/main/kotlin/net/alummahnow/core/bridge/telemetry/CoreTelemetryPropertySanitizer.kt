@@ -595,14 +595,35 @@ internal object CoreTelemetryPropertySanitizer {
         return safe
     }
 
-    fun serializeProperties(properties: Map<String, Any?>): String? {
-        if (properties.isEmpty()) return null
-        val usedKeys = HashSet<String>(properties.size)
+    const val MAX_EVENT_PROPERTIES = 50
+    const val MAX_ERROR_EVENT_PROPERTIES = 49
+    const val MAX_PROPERTY_KEY_LENGTH = 64
+    private const val MAX_STRUCTURED_TOKEN_LENGTH = 64
+    private val structuredTokenRegex = Regex("""^[a-z0-9][a-z0-9_.:-]{0,63}$""")
+    private val structuredKeyRegex = Regex("""^[a-z][a-z0-9_.-]{0,63}$""")
+
+    fun sanitizeStructuredToken(raw: String, fallback: String = "[redacted]"): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty() || trimmed.length > MAX_STRUCTURED_TOKEN_LENGTH) return fallback
+        if (!structuredTokenRegex.matches(trimmed)) return fallback
+        val scrubbed = sanitizeDiagnosticText(trimmed)
+        return if (scrubbed == trimmed) trimmed else fallback
+    }
+
+    fun serializeProperties(
+        properties: Map<String, Any?>,
+        maxProperties: Int = MAX_EVENT_PROPERTIES,
+        reservedKeys: Set<String> = emptySet(),
+        structuredValuesOnly: Boolean = false
+    ): String? {
+        if (properties.isEmpty() || maxProperties <= 0) return null
+        val usedKeys = HashSet<String>(minOf(properties.size, maxProperties))
         val nextSuffixByBase = HashMap<String, Int>()
         val obj = buildJsonObject {
             for ((key, value) in properties) {
+                if (usedKeys.size >= maxProperties) break
                 if (key.isNotBlank() && value != null) {
-                    putSanitizedProperty(key, value, usedKeys, nextSuffixByBase)
+                    putSanitizedProperty(key, value, usedKeys, nextSuffixByBase, reservedKeys, structuredValuesOnly)
                 }
             }
         }
@@ -651,11 +672,18 @@ internal object CoreTelemetryPropertySanitizer {
         nextSuffixByBase: MutableMap<String, Int>,
         base: String
     ): String {
-        if (usedKeys.add(base)) return base
-        var suffix = nextSuffixByBase[base] ?: 2
-        while (!usedKeys.add("$base#$suffix")) suffix++
-        nextSuffixByBase[base] = suffix + 1
-        return "$base#$suffix"
+        val bounded = base.take(MAX_PROPERTY_KEY_LENGTH)
+        if (usedKeys.add(bounded)) return bounded
+        var suffix = nextSuffixByBase[bounded] ?: 2
+        while (true) {
+            val tag = "#$suffix"
+            val candidate = bounded.take((MAX_PROPERTY_KEY_LENGTH - tag.length).coerceAtLeast(1)) + tag
+            suffix++
+            if (usedKeys.add(candidate)) {
+                nextSuffixByBase[bounded] = suffix
+                return candidate
+            }
+        }
     }
 
     private fun isSensitiveLong(value: Long): Boolean =
@@ -664,20 +692,24 @@ internal object CoreTelemetryPropertySanitizer {
     private fun isSensitiveIntegralDouble(value: Double): Boolean =
         abs(value) >= MIN_SENSITIVE_INT_MAGNITUDE && truncate(value) == value
 
+    @Suppress("LongParameterList")
     private fun JsonObjectBuilder.putSanitizedProperty(
         key: String,
         value: Any,
         usedKeys: MutableSet<String>,
-        nextSuffixByBase: MutableMap<String, Int>
+        nextSuffixByBase: MutableMap<String, Int>,
+        reservedKeys: Set<String>,
+        structuredValuesOnly: Boolean
     ) {
-        val safeKey = sanitizePropertyKey(key)
-        if (safeKey.isBlank()) return
+        val safeKey = sanitizePropertyKey(key).take(MAX_PROPERTY_KEY_LENGTH)
+        if (safeKey.isBlank() || safeKey in reservedKeys) return
+        if (structuredValuesOnly && !structuredKeyRegex.matches(safeKey)) return
         val uniqueKey = resolveUniquePropertyKey(usedKeys, nextSuffixByBase, safeKey)
         if (isAuthHeaderPropertyKey(key)) {
             put(uniqueKey, JsonPrimitive("[redacted]"))
             return
         }
-        putSanitizedValue(uniqueKey, value)
+        putSanitizedValue(uniqueKey, value, structuredValuesOnly)
     }
 
     private fun isSensitiveBigDecimal(value: BigDecimal): Boolean {
@@ -708,9 +740,18 @@ internal object CoreTelemetryPropertySanitizer {
         null
     }
 
-    private fun JsonObjectBuilder.putSanitizedValue(uniqueKey: String, value: Any) {
+    private fun JsonObjectBuilder.putSanitizedValue(
+        uniqueKey: String,
+        value: Any,
+        structuredValuesOnly: Boolean = false
+    ) {
         when (value) {
-            is String -> put(uniqueKey, JsonPrimitive(sanitizeDiagnosticText(value)))
+            is String -> put(
+                uniqueKey,
+                JsonPrimitive(
+                    if (structuredValuesOnly) sanitizeStructuredToken(value) else sanitizeDiagnosticText(value)
+                )
+            )
             is Boolean -> put(uniqueKey, JsonPrimitive(value))
             is Int -> put(
                 uniqueKey,
@@ -742,7 +783,10 @@ internal object CoreTelemetryPropertySanitizer {
                     if (isSensitiveIntegralDouble(d)) JsonPrimitive("[redacted-number]") else JsonPrimitive(d)
                 )
             }
-            else -> safeToString(value)?.let { put(uniqueKey, JsonPrimitive(sanitizeDiagnosticText(it))) }
+            else -> safeToString(value)?.let {
+                val sanitized = if (structuredValuesOnly) sanitizeStructuredToken(it) else sanitizeDiagnosticText(it)
+                put(uniqueKey, JsonPrimitive(sanitized))
+            }
         }
     }
 }

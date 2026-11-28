@@ -130,4 +130,36 @@ class CoreTelemetryDiagnosticSanitizerTest {
             CoreTelemetryService.sanitizeCrashKindIdentifier("Could not load profile for Jane Doe")
         )
     }
+
+    @Test
+    fun `structured event serialization caps property count key length and redacts free-form personal names`() {
+        val overLimit = (1..55).associate { "metric_$it" to true }
+        val trackJson = CoreTelemetryPropertySanitizer.serializeProperties(
+            properties = overLimit,
+            maxProperties = CoreTelemetryPropertySanitizer.MAX_EVENT_PROPERTIES,
+            structuredValuesOnly = true
+        )!!
+        assertEquals(50, Regex("\"metric_\\d+\"").findAll(trackJson).count())
+
+        val errorJson = CoreTelemetryPropertySanitizer.serializeProperties(
+            properties = overLimit + ("code" to "override"),
+            maxProperties = CoreTelemetryPropertySanitizer.MAX_ERROR_EVENT_PROPERTIES,
+            reservedKeys = setOf("code"),
+            structuredValuesOnly = true
+        )!!
+        assertEquals(49, Regex("\"metric_\\d+\"").findAll(errorJson).count())
+        assertFalse(errorJson.contains("\"code\""))
+
+        val longKey = "k".repeat(80)
+        val longKeyJson = CoreTelemetryPropertySanitizer.serializeProperties(
+            properties = mapOf(longKey to "ok", "detail" to "Mary Jones", "backend" to "exoplayer"),
+            structuredValuesOnly = true
+        )!!
+        assertTrue(longKeyJson.contains("\"${"k".repeat(64)}\":\"ok\""))
+        assertFalse(longKeyJson.contains("Mary Jones"))
+        assertTrue(longKeyJson.contains("\"detail\":\"[redacted]\""))
+        assertTrue(longKeyJson.contains("\"backend\":\"exoplayer\""))
+        assertEquals("[redacted]", CoreTelemetryPropertySanitizer.sanitizeStructuredToken("Mary Jones opened profile"))
+        assertEquals("player.ready", CoreTelemetryPropertySanitizer.sanitizeStructuredToken("player.ready"))
+    }
 }

@@ -203,9 +203,13 @@ class CoreTelemetryService(
             if (!isActiveConsentLocked(requiresFull = true)) return
             analyticsEpoch
         }
-        val safeName = sanitizePropertyKey(name)
+        val safeName = sanitizePropertyKey(name).take(CoreTelemetryPropertySanitizer.MAX_PROPERTY_KEY_LENGTH)
         if (safeName.isBlank()) return
-        val json = serializeProperties(properties)
+        val json = CoreTelemetryPropertySanitizer.serializeProperties(
+            properties = properties,
+            maxProperties = CoreTelemetryPropertySanitizer.MAX_EVENT_PROPERTIES,
+            structuredValuesOnly = true
+        )
         gate.withLock {
             if (!isActiveConsentLocked(requiresFull = true, expectedEpoch = captureEpoch)) return
             try {
@@ -222,9 +226,13 @@ class CoreTelemetryService(
             if (!isActiveConsentLocked(requiresFull = true)) return
             analyticsEpoch
         }
-        val safeCode = sanitizePropertyKey(code)
-        if (safeCode.isBlank()) return
-        val json = serializeProperties(properties)
+        val safeCode = CoreTelemetryPropertySanitizer.sanitizeStructuredToken(code, fallback = "error")
+        val json = CoreTelemetryPropertySanitizer.serializeProperties(
+            properties = properties,
+            maxProperties = CoreTelemetryPropertySanitizer.MAX_ERROR_EVENT_PROPERTIES,
+            reservedKeys = setOf("code"),
+            structuredValuesOnly = true
+        )
         gate.withLock {
             if (!isActiveConsentLocked(requiresFull = true, expectedEpoch = captureEpoch)) return
             try {
@@ -247,8 +255,8 @@ class CoreTelemetryService(
             TelemetryBreadcrumbSeverity.WARNING -> TelemetryBreadcrumbLevel.WARNING
             TelemetryBreadcrumbSeverity.ERROR -> TelemetryBreadcrumbLevel.ERROR
         }
-        val safeCategory = sanitizePropertyKey(category)
-        val safeMessage = CoreTelemetryPropertySanitizer.sanitizeDiagnosticText(message)
+        val safeCategory = CoreTelemetryPropertySanitizer.sanitizeStructuredToken(category, fallback = "app")
+        val safeMessage = CoreTelemetryPropertySanitizer.sanitizeStructuredToken(message, fallback = "[redacted]")
         gate.withLock {
             if (!isActiveConsentLocked(requiresFull = false, expectedEpoch = captureEpoch)) return
             client.addBreadcrumb(safeCategory, safeMessage, mapped)

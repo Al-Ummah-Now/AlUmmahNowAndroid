@@ -38,12 +38,9 @@ interface AdminServices {
 }
 
 /** Manual DI. Sign-in and tokens go through aun-core (the Studio sign-in); admin-api through the private client. */
-class AdminContainer(context: Context) : AdminServices {
-    init {
-        PrivateHttp.aunClient = AunClient.value("admin", BuildConfig.VERSION_NAME)
-    }
-
-    override val prefs = AdminPrefs(context)
+class AdminContainer(
+    context: Context,
+    override val prefs: AdminPrefs = AdminPrefs(context),
     override val telemetry: TelemetryService = run {
         val initialEnabled = prefs.telemetryEnabled
         CoreTelemetryService.createOrNull(
@@ -64,6 +61,10 @@ class AdminContainer(context: Context) : AdminServices {
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { service.flush() }
             }
         }
+    }
+) : AdminServices {
+    init {
+        PrivateHttp.aunClient = AunClient.value("admin", BuildConfig.VERSION_NAME)
     }
     override val session: AccountSession = CoreAccountSession(
         OAuthClientSettings(issuer = BuildConfig.AUTH_ISSUER, clientId = BuildConfig.AUTH_CLIENT_ID, redirectUri = REDIRECT_URI),

@@ -20,10 +20,16 @@ class AdminMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        val container = (application as? AdminApplication)?.container
-        if (container != null && container.telemetry.consent != TelemetryConsent.OFF && container.telemetry.pendingCount > 0) {
-            scope.launch { container.telemetry.flush() }
-        }
         AdminNotifications.handle(this, message.data, message.notification?.title, message.notification?.body)
+        val app = application as? AdminApplication ?: return
+        if (!app.prefs.telemetryEnabled) return
+        scope.launch {
+            runCatching {
+                val telemetry = app.telemetry
+                if (telemetry.consent != TelemetryConsent.OFF && telemetry.pendingCount > 0) {
+                    telemetry.flush()
+                }
+            }
+        }
     }
 }
