@@ -9,6 +9,7 @@ internal object CoreTelemetryQuotedAuthHelpers {
     private const val ASCII_CONTROL_LIMIT = 0x20
     private const val HEX_ESCAPE_LEN = 6
     private const val BEARER_LEN = 6
+    private const val BASIC_LEN = 5
     private const val REDACTED_LEN = 10
     private const val HEX_DIGITS = "0123456789abcdef"
     private val basicTokenRegex = Regex(
@@ -181,6 +182,16 @@ internal object CoreTelemetryQuotedAuthHelpers {
             CoreTelemetryScanners.isSpace(text[pos + BEARER_LEN])
     }
 
+    private fun matchesBearerOrBasicScheme(text: String, pos: Int): Boolean {
+        val isBearer = pos + BEARER_LEN < text.length &&
+            text.regionMatches(pos, "bearer", 0, BEARER_LEN, ignoreCase = true) &&
+            CoreTelemetryScanners.isSpace(text[pos + BEARER_LEN])
+        val isBasic = pos + BASIC_LEN < text.length &&
+            text.regionMatches(pos, "basic", 0, BASIC_LEN, ignoreCase = true) &&
+            CoreTelemetryScanners.isSpace(text[pos + BASIC_LEN])
+        return isBearer || isBasic
+    }
+
     @Suppress("LongParameterList")
     private fun advanceAfterBearerPrefix(
         text: String,
@@ -192,6 +203,7 @@ internal object CoreTelemetryQuotedAuthHelpers {
         ranges: MutableList<BearerMatch>
     ): Int {
         if (wsEnd >= text.length) return text.length
+        if (matchesBearerOrBasicScheme(text, wsEnd)) return wsEnd
         val quotedNext = if (!stopAtEscapedQuote) {
             tryScanQuotedBearerToken(text, wsEnd, allowLiteralQuoted, requireClosingLiteralQuote, ranges)
         } else {
@@ -343,18 +355,33 @@ internal object CoreTelemetryQuotedAuthHelpers {
         return sb to copied
     }
 
-    fun redactBasicTokens(text: String, isValidBasic: (String) -> Boolean): String =
-        basicTokenRegex.replace(text) { match ->
+    fun redactBasicTokens(text: String, isValidBasic: (String) -> Boolean): String {
+        if (!text.contains("basic", ignoreCase = true)) return text
+        var sb: StringBuilder? = null
+        var copied = 0
+        var pos = 0
+        while (pos < text.length) {
+            val match = basicTokenRegex.find(text, pos) ?: break
             val quotedToken = match.groups[3]?.value
             val token = quotedToken ?: match.groupValues[5]
             if (!isValidBasic(token)) {
-                match.value
-            } else if (quotedToken != null) {
-                "${match.groupValues[1]} ${match.groupValues[2]}[redacted]${match.groupValues[4]}"
+                pos = match.range.first + BASIC_LEN
             } else {
-                "${match.groupValues[1]} [redacted]"
+                val out = sb ?: StringBuilder(text.length).also { sb = it }
+                out.append(text, copied, match.range.first)
+                if (quotedToken != null) {
+                    out.append(match.groupValues[1]).append(' ')
+                        .append(match.groupValues[2]).append("[redacted]").append(match.groupValues[4])
+                } else {
+                    out.append(match.groupValues[1]).append(" [redacted]")
+                }
+                copied = match.range.last + 1
+                pos = copied
             }
         }
+        val out = sb ?: return text
+        return out.append(text, copied, text.length).toString()
+    }
 
     fun redactEscapedBasicInBalancedQuotes(
         text: String,
@@ -399,20 +426,25 @@ internal object CoreTelemetryQuotedAuthHelpers {
         if (!decoded.contains("basic", ignoreCase = true)) return initialSb to initialCopied
         var sb = initialSb
         var copied = initialCopied
-        var match = regex.find(decoded)
-        while (match != null) {
+        var pos = 0
+        while (pos < decoded.length) {
+            val match = regex.find(decoded, pos) ?: break
             val quotedGroup = match.groups[3]
             val token = quotedGroup?.value ?: match.groupValues[5]
-            val targetRange = quotedGroup?.range ?: match.range
-            val rawStart = rawOffsets[targetRange.first]
-            val rawEnd = rawOffsets[targetRange.last + 1]
-            if (validator(token) && rawStart >= copied) {
-                val out = sb ?: StringBuilder(text.length).also { sb = it }
-                val repl = if (quotedGroup != null) "[redacted]" else "${match.groupValues[1]} [redacted]"
-                out.append(text, copied, rawStart).append(repl)
-                copied = rawEnd
+            if (!validator(token)) {
+                pos = match.range.first + BASIC_LEN
+            } else {
+                val targetRange = quotedGroup?.range ?: match.range
+                val rawStart = rawOffsets[targetRange.first]
+                val rawEnd = rawOffsets[targetRange.last + 1]
+                if (rawStart >= copied) {
+                    val out = sb ?: StringBuilder(text.length).also { sb = it }
+                    val repl = if (quotedGroup != null) "[redacted]" else "${match.groupValues[1]} [redacted]"
+                    out.append(text, copied, rawStart).append(repl)
+                    copied = rawEnd
+                }
+                pos = match.range.last + 1
             }
-            match = match.next()
         }
         return sb to copied
     }

@@ -514,6 +514,34 @@ class CoreTelemetryServiceTest {
             "Bearer \"hello world\"",
             CoreTelemetryService.sanitizeLocalPaths("Bearer \"hello world\"")
         )
+    }
+
+    @Test
+    fun `sanitizeLocalPaths handles repeated Bearer Basic schemes and slash-local emails`() {
+        assertEquals(
+            "Bearer Bearer \"[redacted]\"",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer Bearer \"opaqueSecret123\"")
+        )
+        assertEquals(
+            "Bearer Bearer [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer Bearer opaqueSecret123")
+        )
+        assertEquals(
+            "Bearer Basic \"[redacted]\"",
+            CoreTelemetryService.sanitizeLocalPaths("Bearer Basic \"dXNlcjpwYXNz\"")
+        )
+        assertEquals(
+            "Basic Basic \"[redacted]\"",
+            CoreTelemetryService.sanitizeLocalPaths("Basic Basic \"dXNlcjpwYXNz\"")
+        )
+        assertEquals(
+            "Basic Basic [redacted]",
+            CoreTelemetryService.sanitizeLocalPaths("Basic Basic dXNlcjpwYXNz")
+        )
+        assertEquals(
+            """{"m":"Basic Basic \"[redacted]\""}""",
+            CoreTelemetryService.sanitizeLocalPaths("""{"m":"Basic Basic \"dXNlcjpwYXNz\""}""")
+        )
         assertEquals(
             "https://[redacted-email]",
             CoreTelemetryService.sanitizeLocalPaths("https://example.org/users/alice/@example.com")
