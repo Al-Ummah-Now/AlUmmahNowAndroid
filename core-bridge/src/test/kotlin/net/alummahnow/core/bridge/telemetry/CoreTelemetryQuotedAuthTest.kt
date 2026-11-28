@@ -223,4 +223,31 @@ class CoreTelemetryQuotedAuthTest {
         assertEquals("[redacted-ip].", CoreTelemetryService.sanitizePropertyKey("10.0.0.1."))
         assertEquals("token=[redacted]", CoreTelemetryService.sanitizePropertyKey("token=cobalt-orchard"))
     }
+
+    @Test
+    fun `prefixed verification codes ipv4-tail ipv6 encoded url jwes whitespace jwes and huge-scale BigDecimal are safe`() {
+        val throwingObj = object {
+            override fun toString(): String = error("boom")
+        }
+        val wsJwe = "IHsiYWxnIjoiZGlyIiwiZW5jIjoiQTI1NkdDTSJ9..iv1234.cipher5678.tag9012"
+        val props = CoreTelemetryService.serializeProperties(
+            mapOf(
+                "challenge.verificationCode" to 123456,
+                "tinyScale" to java.math.BigDecimal.valueOf(1L, Int.MAX_VALUE),
+                "badObj" to throwingObj,
+                "ipv6Tail" to "peer 2001:db8:1234:5678:9abc:def0:192.0.2.128 source:2001:db8::1",
+                "encodedUrl" to "https://example.com/download/eyJhbGciOiJkaXIifQ%2E%2Eiv1234%2Ecipher9999%2Etag8888",
+                "wsJwe" to wsJwe
+            )
+        )
+        assertTrue(props != null)
+        assertFalse(props!!.contains("123456"))
+        assertFalse(props.contains("2001:db8"))
+        assertFalse(props.contains("9abc:def0"))
+        assertFalse(props.contains("192.0.2.128"))
+        assertFalse(props.contains("cipher9999"))
+        assertFalse(props.contains("cipher5678"))
+        assertTrue(props.contains("\"tinyScale\":0.0"))
+        assertEquals("[redacted]", CoreTelemetryService.sanitizePropertyKey(wsJwe))
+    }
 }

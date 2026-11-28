@@ -15,6 +15,29 @@ internal val LOCAL_OR_SHARE_URI_PREFIXES = listOf(
     "sftp://", "ftps://", "ftp://", "davs://", "dav://", "webdavs://", "webdav://"
 )
 
+private fun redactEncodedJoseTokensInUrl(
+    url: String,
+    decode: (String) -> Pair<String, IntArray>
+): String {
+    val (decoded, origOffsets) = if (url.indexOf('%') >= 0) decode(url) else url to null
+    val matches = CoreTelemetryAuthEscapedHelpers.compactJoseTokenRegex
+        .findAll(decoded)
+        .filter { CoreTelemetryAuthEscapedHelpers.isCompactJoseToken(it.value) }
+        .toList()
+    if (matches.isEmpty()) return url
+    val sb = StringBuilder(url.length)
+    var copied = 0
+    for (match in matches) {
+        val start = origOffsets?.get(match.range.first) ?: match.range.first
+        if (start >= copied) {
+            val end = origOffsets?.get(match.range.last + 1) ?: (match.range.last + 1)
+            sb.append(url, copied, start).append("[redacted]")
+            copied = end
+        }
+    }
+    return if (copied == 0) url else sb.append(url, copied, url.length).toString()
+}
+
 internal object CoreTelemetryScanners {
     private const val MAX_EXT_LEN = 16
     private const val MAX_EXT_CHECK = 17
@@ -169,7 +192,8 @@ internal object CoreTelemetryScanners {
         var result = replaceUrlPathSecret(url, webhookPathTokenRegex)
         result = redactSlackWebhookUrl(result)
         result = replaceUrlPathSecret(result, telegramBotTokenUrlRegex)
-        return replaceUrlPathSecret(result, urlMatrixParamRegex)
+        result = replaceUrlPathSecret(result, urlMatrixParamRegex)
+        return redactEncodedJoseTokensInUrl(result, ::decodeUrlForPathSecretMatch)
     }
 
     private fun redactSlackWebhookUrl(url: String): String {

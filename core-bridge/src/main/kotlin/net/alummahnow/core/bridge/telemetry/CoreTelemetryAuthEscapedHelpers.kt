@@ -12,12 +12,46 @@ internal object CoreTelemetryAuthEscapedHelpers {
 
     private data class ContainerFrame(val openPos: Int, val expectedClose: Char)
 
-    private val jwtTokenRegex = Regex(
-        """(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){1,3}(?![A-Za-z0-9_-])"""
+    private const val MIN_JOSE_HEADER_LEN = 8
+
+    val compactJoseTokenRegex = Regex(
+        """(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){1,3}(?![A-Za-z0-9_-])"""
     )
 
-    fun redactJwtTokens(text: String): String =
-        if (text.contains("eyJ")) jwtTokenRegex.replace(text, "[redacted]") else text
+    fun isCompactJoseToken(token: String): Boolean {
+        val dot = token.indexOf('.')
+        if (dot < MIN_JOSE_HEADER_LEN) return false
+        val header = token.substring(0, dot)
+        if (header.startsWith("eyJ")) return true
+        val decoded = decodeBase64UrlPrefix(header) ?: return false
+        val trimmed = decoded.trimStart()
+        return trimmed.startsWith("{") &&
+            (
+                trimmed.contains("\"alg\"") ||
+                    trimmed.contains("\"enc\"") ||
+                    trimmed.contains("\"typ\"") ||
+                    trimmed.contains("\"kid\"")
+                )
+    }
+
+    private fun decodeBase64UrlPrefix(segment: String): String? {
+        if (segment.length > 512) return null
+        return try {
+            val std = segment.replace('-', '+').replace('_', '/')
+            val pad = (4 - (std.length % 4)) % 4
+            val bytes = java.util.Base64.getDecoder().decode(std + "=".repeat(pad))
+            String(bytes, Charsets.UTF_8)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
+
+    fun redactJwtTokens(text: String): String {
+        if (text.indexOf('.') < 0) return text
+        return compactJoseTokenRegex.replace(text) { m ->
+            if (isCompactJoseToken(m.value)) "[redacted]" else m.value
+        }
+    }
 
     val unquotedAuthHeaders = listOf(
         "authorization-signature",
