@@ -13,7 +13,7 @@ import net.alummahnow.core.bridge.studio.StudioAccount
 
 /** A signed-in (or signed-out) session with no browser and no Rust core. */
 class FakeSession(signedIn: Boolean = true, private val userId: String = "fx-reviewer") : AccountSession {
-    private val account = StudioAccount(userId, "Fixture Reviewer", "reviewer@example.test", null, null, needsReauth = false)
+    private val account = StudioAccount(userId, "Yusuf Haddad", "reviewer@example.test", null, null, needsReauth = false)
     override val accounts = MutableStateFlow(if (signedIn) listOf(account) else emptyList())
     override val active = MutableStateFlow(if (signedIn) account else null)
     val stepUps = mutableListOf<Int>()

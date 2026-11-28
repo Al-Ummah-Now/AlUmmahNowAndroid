@@ -98,8 +98,8 @@ class AdminScreenshotTest {
 
     /** FixtureReviewService's staff accounts as the people a frame shows: (English name, Arabic name). */
     private val staff = mapOf(
-        "Fixture Senior" to ("Huda Karim" to "هدى كريم"),
-        "Fixture Reviewer" to ("Yusuf Haddad" to "يوسف حداد")
+        "Huda Karim" to ("Huda Karim" to "هدى كريم"),
+        "Yusuf Haddad" to ("Yusuf Haddad" to "يوسف حداد")
     )
 
     private fun String.inLang(lang: Lang): String {
@@ -175,7 +175,7 @@ class AdminScreenshotTest {
     /** Settings as the frame shows them: its own theme and language selected, alerts on (a release build with push set up). */
     private fun settings(lang: Lang, mode: ThemeMode, enabled: Boolean = false) = @Composable {
         SettingsContent(
-            "Fixture Senior".inLang(lang),
+            "Huda Karim".inLang(lang),
             dark = mode == ThemeMode.DARK,
             language = if (lang == Lang.AR) "ar" else "en",
             push = PushState.ON,
