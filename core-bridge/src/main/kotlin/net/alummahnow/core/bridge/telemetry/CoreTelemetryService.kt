@@ -79,7 +79,7 @@ class CoreTelemetryService(
             appVersion = appVersion,
             osVersion = osVersion,
             deviceClass = deviceClass,
-            locale = locale
+            locale = sanitizeLocaleTag(locale)
         )
         val config = TelemetryClientConfig(
             app = app,

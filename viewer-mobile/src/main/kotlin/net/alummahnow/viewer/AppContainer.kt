@@ -2,6 +2,10 @@ package net.alummahnow.viewer
 
 import android.content.Context
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunClient
 import net.alummahnow.core.bridge.auth.AuthBridge
 import net.alummahnow.core.bridge.auth.GuestOnlyAuthBridge
@@ -51,6 +55,9 @@ class AppContainer(context: Context) : ViewerContainer {
             if (initialEnabled && service.consent == TelemetryConsent.OFF && !displayPrefs.setTelemetryEnabled(false)) {
                 displayPrefs.setTelemetrySaveUncertain(true)
                 displayPrefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_disable_error)
+            }
+            if (service.consent != TelemetryConsent.OFF) {
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { service.flush() }
             }
         }
     }

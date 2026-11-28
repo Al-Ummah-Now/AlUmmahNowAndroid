@@ -132,7 +132,7 @@ internal object CoreTelemetryUrlContinuation {
 
     private fun probeWebhookPrefix(rawUrl: String): String? {
         val probeInput = "${rawUrl}x"
-        val probe = CoreTelemetryScanners.redactUrlPathSecrets(probeInput)
+        val probe = CoreTelemetryScanners.redactUrlPathSecrets(probeInput, includeUserRoutes = false)
         return if (probe != probeInput && probe.endsWith("[redacted]")) probe else null
     }
 
@@ -213,7 +213,7 @@ internal object CoreTelemetryUrlContinuation {
         val nestedStart = findFirstNestedUrlStart(text, span.totalEnd, sliceEnd)
         if (nestedStart < 0) return CoreTelemetryScanners.redactUrlPathSecrets(text.substring(span.start, sliceEnd))
         val prefix = text.substring(span.start, nestedStart)
-        val probe = CoreTelemetryScanners.redactUrlPathSecrets("${prefix}x")
+        val probe = CoreTelemetryScanners.redactUrlPathSecrets("${prefix}x", includeUserRoutes = false)
         if (probe != "${prefix}x" && probe.endsWith("[redacted]")) {
             return CoreTelemetryScanners.redactUrlPathSecrets(text.substring(span.start, sliceEnd))
         }

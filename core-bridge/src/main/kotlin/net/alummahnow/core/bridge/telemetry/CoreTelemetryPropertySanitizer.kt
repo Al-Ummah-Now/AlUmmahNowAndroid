@@ -316,13 +316,21 @@ private fun isDecodedPhoneUrlSegment(seg: String): Boolean {
 }
 
 private const val MAX_URL_DECODE_ROUNDS = 4
+private val safeLocaleTagRegex = Regex("""^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,3}$""")
+
+internal fun sanitizeLocaleTag(raw: String?): String {
+    val trimmed = raw?.trim()
+    return if (!trimmed.isNullOrEmpty() && safeLocaleTagRegex.matches(trimmed)) trimmed else "en"
+}
 
 private fun decodeRepeatedForCheck(seg: String): String {
     var cur = seg
     var round = 0
     var changed = true
     while (round < MAX_URL_DECODE_ROUNDS && changed && cur.indexOf('%') >= 0) {
-        val next = decodeUrlSegmentFull(cur).first
+        val next = runCatching {
+            URLDecoder.decode(cur.replace("+", "%2B"), Charsets.UTF_8.name())
+        }.getOrElse { decodeUrlSegmentFull(cur).first }
         changed = next != cur
         cur = next
         round++
@@ -341,6 +349,7 @@ private fun isDecodedSensitiveUrlSegment(seg: String, checkEmail: Boolean): Bool
     val expanded = if (seg.indexOf('%') >= 0) decodeRepeatedForCheck(seg) else seg
     return isOpaqueUrlSecretSegment(expanded) ||
         isDecodedPhoneUrlSegment(expanded) ||
+        CoreTelemetryPropertySanitizer.matchesUnicodePhone(expanded) ||
         CoreTelemetryPropertySanitizer.matchesIpLiteral(expanded) ||
         (checkEmail && isDecodedEmailUrlSegment(expanded))
 }
@@ -547,6 +556,9 @@ internal object CoreTelemetryPropertySanitizer {
             type == Character.SPACE_SEPARATOR.toInt() ||
             type == Character.DASH_PUNCTUATION.toInt()
     }
+
+    internal fun matchesUnicodePhone(text: String): Boolean =
+        phoneInKeyRegex.findAll(text).any { isRedactedPhoneMatch(it.value) }
 
     internal fun matchesIpLiteral(text: String): Boolean =
         ipv4InKeyRegex.containsMatchIn(text) || ipv6InKeyRegex.containsMatchIn(text)

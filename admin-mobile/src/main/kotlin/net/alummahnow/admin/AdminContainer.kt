@@ -2,6 +2,10 @@ package net.alummahnow.admin
 
 import android.content.Context
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import net.alummahnow.admin.security.AppLock
 import net.alummahnow.admin.security.StepUp
 import net.alummahnow.core.bridge.AunClient
@@ -75,6 +79,9 @@ class AdminContainer(context: Context) : AdminServices {
                 prefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_disable_error)
             }
             CoreTelemetryService.installUncaughtExceptionHandler(service)
+            if (service.consent != TelemetryConsent.OFF) {
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { service.flush() }
+            }
         }
     }
 

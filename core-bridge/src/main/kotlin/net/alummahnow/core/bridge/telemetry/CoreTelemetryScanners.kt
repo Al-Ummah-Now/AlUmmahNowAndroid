@@ -18,6 +18,45 @@ internal val LOCAL_OR_SHARE_URI_PREFIXES = listOf(
 private val urlUserinfoRegex = Regex("""^([a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s?#]+)@""")
 private val oneDriveShareTokenRegex = Regex("""((?:/|%2[fF])s!)[^\s?#]+""", RegexOption.IGNORE_CASE)
 private val urlPathKeyValueRegex = Regex("""(?<![A-Za-z0-9_])([A-Za-z0-9_.-]{2,64})([=:])([^/?#&\s;]+)""")
+private val rawPathEmailRegex = Regex("""(?:@|%40)[^\s/?#]*\.[A-Za-z0-9\u0080-\uFFFF]""", RegexOption.IGNORE_CASE)
+private val userIdentityPathRegex = Regex(
+    """((?:^|/|%2[fF])(?:users?|profiles?|accounts?|members?|people|person|""" +
+        """authors?|creators?|handles?|customers?|contacts?|subscribers?|followers?|owners?|""" +
+        """(?<!file/)(?<!document/)(?<!spreadsheets/)(?<!presentation/)u)(?:/|%2[fF]))([^/?#\s]+)""",
+    RegexOption.IGNORE_CASE
+)
+
+private fun isExemptUserIdentitySegment(segVal: String): Boolean =
+    segVal.startsWith("{") || segVal.startsWith("[redacted") || segVal.startsWith("s!", ignoreCase = true)
+
+private fun findUrlPathSlash(text: String): Int {
+    val schemeIdx = text.indexOf("://")
+    return if (schemeIdx >= 0) text.indexOf('/', schemeIdx + 3) else -1
+}
+
+private fun redactUserIdentityPathSegments(url: String): String {
+    val pathSlash = findUrlPathSlash(url)
+    if (pathSlash < 0 || rawPathEmailRegex.containsMatchIn(url.substring(pathSlash))) return url
+    val (decoded, origOffsets) = if (url.indexOf('%') >= 0) decodeUrlForPathSecretMatch(url) else url to null
+    val decPathSlash = findUrlPathSlash(decoded)
+    if (decPathSlash < 0) return url
+    val matches = userIdentityPathRegex.findAll(decoded, decPathSlash)
+        .mapNotNull { it.groups[2] }
+        .filter { !isExemptUserIdentitySegment(it.value) }
+        .toList()
+    if (matches.isEmpty()) return url
+    val sb = StringBuilder(url.length)
+    var copied = 0
+    for (segGroup in matches) {
+        val start = origOffsets?.get(segGroup.range.first) ?: segGroup.range.first
+        if (start >= copied) {
+            val end = origOffsets?.get(segGroup.range.last + 1) ?: (segGroup.range.last + 1)
+            sb.append(url, copied, start).append("[redacted]")
+            copied = end
+        }
+    }
+    return if (copied == 0) url else sb.append(url, copied, url.length).toString()
+}
 
 private fun redactEncodedKeyValuesInUrl(
     url: String,
@@ -84,6 +123,61 @@ private fun redactEncodedJoseTokensInUrl(
     return if (copied == 0) url else sb.append(url, copied, url.length).toString()
 }
 
+private const val PATH_SECRET_DECODE_ROUNDS = 4
+private const val PATH_SECRET_PERCENT_LEN = 3
+private const val PATH_SECRET_ASCII_MIN = 0x21
+private const val PATH_SECRET_ASCII_MAX = 0x7E
+private const val PATH_SECRET_HEX_RADIX = 16
+private const val PATH_SECRET_HEX_SHIFT = 4
+
+private fun decodeUrlForPathSecretMatch(url: String): Pair<String, IntArray> {
+    var cur = url
+    var map: IntArray? = null
+    var round = 0
+    var changed = true
+    while (round < PATH_SECRET_DECODE_ROUNDS && changed && cur.indexOf('%') >= 0) {
+        val (next, nextOffsets, didChange) = decodeUrlPathOnce(cur, map)
+        changed = didChange
+        if (didChange) {
+            cur = next
+            map = nextOffsets
+        }
+        round++
+    }
+    return cur to (map ?: IntArray(url.length + 1) { it })
+}
+
+private fun decodeUrlPathOnce(url: String, priorMap: IntArray?): Triple<String, IntArray, Boolean> {
+    val decoded = StringBuilder(url.length)
+    val offsets = IntArray(url.length + 1)
+    var outLen = 0
+    var changed = false
+    var i = 0
+    while (i < url.length) {
+        offsets[outLen++] = priorMap?.get(i) ?: i
+        val byteVal = if (url[i] == '%' && i + 2 < url.length) parsePathSecretHexByte(url[i + 1], url[i + 2]) else -1
+        if (isDecodablePathSecretByte(byteVal)) {
+            decoded.append(byteVal.toChar())
+            i += PATH_SECRET_PERCENT_LEN
+            changed = true
+        } else {
+            decoded.append(url[i])
+            i++
+        }
+    }
+    offsets[outLen] = priorMap?.get(url.length) ?: url.length
+    return Triple(decoded.toString(), offsets, changed)
+}
+
+private fun isDecodablePathSecretByte(b: Int): Boolean =
+    b in PATH_SECRET_ASCII_MIN..PATH_SECRET_ASCII_MAX && b != '/'.code && b != '?'.code && b != '#'.code
+
+private fun parsePathSecretHexByte(hi: Char, lo: Char): Int {
+    val h = Character.digit(hi, PATH_SECRET_HEX_RADIX)
+    val l = Character.digit(lo, PATH_SECRET_HEX_RADIX)
+    return if (h >= 0 && l >= 0) (h shl PATH_SECRET_HEX_SHIFT) or l else -1
+}
+
 internal object CoreTelemetryScanners {
     private const val MAX_EXT_LEN = 16
     private const val MAX_EXT_CHECK = 17
@@ -93,10 +187,6 @@ internal object CoreTelemetryScanners {
     private const val URL_PATH_STOP = "\"<>\\?#\r\n"
     private const val URL_CONT_STOP = "<>\\?#\r\n"
     private const val URL_END_BOUNDARY = "\"'<>\\{},;()[]"
-    private const val DECODED_ASCII_MIN = 0x21
-    private const val DECODED_ASCII_MAX = 0x7E
-    private const val HEX_RADIX = 16
-    private const val HEX_SHIFT = 4
     private const val IPV6_FORBIDDEN = "[\"'<>\\{}\r\n"
     private const val QUOTED_SEG_STOP = "\r\n/\\\u001E\u001F"
     private const val QUERY_STOP = "\"<>"
@@ -238,7 +328,7 @@ internal object CoreTelemetryScanners {
         RegexOption.IGNORE_CASE
     )
 
-    fun redactUrlPathSecrets(url: String): String {
+    fun redactUrlPathSecrets(url: String, includeUserRoutes: Boolean = true): String {
         var result = urlUserinfoRegex.replace(url, "$1[redacted]@")
         result = replaceUrlPathSecret(result, webhookPathTokenRegex)
         result = redactSlackWebhookUrl(result)
@@ -247,6 +337,7 @@ internal object CoreTelemetryScanners {
         result = replaceUrlPathSecret(result, urlMatrixParamRegex)
         result = redactEncodedKeyValuesInUrl(result, ::decodeUrlForPathSecretMatch)
         result = redactEncodedJoseTokensInUrl(result, ::decodeUrlForPathSecretMatch)
+        if (includeUserRoutes) result = redactUserIdentityPathSegments(result)
         return redactEncodedOpaqueSegmentsInUrl(result)
     }
 
@@ -295,35 +386,6 @@ internal object CoreTelemetryScanners {
             }
         }
         return if (copied == 0) url else sb.append(url, copied, url.length).toString()
-    }
-
-    private fun decodeUrlForPathSecretMatch(url: String): Pair<String, IntArray> {
-        val decoded = StringBuilder(url.length)
-        val offsets = IntArray(url.length + 1)
-        var outLen = 0
-        var i = 0
-        while (i < url.length) {
-            offsets[outLen++] = i
-            val byteVal = if (url[i] == '%' && i + 2 < url.length) parseHexByte(url[i + 1], url[i + 2]) else -1
-            if (isDecodablePathSecretByte(byteVal)) {
-                decoded.append(byteVal.toChar())
-                i += PERCENT_ENC_LEN
-            } else {
-                decoded.append(url[i])
-                i++
-            }
-        }
-        offsets[outLen] = url.length
-        return decoded.toString() to offsets
-    }
-
-    private fun isDecodablePathSecretByte(b: Int): Boolean =
-        b in DECODED_ASCII_MIN..DECODED_ASCII_MAX && b != '/'.code && b != '?'.code && b != '#'.code
-
-    private fun parseHexByte(hi: Char, lo: Char): Int {
-        val h = Character.digit(hi, HEX_RADIX)
-        val l = Character.digit(lo, HEX_RADIX)
-        return if (h >= 0 && l >= 0) (h shl HEX_SHIFT) or l else -1
     }
 
     private fun scanOptionalPort(text: String, pos: Int): Int? {

@@ -34,14 +34,6 @@ class CoreTelemetryDiagnosticSanitizerTest {
                 "p\\u0061ssword" to "violet-sparrow",
                 "token violet7" to "ok",
                 "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K " +
-                    "alummahnow://watch/v1 " +
-                    "https://uploads.example.test/upload/853876e8-cc19-465d-bafa-7459aba00936 " +
-                    "https://example.org/assets/%41bCdEfGhIjKlMnOpQrStUvWxYz0123456789 " +
-                    "https://example.test/lookup/%2B%31%32%30%32%35%35%35%30%31%32%33 " +
-                    "https://example.test/contact/%2B%31%20%32%30%32%20%35%35%35%20%30%31%32%33 " +
-                    "https://example.test/lookup/alice%2540example.test " +
-                    "https%25253A%25252F%25252Fexample.test%25252Flogin%25253Ftoken%25253Ds3cr3t " +
-                    "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ " +
                     "https://example.test/password%3Dshortcredential " +
                     "https%3A%2F%2Fexample.test%2F%3Fcode%3Dorchid-meadow",
                 "badVal" to throwingProp
@@ -54,9 +46,7 @@ class CoreTelemetryDiagnosticSanitizerTest {
             "482731", "first;second", "second", "alice123", "alice42", "bob73", "violet-sparrow", "秘密", "12 Cedar Rd",
             "orchid", "velvet", "shortcredential", "horse battery staple", "word phrase",
             "Alice", "Wonderland", "Smith", "Jane", "Doe", "ProjectCodename", "violet7",
-            "orchid-meadow", "shortsecret", "u:p@localhost", "u:[redacted-email]", "Aq82F1ZLPx0K",
-            "watch/v1", "853876e8-cc19-465d-bafa-7459aba00936", "bCdEfGhIjKlMnOpQrStUvWxYz0123456789",
-            "%2B%31%32%30%32", "%2B%31%20%32%30%32", "alice%2540example.test", "s3cr3t", "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ"
+            "orchid-meadow", "shortsecret", "u:p@localhost", "u:[redacted-email]", "Aq82F1ZLPx0K"
         )
         for (token in forbidden) {
             assertFalse("Expected redacted token: $token", json.contains(token))
@@ -68,5 +58,37 @@ class CoreTelemetryDiagnosticSanitizerTest {
             "http://[redacted]@localhost/x",
             CoreTelemetryService.sanitizeLocalPaths("http://u:p@localhost/x")
         )
+    }
+
+    @Test
+    fun `diagnostic sanitizer redacts encoded URL secrets phones emails handles and invalid locale`() {
+        val props = CoreTelemetryService.serializeProperties(
+            mapOf(
+                "urls" to "alummahnow://watch/v1 " +
+                    "https://uploads.example.test/upload/853876e8-cc19-465d-bafa-7459aba00936 " +
+                    "https://example.org/assets/%41bCdEfGhIjKlMnOpQrStUvWxYz0123456789 " +
+                    "https://example.test/lookup/%2B%31%32%30%32%35%35%35%30%31%32%33 " +
+                    "https://example.test/contact/%2B%31%20%32%30%32%20%35%35%35%20%30%31%32%33 " +
+                    "https://example.test/lookup/202%C2%A0555%C2%A00123 " +
+                    "https://example.test/%2572eset-password/AbCdEf123456 " +
+                    "https://example.test/lookup/alice%2540example.test " +
+                    "https://example.com/users/AliceSmith " +
+                    "https://example.com/%75sers/BobJones " +
+                    "https%25253A%25252F%25252Fexample.test%25252Flogin%25253Ftoken%25253Ds3cr3t " +
+                    "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ"
+            )
+        )
+        assertNotNull(props)
+        val json = props!!
+        val forbidden = listOf(
+            "watch/v1", "853876e8-cc19-465d-bafa-7459aba00936", "bCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+            "%2B%31%32%30%32", "%2B%31%20%32%30%32", "202%C2%A0555", "AbCdEf123456",
+            "alice%2540example.test", "AliceSmith", "BobJones", "s3cr3t", "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ"
+        )
+        for (token in forbidden) {
+            assertFalse("Expected redacted token: $token", json.contains(token))
+        }
+        assertEquals("en", sanitizeLocaleTag("/Users/Ada/Private.mov"))
+        assertEquals("ar-SA", sanitizeLocaleTag("ar-SA"))
     }
 }
