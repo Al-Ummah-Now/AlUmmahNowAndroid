@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import java.util.Locale
+import net.alummahnow.core.bridge.SafeInput
 import net.alummahnow.core.bridge.media.QURAN_CREDIT_AR
 import net.alummahnow.core.bridge.media.QURAN_CREDIT_EN
 import net.alummahnow.core.bridge.media.QuranCaptionCredit
@@ -113,6 +114,7 @@ private fun CreditedCue(cue: QuranCaptionCredit, onOpenCredit: (Context, String)
 }
 
 internal fun openQuranCredit(context: Context, url: String) {
+    if (!SafeInput.isSafeBrowserUrl(url)) return
     val uri = Uri.parse(url)
     try {
         CustomTabsIntent.Builder().build().launchUrl(context, uri)

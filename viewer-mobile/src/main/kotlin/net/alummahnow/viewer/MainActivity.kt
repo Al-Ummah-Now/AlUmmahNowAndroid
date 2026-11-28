@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.SafeInput
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.core.bridge.links.ShortLinks
@@ -128,6 +129,10 @@ class MainActivity : ComponentActivity() {
      * Returns false when no browser is installed.
      */
     internal fun openInBrowser(url: String): Boolean {
+        if (!SafeInput.isSafeBrowserUrl(url)) {
+            AunLog.w("links", "refused unsafe browser url")
+            return false
+        }
         val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://${BuildConfig.WEB_HOST}/"))
         val browser = packageManager.queryIntentActivities(probe, 0)
             .map { it.activityInfo.packageName }

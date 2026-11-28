@@ -10,6 +10,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.SafeInput
 import net.alummahnow.core.bridge.internal.ListEnvelope
 import net.alummahnow.core.bridge.internal.VideoDto
 import net.alummahnow.core.bridge.internal.toDetail
@@ -57,14 +58,23 @@ class TemporaryCatalogRepository(
     }
 
     override suspend fun video(id: String): VideoDetail {
-        val dto = get<VideoDto>(base.newBuilder().addPathSegments("api/videos").addPathSegment(id).build(), what = "video $id")
+        val safeId = SafeInput.requirePathSegment(id, "videoId")
+        val dto = get<VideoDto>(base.newBuilder().addPathSegments("api/videos").addPathSegment(safeId).build(), what = "video $safeId")
         return dto.toDetail()
     }
 
     override suspend fun related(video: VideoDetail, limit: Int): List<VideoSummary> {
         val category = video.summary.category
         val sameCategory = if (category != null) {
-            runCatching { list("api/videos/sections/by-category/$category", "limit" to "${limit + 1}") }.getOrDefault(emptyList())
+            runCatching {
+                val safeCategory = SafeInput.requirePathSegment(category, "category")
+                val url = base.newBuilder()
+                    .addPathSegments("api/videos/sections/by-category")
+                    .addPathSegment(safeCategory)
+                    .addQueryParameter("limit", "${limit + 1}")
+                    .build()
+                get<ListEnvelope>(url, what = "api/videos/sections/by-category").data.map { it.toSummary() }
+            }.getOrDefault(emptyList())
         } else {
             emptyList()
         }

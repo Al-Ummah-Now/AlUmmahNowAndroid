@@ -2,6 +2,7 @@ package net.alummahnow.core.bridge.links
 
 import java.net.URI
 import java.net.URISyntaxException
+import net.alummahnow.core.bridge.SafeInput
 
 object ShortLinks {
     enum class Kind(val prefix: String) {
@@ -31,18 +32,21 @@ object ShortLinks {
         val host = try {
             if ("://" in siteHostOrOrigin) URI(siteHostOrOrigin).host.orEmpty() else siteHostOrOrigin.substringBefore(':')
         } catch (_: URISyntaxException) {
-            return null
-        }.lowercase()
-        if (host == "alummahnow.link" || host.endsWith(".alummahnow.link")) return "https://$host"
-        if (host != "alummahnow.net" && !host.endsWith(".alummahnow.net")) return null
-
-        val labels = host.split('.')
+            ""
+        }.trim().lowercase()
         return when {
-            "qa" in labels -> "https://qa.alummahnow.link"
-            "stage" in labels -> "https://stage.alummahnow.link"
-            labels.any { it == "preview" || it == "dev" || previewLabel.matches(it) } -> null
-            else -> "https://alummahnow.link"
+            !SafeInput.isSafeHostname(host) -> null
+            host == "alummahnow.link" || host.endsWith(".alummahnow.link") -> "https://$host"
+            host != "alummahnow.net" && !host.endsWith(".alummahnow.net") -> null
+            else -> shortLinkForNetLabels(host.split('.'))
         }
+    }
+
+    private fun shortLinkForNetLabels(labels: List<String>): String? = when {
+        "qa" in labels -> "https://qa.alummahnow.link"
+        "stage" in labels -> "https://stage.alummahnow.link"
+        labels.any { it == "preview" || it == "dev" || previewLabel.matches(it) } -> null
+        else -> "https://alummahnow.link"
     }
 
     fun shareUrl(

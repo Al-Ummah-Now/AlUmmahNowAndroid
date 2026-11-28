@@ -14,6 +14,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.SafeInput
 import net.alummahnow.core.bridge.attestation.NATIVE_PROOF_REQUIRED
 import net.alummahnow.core.bridge.attestation.NativeProofProvider
 import net.alummahnow.core.bridge.attestation.NoNativeProof
@@ -50,12 +51,13 @@ class HttpReviewService(
     private suspend fun send(
         method: String,
         base: String,
-        path: String,
+        segments: List<String>,
         query: Map<String, String> = emptyMap(),
         body: JsonObject? = null
     ): ByteArray {
         val token = token()
-        val url = base.trimEnd('/').toHttpUrl().newBuilder().addPathSegmentsFrom(path).apply {
+        val url = base.trimEnd('/').toHttpUrl().newBuilder().apply {
+            segments.forEach { addPathSegment(SafeInput.requirePathSegment(it, "path segment")) }
             query.forEach { (k, v) -> addQueryParameter(k, v) }
         }.build()
         val provider = if (base == videosApi) proofs else NoNativeProof
@@ -92,9 +94,6 @@ class HttpReviewService(
 
     private suspend fun token(): String = accessToken() ?: throw CoreError.NotSignedIn()
 
-    private fun HttpUrl.Builder.addPathSegmentsFrom(path: String): HttpUrl.Builder =
-        apply { path.trim('/').split('/').filter { it.isNotEmpty() }.forEach { addPathSegment(it) } }
-
     private fun result(bytes: ByteArray): JsonElement {
         val root = try {
             J.parse(bytes.decodeToString())
@@ -108,7 +107,7 @@ class HttpReviewService(
 
     @Suppress("SwallowedException") // a 404 means the server predates `/api/me`
     override suspend fun profile(): StaffProfile = try {
-        val me = result(send("GET", adminApi, "/api/me")).obj() ?: throw CoreError.Decode(IllegalStateException("me"))
+        val me = result(send("GET", adminApi, listOf("api", "me"))).obj() ?: throw CoreError.Decode(IllegalStateException("me"))
         val profile = StaffProfile(
             userId = me.s("userId") ?: me.s("id") ?: throw CoreError.Decode(IllegalStateException("userId")),
             displayName = me.s("displayName"),
@@ -130,12 +129,13 @@ class HttpReviewService(
             cursor?.let { put("cursor", it) }
             query?.trim()?.takeIf { it.isNotEmpty() }?.let { put("q", it) }
         }
-        val page = result(send("GET", adminApi, "/api/review/queue", params)).obj() ?: JsonObject(emptyMap())
+        val page = result(send("GET", adminApi, listOf("api", "review", "queue"), params)).obj() ?: JsonObject(emptyMap())
         return ReviewPage(page.a("items").mapNotNull { it.obj()?.let(::parseItem) }, page.s("nextCursor"))
     }
 
     override suspend fun detail(id: String): ReviewDetail {
-        val r = result(send("GET", adminApi, "/api/review/$id")).obj() ?: throw CoreError.Decode(IllegalStateException("detail"))
+        val r = result(send("GET", adminApi, listOf("api", "review", id))).obj()
+            ?: throw CoreError.Decode(IllegalStateException("detail"))
         val subject = r.o("subject")?.let(::parseSubject)
         var item = parseItem(r.o("review") ?: throw CoreError.Decode(IllegalStateException("review")))
         if (item.title == null) item = item.copy(title = subject?.title)
@@ -155,11 +155,11 @@ class HttpReviewService(
     }
 
     override suspend fun claim(id: String) {
-        send("POST", adminApi, "/api/review/$id/claim", body = JsonObject(emptyMap()))
+        send("POST", adminApi, listOf("api", "review", id, "claim"), body = JsonObject(emptyMap()))
     }
 
     override suspend fun reveal(id: String, target: String) {
-        send("POST", adminApi, "/api/review/$id/reveal", body = buildJsonObject { put("target", target.take(MAX_TARGET)) })
+        send("POST", adminApi, listOf("api", "review", id, "reveal"), body = buildJsonObject { put("target", target.take(MAX_TARGET)) })
     }
 
     override suspend fun decide(id: String, decision: ReviewDecision, reason: ReviewReason?, note: String?, version: Int?): ReviewItem {
@@ -169,11 +169,12 @@ class HttpReviewService(
             note?.trim()?.takeIf { it.isNotEmpty() }?.let { put("note", it.take(MAX_NOTE)) }
             version?.let { put("version", it) }
         }
-        val r = result(send("POST", adminApi, "/api/review/$id/decision", body = body)).obj()
+        val r = result(send("POST", adminApi, listOf("api", "review", id, "decision"), body = body)).obj()
         return parseItem(r?.o("review") ?: throw CoreError.Decode(IllegalStateException("decision")))
     }
 
-    override suspend fun media(id: String, key: String): ByteArray = send("GET", adminApi, "/api/review/$id/media", mapOf("key" to key))
+    override suspend fun media(id: String, key: String): ByteArray =
+        send("GET", adminApi, listOf("api", "review", id, "media"), mapOf("key" to key))
 
     override suspend fun recordCapture(event: CaptureEvent, reviewId: String?, installId: String) {
         val body = buildJsonObject {
@@ -181,7 +182,7 @@ class HttpReviewService(
             put("installId", installId)
             reviewId?.let { put("reviewId", it) }
         }
-        send("POST", adminApi, "/api/review/audit/capture", body = body)
+        send("POST", adminApi, listOf("api", "review", "audit", "capture"), body = body)
     }
 
     // ---- PushRegistrar ----
@@ -195,11 +196,11 @@ class HttpReviewService(
             put("locale", locale)
             put("appVersion", appVersion.take(MAX_VERSION))
         }
-        send("PUT", videosApi, "/api/v1/devices/$installId", body = body)
+        send("PUT", videosApi, listOf("api", "v1", "devices", installId), body = body)
     }
 
     override suspend fun unregister(installId: String) {
-        send("DELETE", videosApi, "/api/v1/devices/$installId")
+        send("DELETE", videosApi, listOf("api", "v1", "devices", installId))
     }
 
     companion object {

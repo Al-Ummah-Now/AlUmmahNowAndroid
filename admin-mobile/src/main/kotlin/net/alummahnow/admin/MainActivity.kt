@@ -21,6 +21,7 @@ import net.alummahnow.admin.security.SecureWindows
 import net.alummahnow.admin.ui.AdminApp
 import net.alummahnow.admin.ui.OpenTarget
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.SafeInput
 
 class MainActivity : ComponentActivity() {
     /** OAuth redirects (`alummahnow-admin://auth/callback?...`), delivered once each. */
@@ -87,13 +88,18 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         intent ?: return
         val data = intent.data
-        if (data != null && data.scheme == AdminContainer.SCHEME && data.host == "auth") {
+        if (isAuthCallback(data)) {
             redirects.trySend(data.toString())
             return
         }
-        intent.getStringExtra(AdminNotifications.EXTRA_REVIEW_ID)?.let { id ->
+        intent.getStringExtra(AdminNotifications.EXTRA_REVIEW_ID)?.takeIf(SafeInput::isSafeId)?.let { id ->
             openTargets.value = OpenTarget(id, claim = intent.getBooleanExtra(AdminNotifications.EXTRA_CLAIM, false))
         }
+    }
+
+    private fun isAuthCallback(data: Uri?): Boolean {
+        if (data == null) return false
+        return data.scheme == AdminContainer.SCHEME && data.host == "auth" && data.path == "/callback"
     }
 
     private fun requestUnlock() {
@@ -106,12 +112,18 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Opens [url] in a Custom Tab (the browser's Al Ummah Now session). False when there is no browser. */
-    private fun openInCustomTab(url: String): Boolean = try {
-        CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, Uri.parse(url))
-        true
-    } catch (e: ActivityNotFoundException) {
-        AunLog.w("auth", "no browser", "type" to e.javaClass.simpleName)
-        false
+    private fun openInCustomTab(url: String): Boolean {
+        if (!SafeInput.isSafeBrowserUrl(url)) {
+            AunLog.w("auth", "refused unsafe custom tab url")
+            return false
+        }
+        return try {
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, Uri.parse(url))
+            true
+        } catch (e: ActivityNotFoundException) {
+            AunLog.w("auth", "no browser", "type" to e.javaClass.simpleName)
+            false
+        }
     }
 }
 

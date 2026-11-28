@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.SafeInput
 import net.alummahnow.core.bridge.studio.StudioAccount
 import net.alummahnow.feature.upload.PickedFile
 import org.json.JSONArray
@@ -29,7 +30,13 @@ class PendingExports(private val root: File, private val index: File) {
     val waiting: StateFlow<Set<Pair<String, String>>> = mutableWaiting.asStateFlow()
 
     /** Where [userId]'s exports are written. */
-    fun dir(userId: String): File = File(root, userId.replace(Regex("[^A-Za-z0-9_-]"), "_"))
+    fun dir(userId: String): File {
+        val trimmed = userId.trim()
+        require(trimmed.isNotEmpty() && trimmed != "." && trimmed != "..") { "invalid userId" }
+        val safe = trimmed.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        require(safe.any { it.isLetterOrDigit() }) { "invalid userId" }
+        return File(root, safe)
+    }
 
     fun add(userId: String, channelId: String, file: PickedFile) = synchronized(lock) {
         if (rows.none { it.userId == userId && it.channelId == channelId && it.file.uri == file.uri }) {
@@ -42,7 +49,7 @@ class PendingExports(private val root: File, private val index: File) {
         val (mine, others) = rows.partition { it.userId == userId && it.channelId == channelId }
         if (mine.isNotEmpty()) save(others)
         // The cache can be emptied by the system; the person is told instead of being handed a missing file.
-        val (there, gone) = mine.partition { File(dir(userId), it.file.name).exists() }
+        val (there, gone) = mine.partition { SafeInput.isSafeFileName(it.file.name) && File(dir(userId), it.file.name).exists() }
         Taken(there.map { it.file }, gone.size)
     }
 

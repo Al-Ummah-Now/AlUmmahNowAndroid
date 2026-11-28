@@ -55,7 +55,11 @@ object AppLinkParser {
             return null
         }
         return when (uri.scheme?.lowercase()) {
-            "https" -> if (uri.host.equals(webHost, ignoreCase = true)) parsePath(uri.rawPath.orEmpty(), uri.rawQuery) else null
+            "https" -> if (uri.rawUserInfo == null && uri.host.equals(webHost, ignoreCase = true)) {
+                parsePath(uri.rawPath.orEmpty(), uri.rawQuery)
+            } else {
+                null
+            }
             CUSTOM_SCHEME -> parseCustom(uri)
             else -> null
         }
@@ -117,10 +121,14 @@ object AppLinkParser {
     /** Ids go into in-app routes: only URL-safe id characters, so a decoded `/`, `?` or `%` can't forge a route. */
     private fun isId(s: String): Boolean = ID.matches(s)
 
-    /** Handles may be Arabic; they only ever leave the app as the original URL, but still no separators. */
-    private fun isHandle(s: String): Boolean = s.length in 1..MAX_HANDLE && s.none { it in HANDLE_STOPS || it.isWhitespace() }
+    /** Handles may be Arabic; they only ever leave the app as the original URL, but still no separators or control chars. */
+    private fun isHandle(s: String): Boolean =
+        s.length in 1..MAX_HANDLE &&
+            s != "." &&
+            s != ".." &&
+            s.none { it in HANDLE_STOPS || it.isWhitespace() || it < ' ' || it == '\u007F' }
 
-    private const val HANDLE_STOPS = "/?#"
+    private const val HANDLE_STOPS = "/?#\\"
 
     private val ID = Regex("^[A-Za-z0-9_-]{1,128}$")
     private const val MAX_HANDLE = 100

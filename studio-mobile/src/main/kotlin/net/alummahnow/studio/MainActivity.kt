@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.alummahnow.core.bridge.AunLog
+import net.alummahnow.core.bridge.SafeInput
 import net.alummahnow.core.bridge.links.AppLink
 import net.alummahnow.core.bridge.links.AppLinkParser
 import net.alummahnow.design.theme.AunTheme
@@ -67,19 +68,25 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == "alummahnow-studio" && data.host == "auth") {
+        if (data.scheme == "alummahnow-studio" && data.host == "auth" && data.path == "/callback") {
             redirects.trySend(data.toString())
             return
         }
         (AppLinkParser.parse(data.toString(), BuildConfig.WEB_HOST) as? AppLink.Studio)?.let { links.trySend(it) }
     }
 
-    /** Opens [url] in a Custom Tab (shares the browser's Al Ummah Now session). False when no browser. */
-    private fun openInCustomTab(url: String): Boolean = try {
-        CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, Uri.parse(url))
-        true
-    } catch (e: ActivityNotFoundException) {
-        AunLog.w("auth", "no browser", "type" to e.javaClass.simpleName)
-        false
+    /** Opens [url] in a Custom Tab (shares the browser's Al Ummah Now session). False when unsafe or no browser. */
+    private fun openInCustomTab(url: String): Boolean {
+        if (!SafeInput.isSafeBrowserUrl(url)) {
+            AunLog.w("auth", "refused unsafe custom tab url")
+            return false
+        }
+        return try {
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, Uri.parse(url))
+            true
+        } catch (e: ActivityNotFoundException) {
+            AunLog.w("auth", "no browser", "type" to e.javaClass.simpleName)
+            false
+        }
     }
 }

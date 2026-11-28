@@ -15,17 +15,26 @@ object AunLog {
     fun e(area: String, message: String, error: Throwable? = null, vararg context: Pair<String, Any?>) =
         emit(Log.ERROR, area, message, context, error)
 
-    internal fun format(message: String, context: Array<out Pair<String, Any?>>): String =
-        if (context.isEmpty()) message else message + " " + context.joinToString(" ") { (k, v) -> "$k=$v" }
+    internal fun format(message: String, context: Array<out Pair<String, Any?>>): String {
+        val cleanMsg = SafeInput.sanitizeLogLine(message)
+        return if (context.isEmpty()) {
+            cleanMsg
+        } else {
+            cleanMsg + " " + context.joinToString(" ") { (k, v) ->
+                "${SafeInput.sanitizeLogLine(k)}=${SafeInput.sanitizeLogLine(v.toString())}"
+            }
+        }
+    }
 
     private fun emit(priority: Int, area: String, message: String, context: Array<out Pair<String, Any?>>, error: Throwable?) {
         if (!enabled) return
         val line = format(message, context)
+        val cleanArea = SafeInput.sanitizeLogLine(area)
         runCatching {
             if (error != null) {
-                Log.println(priority, "AUN/$area", line + "\n" + Log.getStackTraceString(error))
+                Log.println(priority, "AUN/$cleanArea", line + "\n" + SafeInput.scrubSecrets(Log.getStackTraceString(error)))
             } else {
-                Log.println(priority, "AUN/$area", line)
+                Log.println(priority, "AUN/$cleanArea", line)
             }
         }
     }

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.SafeInput
 
 /**
  * TUS upload against `POST /api/videos/tus` using the TUS Java client, until `aun-upload` ships.
@@ -29,6 +30,7 @@ class TemporaryTusUploadEngine(
 ) : UploadEngine {
 
     override fun upload(request: UploadRequest): Flow<UploadEvent> = flow {
+        require(SafeInput.isSafeBrowserUrl(endpoint)) { "refusing insecure TUS endpoint" }
         val token = tokenProvider() ?: throw CoreError.NotSignedIn()
         val file = File(request.filePath)
         if (!file.exists()) throw CoreError.NotFound(request.fileName)

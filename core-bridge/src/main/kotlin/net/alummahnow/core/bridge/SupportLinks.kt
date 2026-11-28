@@ -9,7 +9,9 @@ object SupportLinks {
 
     /** The build's own web host. There is no default one: a build with no `videos.` host is a bug. */
     private fun videosHost(webHost: String): String {
-        require(webHost.startsWith(VIDEOS) && webHost.length > VIDEOS.length) { "not a videos host" }
+        require(SafeInput.isSafeHostname(webHost) && webHost.startsWith(VIDEOS) && webHost.length > VIDEOS.length) {
+            "not a videos host"
+        }
         return webHost
     }
 

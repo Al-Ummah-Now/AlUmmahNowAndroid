@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import net.alummahnow.core.bridge.SafeInput
 import net.alummahnow.core.bridge.live.LiveChatMessage
 import net.alummahnow.core.bridge.live.LiveStream
 import net.alummahnow.core.bridge.model.Rail
@@ -24,7 +25,7 @@ object ViewerReportUrls {
 
     private fun buildReportUrl(webHost: String, language: String, params: List<Pair<String, String>>): String {
         // No default host and no report without its target: either would be sent somewhere nobody looks.
-        require(webHost.isNotBlank()) { "no web host" }
+        require(SafeInput.isSafeHostname(webHost)) { "invalid web host" }
         require(params.all { it.second.isNotBlank() }) { "no report target" }
         return "https://$webHost/${locale(language)}/report?" + params.joinToString("&") { (k, v) -> "$k=${enc(v)}" }
     }
