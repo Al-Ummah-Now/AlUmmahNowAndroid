@@ -190,4 +190,37 @@ class CoreTelemetryQuotedAuthTest {
             detailProps
         )
     }
+
+    @Test
+    fun `punctuation IPs camelCase credentials supplementary phones JWEs Drive URLs and BigDecimal are scrubbed`() {
+        val props = CoreTelemetryService.serializeProperties(
+            mapOf(
+                "token=cobalt-orchard" to true,
+                "verificationCode" to "482193",
+                "reference" to java.math.BigDecimal("1.23456789E+10"),
+                "detail" to """Connection failed at 10.0.0.1. peer:2001:db8::1 """ +
+                    """clientSecret="cobalt orchard" Callback +𝟏𝟐𝟏𝟐𝟓𝟓𝟓𝟎𝟏𝟐𝟑 Call ٠٥٠‑١٢٣‑٤٥٦٧ """ +
+                    """eyJhbGciOiJkaXIifQ..iv1234.cipher5678.tag9012 """ +
+                    """eyJhbGciOiJSU0EtT0FFUCJ9.encKey1.iv1234.cipher9999.tag8888 """ +
+                    """https://drive.google.com/file/u/0/d/AbCdEfGhIjKlMnOpQrStUvWxYzABCDE/view """ +
+                    """https://example.com/a;jsessionid=abc123"""
+            )
+        )
+        assertTrue(props != null)
+        assertFalse(props!!.contains("cobalt-orchard"))
+        assertFalse(props.contains("482193"))
+        assertFalse(props.contains("12345678900"))
+        assertFalse(props.contains("1.23456789"))
+        assertFalse(props.contains("10.0.0.1"))
+        assertFalse(props.contains("2001:db8"))
+        assertFalse(props.contains("orchard"))
+        assertFalse(props.contains("𝟏𝟐𝟏𝟐"))
+        assertFalse(props.contains("١٢٣"))
+        assertFalse(props.contains("cipher5678"))
+        assertFalse(props.contains("cipher9999"))
+        assertFalse(props.contains("AbCdEfGhIjKlMnOpQrStUvWxYzABCDE"))
+        assertFalse(props.contains("abc123"))
+        assertEquals("[redacted-ip].", CoreTelemetryService.sanitizePropertyKey("10.0.0.1."))
+        assertEquals("token=[redacted]", CoreTelemetryService.sanitizePropertyKey("token=cobalt-orchard"))
+    }
 }

@@ -12,7 +12,9 @@ internal object CoreTelemetryAuthEscapedHelpers {
 
     private data class ContainerFrame(val openPos: Int, val expectedClose: Char)
 
-    private val jwtTokenRegex = Regex("""\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]*)?""")
+    private val jwtTokenRegex = Regex(
+        """(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){1,3}(?![A-Za-z0-9_-])"""
+    )
 
     fun redactJwtTokens(text: String): String =
         if (text.contains("eyJ")) jwtTokenRegex.replace(text, "[redacted]") else text
@@ -67,11 +69,41 @@ internal object CoreTelemetryAuthEscapedHelpers {
         "code-verifier",
         "client_secret",
         "client-secret",
+        "clientsecret",
+        "accesstoken",
+        "refreshtoken",
+        "idtoken",
+        "apikey",
+        "apitoken",
+        "authtoken",
+        "sessiontoken",
+        "securitytoken",
+        "sessionid",
+        "sessionkey",
+        "privatekey",
+        "secretkey",
+        "accesskey",
+        "codeverifier",
+        "verification_code",
+        "verification-code",
+        "verificationcode",
+        "auth_code",
+        "auth-code",
+        "authcode",
+        "recovery_code",
+        "recovery-code",
+        "recoverycode",
+        "passcode",
+        "otp",
+        "pin",
+        "passphrase",
+        "credential",
+        "credentials",
         "password",
         "passwd"
     )
 
-    private val canonicalAuthHeaders = unquotedAuthHeaders.toSet()
+    private val canonicalAuthHeaders = unquotedAuthHeaders.toSet() + setOf("token", "secret", "jwt")
 
     private val sensitiveCustomHeaderSegments = setOf(
         "token",

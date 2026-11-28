@@ -1,5 +1,7 @@
 package net.alummahnow.core.bridge.telemetry
 
+import java.math.BigDecimal
+import java.math.BigInteger
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.truncate
@@ -10,21 +12,24 @@ import kotlinx.serialization.json.buildJsonObject
 internal object CoreTelemetryPropertySanitizer {
     private const val MIN_PHONE_DIGITS = 9
     private const val MIN_SENSITIVE_INT_MAGNITUDE = 100_000_000L
+    private val minSensitiveBigDecimal = BigDecimal.valueOf(MIN_SENSITIVE_INT_MAGNITUDE)
+    private val minSensitiveBigInteger = BigInteger.valueOf(MIN_SENSITIVE_INT_MAGNITUDE)
 
     private val jwtInKeyRegex = Regex(
-        """(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?![A-Za-z0-9_-])"""
+        """(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+){1,3}(?![A-Za-z0-9_-])"""
     )
     private val ipv4InKeyRegex = Regex(
         """(?<![A-Za-z0-9_.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}""" +
-            """(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?![A-Za-z0-9_.])"""
+            """(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?![A-Za-z0-9_]|\.\d)"""
     )
     private val ipv6InKeyRegex = Regex(
-        """(?<![A-Za-z0-9_:])(?:(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|""" +
+        """(?<![0-9a-fA-F]:)(?<![A-Za-z0-9_])(?:(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|""" +
             """(?:[0-9a-fA-F]{1,4}:){1,7}:(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,5})?|""" +
-            """::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}))(?:%[A-Za-z0-9_.-]+)?(?![A-Za-z0-9_:])"""
+            """::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,6}))(?:%[A-Za-z0-9_.-]+)?""" +
+            """(?![A-Za-z0-9_]|:[0-9a-fA-F])"""
     )
     private val phoneInKeyRegex = Regex(
-        """(?<![A-Za-z0-9_])\+?\p{Nd}[\p{Nd}\s().-]{7,}\p{Nd}(?![A-Za-z0-9_])"""
+        """(?<![A-Za-z0-9_])\+?\p{Nd}[\p{Nd}\s().\p{Pd}]{7,}\p{Nd}(?![A-Za-z0-9_])"""
     )
     private val opaqueSecretInKeyRegex = Regex(
         """(?<![A-Za-z0-9_])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z0-9_])"""
@@ -45,12 +50,24 @@ internal object CoreTelemetryPropertySanitizer {
         "-credential"
     )
 
+    private val keyValueCredentialRegex = Regex(
+        """(?<![A-Za-z0-9_])(token|secret|jwt|passphrase|credential|credentials|""" +
+            """verification[_-]?code|auth[_-]?code|recovery[_-]?code|passcode|otp|pin|""" +
+            """client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token|""" +
+            """api[_-]?key|api[_-]?token|auth[_-]?token|session[_-]?token|security[_-]?token|""" +
+            """private[_-]?key|secret[_-]?key|access[_-]?key|code[_-]?verifier|""" +
+            """session[_-]?id|session[_-]?key|password|passwd)(\s*[=:]\s*)""" +
+            """(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]]+)""",
+        RegexOption.IGNORE_CASE
+    )
+
     fun sanitizeDiagnosticText(text: String): String {
         var safe = CoreTelemetryService.sanitizeLocalPaths(text)
+        safe = keyValueCredentialRegex.replace(safe, "$1$2[redacted]")
         safe = ipv4InKeyRegex.replace(safe, "[redacted-ip]")
         safe = ipv6InKeyRegex.replace(safe, "[redacted-ip]")
         safe = phoneInKeyRegex.replace(safe) { m ->
-            val digits = m.value.count { Character.isDigit(it) }
+            val digits = m.value.codePoints().filter { Character.isDigit(it) }.count()
             if (digits >= MIN_PHONE_DIGITS) "[redacted-phone]" else m.value
         }
         return safe
@@ -123,6 +140,9 @@ internal object CoreTelemetryPropertySanitizer {
         putSanitizedValue(uniqueKey, value)
     }
 
+    private fun isSensitiveBigDecimal(value: BigDecimal): Boolean =
+        value.abs() >= minSensitiveBigDecimal && value.stripTrailingZeros().scale() <= 0
+
     private fun JsonObjectBuilder.putSanitizedValue(uniqueKey: String, value: Any) {
         when (value) {
             is String -> put(uniqueKey, JsonPrimitive(sanitizeDiagnosticText(value)))
@@ -134,6 +154,22 @@ internal object CoreTelemetryPropertySanitizer {
             is Long -> put(
                 uniqueKey,
                 if (isSensitiveLong(value)) JsonPrimitive("[redacted-number]") else JsonPrimitive(value)
+            )
+            is BigDecimal -> put(
+                uniqueKey,
+                if (isSensitiveBigDecimal(value)) {
+                    JsonPrimitive("[redacted-number]")
+                } else {
+                    JsonPrimitive(sanitizeDiagnosticText(value.toPlainString()))
+                }
+            )
+            is BigInteger -> put(
+                uniqueKey,
+                if (value.abs() >= minSensitiveBigInteger) {
+                    JsonPrimitive("[redacted-number]")
+                } else {
+                    JsonPrimitive(sanitizeDiagnosticText(value.toString()))
+                }
             )
             is Double -> if (value.isFinite()) {
                 put(

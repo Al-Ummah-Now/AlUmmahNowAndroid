@@ -143,7 +143,7 @@ internal object CoreTelemetryScanners {
             """invite|invitations?|tokens?|auth|oauth2?|callback|sessions?|unsubscribe|""" +
             """secrets?|keys?|api-?keys?|credentials?|sign-?in|login|sso|redeem|claim|recovery?|passwords?|""" +
             """share|shared|sh|s|scl|dl|link|private|join|otp|passkey|code|folders|""" +
-            """file/d|document/d|spreadsheets/d|presentation/d)""" +
+            """(?:file|document|spreadsheets|presentation)/(?:u/\d+/)?d)""" +
             """(?:/|%2[fF]))[^\s?#]+""",
         RegexOption.IGNORE_CASE
     )
@@ -159,11 +159,17 @@ internal object CoreTelemetryScanners {
         """((?:/|%2[fF])bot\d+:)[^/\s?#]+""",
         RegexOption.IGNORE_CASE
     )
+    private val urlMatrixParamRegex = Regex(
+        """(;[a-z0-9_-]*(?:session|jsessionid|phpsessid|sid|token|secret|auth|key|""" +
+            """pass|pwd|cred|jwt|sig|code|otp|ticket|cookie)[a-z0-9_-]*=)[^/?#;\s]+""",
+        RegexOption.IGNORE_CASE
+    )
 
     fun redactUrlPathSecrets(url: String): String {
         var result = replaceUrlPathSecret(url, webhookPathTokenRegex)
         result = redactSlackWebhookUrl(result)
-        return replaceUrlPathSecret(result, telegramBotTokenUrlRegex)
+        result = replaceUrlPathSecret(result, telegramBotTokenUrlRegex)
+        return replaceUrlPathSecret(result, urlMatrixParamRegex)
     }
 
     private fun redactSlackWebhookUrl(url: String): String {

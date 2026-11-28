@@ -212,8 +212,7 @@ fun TvApp(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             TvAction(
-                                label = "${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText",
-                                description = disclosure
+                                label = "${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText"
                             ) {
                                 onToggleTelemetry()
                             }
