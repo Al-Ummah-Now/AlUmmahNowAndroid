@@ -94,7 +94,9 @@ class CoreTelemetryQuotedEscapedTest {
                 "{\"uri\":\"content:\\/\\/com.android.externalstorage.documents\\/document\\/" +
                     "primary%3ADownload%2FPrivateAcquisition.mov\",\"ok\":true}"
                 ) to
-                "{\"uri\":\"[redacted-path]\",\"ok\":true}"
+                "{\"uri\":\"[redacted-path]\",\"ok\":true}",
+            "https://proxy.example.com/https://hooks.slack.com/./services/T000/B000/fakeWebhookSecret" to
+                "https://proxy.example.com/https://hooks.slack.com/./services/[redacted]"
         )
         for ((input, expected) in cases) {
             assertEquals(expected, CoreTelemetryService.sanitizeLocalPaths(input))
@@ -104,5 +106,7 @@ class CoreTelemetryQuotedEscapedTest {
         assertTrue(CoreTelemetryService.sanitizeLocalPaths(malformedEscaped).startsWith("{\\\"Authorization\\\":[\\\"[redacted]\\\""))
         val repeatedVaultPrefix = "\u001EAUNURLx ".repeat(5000) + "https://example/path"
         assertEquals(repeatedVaultPrefix, CoreTelemetryService.sanitizeLocalPaths(repeatedVaultPrefix))
+        val repeatedSlackHosts = "https://hooks.slack.com" + "/https://hooks.slack.com".repeat(2000) + "/x"
+        assertEquals(repeatedSlackHosts, CoreTelemetryService.sanitizeLocalPaths(repeatedSlackHosts))
     }
 }

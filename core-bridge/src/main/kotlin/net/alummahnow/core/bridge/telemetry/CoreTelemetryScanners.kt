@@ -130,23 +130,56 @@ internal object CoreTelemetryScanners {
         return isHexDigit(text[pos + 1]) && isHexDigit(text[pos + 2])
     }
 
-    private val urlPathSecretRules: List<Regex> = listOf(
-        Regex("""((?:^|/|%2[fF])webhooks?(?:/|%2[fF]))[^\s?#]+""", RegexOption.IGNORE_CASE),
-        Regex(
-            """(https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?""" +
-                """(?:(?:/|%2[fF])[^\s?#]*?)?(?:/|%2[fF])(?:services|workflows|triggers)(?:/|%2[fF]))[^\s?#]+""",
-            RegexOption.IGNORE_CASE
-        ),
-        Regex("""((?:/|%2[fF])bot\d+:)[^/\s?#]+""", RegexOption.IGNORE_CASE)
+    private val webhookPathTokenRegex = Regex(
+        """((?:^|/|%2[fF])webhooks?(?:/|%2[fF]))[^\s?#]+""",
+        RegexOption.IGNORE_CASE
+    )
+    private val slackWebhookHostRegex = Regex(
+        """https?://hooks\.slack(?:-gov)?\.com\.?(?::\d+)?(?=(?:/|%2[fF]))""",
+        RegexOption.IGNORE_CASE
+    )
+    private val slackWebhookRouteRegex = Regex(
+        """((?:/|%2[fF])(?:services|workflows|triggers)(?:/|%2[fF]))[^\s?#]+""",
+        RegexOption.IGNORE_CASE
+    )
+    private val telegramBotTokenUrlRegex = Regex(
+        """((?:/|%2[fF])bot\d+:)[^/\s?#]+""",
+        RegexOption.IGNORE_CASE
     )
 
     fun redactUrlPathSecrets(url: String): String {
-        var result = url
-        for (regex in urlPathSecretRules) {
-            result = replaceUrlPathSecret(result, regex)
-        }
-        return result
+        var result = replaceUrlPathSecret(url, webhookPathTokenRegex)
+        result = redactSlackWebhookUrl(result)
+        return replaceUrlPathSecret(result, telegramBotTokenUrlRegex)
     }
+
+    private fun redactSlackWebhookUrl(url: String): String {
+        val decoded: String
+        val origOffsets: IntArray?
+        if (url.indexOf('%') >= 0) {
+            val pair = decodeUrlForPathSecretMatch(url)
+            decoded = pair.first
+            origOffsets = pair.second
+        } else {
+            decoded = url
+            origOffsets = null
+        }
+        val hostMatch = slackWebhookHostRegex.find(decoded) ?: return url
+        val hostEnd = hostMatch.range.last + 1
+        var pathEnd = hostEnd
+        while (pathEnd < decoded.length && !isSlackPathTerminator(decoded[pathEnd])) {
+            pathEnd++
+        }
+        val routeMatch = slackWebhookRouteRegex.find(decoded.substring(hostEnd, pathEnd)) ?: return url
+        val g1 = routeMatch.groups[1] ?: return url
+        val rawStart = hostEnd + g1.range.last + 1
+        val rawEnd = hostEnd + routeMatch.range.last + 1
+        val secretStart = origOffsets?.get(rawStart) ?: rawStart
+        val secretEnd = origOffsets?.get(rawEnd) ?: rawEnd
+        return url.substring(0, secretStart) + "[redacted]" + url.substring(secretEnd)
+    }
+
+    private fun isSlackPathTerminator(ch: Char): Boolean = ch.isWhitespace() || ch == '?' || ch == '#'
 
     private fun replaceUrlPathSecret(url: String, regex: Regex): String {
         if (url.indexOf('%') < 0) return regex.replace(url, "$1[redacted]")
