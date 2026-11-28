@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDirection
@@ -81,6 +82,7 @@ internal fun TvAction(
     modifier: Modifier = Modifier,
     initialFocus: Boolean = false,
     selected: Boolean? = null,
+    description: String? = null,
     onClick: () -> Unit
 ) {
     val requester = remember { FocusRequester() }
@@ -91,6 +93,7 @@ internal fun TvAction(
         onClick = onClick,
         modifier = modifier.focusRequester(requester).focusProperties { canFocus = true }.semantics {
             if (selected != null) this.selected = selected
+            if (description != null) contentDescription = "$label. $description"
         },
         interactionSource = interaction,
         border = BorderStroke(if (focused) 3.dp else 1.dp, if (focused) colors.primary else colors.outline),

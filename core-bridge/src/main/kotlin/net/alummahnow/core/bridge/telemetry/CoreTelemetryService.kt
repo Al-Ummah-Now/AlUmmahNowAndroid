@@ -1132,8 +1132,23 @@ class CoreTelemetryService(
             return sb.toString()
         }
 
-        private fun isAuthHeaderPropertyKey(key: String): Boolean =
-            CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(key.trim()) != null
+        private fun isAuthHeaderPropertyKey(key: String): Boolean {
+            val trimmed = key.trim()
+            if (CoreTelemetryAuthEscapedHelpers.matchCanonicalAuthHeaderName(trimmed) != null) return true
+            val lower = trimmed.lowercase(java.util.Locale.ROOT)
+            return lower == "token" ||
+                lower == "secret" ||
+                lower == "jwt" ||
+                lower == "bearer" ||
+                lower.endsWith("_token") ||
+                lower.endsWith("-token") ||
+                lower.endsWith("_secret") ||
+                lower.endsWith("-secret") ||
+                lower.endsWith("_password") ||
+                lower.endsWith("-password") ||
+                lower.endsWith("_credential") ||
+                lower.endsWith("-credential")
+        }
 
         private fun resolveUniquePropertyKey(
             usedKeys: MutableSet<String>,

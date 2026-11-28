@@ -97,6 +97,10 @@ class CoreTelemetryQuotedAuthTest {
             CoreTelemetryService.sanitizeLocalPaths("https://example.com/?session_key='super secret'")
         )
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths(".env"))
+    }
+
+    @Test
+    fun `sanitizeLocalPaths and serializeProperties scrub root-relative paths reset routes AWS headers and tokens`() {
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("""\Confidential\Payroll"""))
         assertEquals("[redacted-path]", CoreTelemetryService.sanitizeLocalPaths("Acquisition.blend"))
         assertEquals(
@@ -110,6 +114,16 @@ class CoreTelemetryQuotedAuthTest {
         assertEquals(
             """{"X-Amz-Security-Token":"[redacted]"}""",
             CoreTelemetryService.serializeProperties(mapOf("X-Amz-Security-Token" to "secretcredential"))
+        )
+        assertEquals(
+            """{"access_token":"[redacted]","refresh_token":"[redacted]","id_token":"[redacted]"}""",
+            CoreTelemetryService.serializeProperties(
+                mapOf(
+                    "access_token" to "accSecret456",
+                    "refresh_token" to "opaqueSecret123",
+                    "id_token" to "idSecret789"
+                )
+            )
         )
         val stack = CoreTelemetryService.formatSanitizedCrashStack(
             IllegalStateException("Could not load profile for Jane Doe")

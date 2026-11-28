@@ -191,14 +191,18 @@ fun TvApp(
                             val stateText = stringResource(
                                 if (telemetryEnabled) DesignR.string.aun_diagnostics_on else DesignR.string.aun_diagnostics_off
                             )
-                            TvAction("${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText") {
-                                onToggleTelemetry()
-                            }
+                            val disclosure = stringResource(DesignR.string.aun_diagnostics_description)
                             Text(
-                                stringResource(DesignR.string.aun_diagnostics_description),
+                                disclosure,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            TvAction(
+                                label = "${stringResource(DesignR.string.aun_diagnostics_toggle)}: $stateText",
+                                description = disclosure
+                            ) {
+                                onToggleTelemetry()
+                            }
                             if (!telemetryWarning.isNullOrEmpty()) {
                                 Text(
                                     telemetryWarning,
