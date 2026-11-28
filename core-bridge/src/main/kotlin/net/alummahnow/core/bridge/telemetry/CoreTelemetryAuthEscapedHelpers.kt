@@ -6,7 +6,7 @@ package net.alummahnow.core.bridge.telemetry
  */
 @Suppress("TooManyFunctions")
 internal object CoreTelemetryAuthEscapedHelpers {
-    const val MAX_AUTH_KEY_LEN = 23
+    const val MAX_AUTH_KEY_LEN = 48
     private const val HEX_ESCAPE_LEN = 6
     private const val ASCII_SPACE = 0x20
 
@@ -24,12 +24,23 @@ internal object CoreTelemetryAuthEscapedHelpers {
         "authorization",
         "set-cookie",
         "cookie",
+        "x-amz-security-token",
+        "x-amz-credential",
+        "x-amz-signature",
+        "x-goog-api-key",
+        "x-csrf-token",
+        "x-xsrf-token",
+        "x-session-token",
+        "x-session-id",
+        "x-secret-key",
+        "x-client-secret",
         "x-api-key",
         "api-key",
         "api_key",
         "x-auth-token",
         "x-access-token",
         "x-api-token",
+        "x-token",
         "auth_token",
         "api_token",
         "access_token",
@@ -38,19 +49,79 @@ internal object CoreTelemetryAuthEscapedHelpers {
         "refresh-token",
         "id_token",
         "id-token",
+        "session_token",
+        "session-token",
+        "security_token",
+        "security-token",
+        "session_key",
+        "session-key",
+        "session_id",
+        "session-id",
+        "private_key",
+        "private-key",
+        "secret_key",
+        "secret-key",
+        "access_key",
+        "access-key",
         "code_verifier",
         "code-verifier",
         "client_secret",
         "client-secret",
-        "password"
+        "password",
+        "passwd"
     )
 
     private val canonicalAuthHeaders = unquotedAuthHeaders.toSet()
 
+    private val sensitiveCustomHeaderSegments = setOf(
+        "token",
+        "secret",
+        "key",
+        "auth",
+        "authorization",
+        "password",
+        "passwd",
+        "credential",
+        "credentials",
+        "signature",
+        "session",
+        "cookie"
+    )
+
+    private fun isSensitiveCustomHeader(lower: String): Boolean {
+        val validPrefix = lower.length in 4..MAX_AUTH_KEY_LEN && (lower.startsWith("x-") || lower.startsWith("x_"))
+        if (!validPrefix || !lower.all(::isLowerCustomHeaderChar)) return false
+        return lower.split('-', '_').any { it in sensitiveCustomHeaderSegments }
+    }
+
+    private fun isLowerCustomHeaderChar(ch: Char): Boolean =
+        ch in 'a'..'z' || ch in '0'..'9' || ch == '-' || ch == '_'
+
     fun matchCanonicalAuthHeaderName(raw: String): String? {
         val trimmed = raw.trim { it == ' ' || it == '\t' }
-        return if (trimmed.lowercase(java.util.Locale.ROOT) in canonicalAuthHeaders) trimmed else null
+        val lower = trimmed.lowercase(java.util.Locale.ROOT)
+        return if (lower in canonicalAuthHeaders || isSensitiveCustomHeader(lower)) trimmed else null
     }
+
+    fun matchUnquotedCustomXHeaderEnd(text: String, pos: Int): Int {
+        if (pos + 2 >= text.length) return -1
+        if (!isCustomXHeaderStart(text[pos], text[pos + 1])) return -1
+        var end = pos + 2
+        val limit = minOf(text.length, pos + MAX_AUTH_KEY_LEN)
+        while (end < limit && isCustomHeaderChar(text[end])) end++
+        if (end < text.length && isCustomHeaderChar(text[end])) return -1
+        val candidate = text.substring(pos, end).lowercase(java.util.Locale.ROOT)
+        return if (isSensitiveCustomHeader(candidate)) end else -1
+    }
+
+    private fun isCustomXHeaderStart(c0: Char, c1: Char): Boolean {
+        val isX = c0 == 'x' || c0 == 'X'
+        val isSep = c1 == '-' || c1 == '_'
+        return isX && isSep
+    }
+
+    private fun isCustomHeaderChar(ch: Char): Boolean =
+        ch in 'a'..'z' || ch in 'A'..'Z' || ch in '0'..'9' || ch == '-' || ch == '_'
 
     fun decodeSimpleJsonEscape(next: Char): Pair<Char, Boolean> = when (next) {
         't' -> '\t' to true

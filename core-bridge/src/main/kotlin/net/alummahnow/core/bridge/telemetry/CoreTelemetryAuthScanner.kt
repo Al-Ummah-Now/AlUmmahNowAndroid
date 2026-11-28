@@ -221,7 +221,12 @@ internal object CoreTelemetryAuthScanner {
         val matched = CoreTelemetryAuthEscapedHelpers.unquotedAuthHeaders.firstOrNull {
             matchesUnquotedKey(text, pos, it, it.length)
         }
-        return matched?.let { AuthKeyMatch(pos, pos + it.length, false, false, false, -1, null) }
+        val customEnd = if (matched == null) CoreTelemetryAuthEscapedHelpers.matchUnquotedCustomXHeaderEnd(text, pos) else -1
+        return when {
+            matched != null -> AuthKeyMatch(pos, pos + matched.length, false, false, false, -1, null)
+            customEnd > pos -> AuthKeyMatch(pos, customEnd, false, false, false, -1, null)
+            else -> null
+        }
     }
 
     private fun matchesUnquotedKey(text: String, pos: Int, literal: String, len: Int): Boolean {

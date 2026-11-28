@@ -97,8 +97,7 @@ class MainActivity : ComponentActivity() {
                     telemetrySaveUncertainState.value = false
                     telemetryWarningResState.value = null
                 } else {
-                    telemetry.setConsent(TelemetryConsent.OFF)
-                    val rolledBack = consentStore.setEnabled(false)
+                    val (rolledBack, _) = consentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
                     if (rolledBack) telemetryEnabledState.value = false
                     telemetrySaveUncertainState.value = !rolledBack
                     telemetryWarningResState.value = if (rolledBack) {
@@ -112,8 +111,7 @@ class MainActivity : ComponentActivity() {
                 telemetryWarningResState.value = DesignR.string.aun_diagnostics_enable_error
             }
         } else {
-            val purged = telemetry.setConsent(TelemetryConsent.OFF)
-            val saved = consentStore.setEnabled(false)
+            val (saved, purged) = consentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
             if (saved) telemetryEnabledState.value = false
             telemetrySaveUncertainState.value = !saved
             telemetryWarningResState.value = when {

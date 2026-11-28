@@ -63,6 +63,16 @@ class AdminPrefs(context: Context) {
         return committed
     }
 
+    /**
+     * Atomically opts out of telemetry: removes the opt-in marker, invokes [revokeLiveTelemetry]
+     * immediately, and commits `false` to preferences last. Returns `(persistedOptOut, purged)`.
+     */
+    fun disableTelemetry(revokeLiveTelemetry: () -> Boolean): Pair<Boolean, Boolean> {
+        val (saved, purged) = telemetryConsentStore.disable(revokeLiveTelemetry)
+        if (saved) _telemetryEnabled.value = false
+        return Pair(saved, purged)
+    }
+
     fun setTelemetrySaveUncertain(uncertain: Boolean) {
         _telemetrySaveUncertain.value = uncertain
     }

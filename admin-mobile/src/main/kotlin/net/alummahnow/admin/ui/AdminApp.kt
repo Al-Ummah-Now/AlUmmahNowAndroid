@@ -69,6 +69,7 @@ import net.alummahnow.core.bridge.admin.ReviewItem
 import net.alummahnow.core.bridge.admin.StaffProfile
 import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 import net.alummahnow.design.R as DesignR
+import net.alummahnow.design.components.DiagnosticsOptOutScaffold
 import net.alummahnow.design.theme.AunTheme
 import net.alummahnow.design.theme.ThemeMode
 import net.alummahnow.feature.passkey.PasskeyHost
@@ -191,29 +192,66 @@ private fun AdminContent(
         onSignedIn = session::passkeySignedIn
     )
 
+    val telemetryEnabledPref by services.prefs.telemetryEnabledFlow.collectAsStateWithLifecycle()
+    val telemetrySaveUncertain by services.prefs.telemetrySaveUncertain.collectAsStateWithLifecycle()
+    val telemetryWarningRes by services.prefs.telemetryWarningRes.collectAsStateWithLifecycle()
+    val lastPurgeFailed by services.telemetry.lastPurgeFailedFlow.collectAsStateWithLifecycle()
+    val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
+    val telemetryWarning = rememberAdminTelemetryWarning(telemetryWarningRes, lastPurgeFailed)
+    val onTelemetryChanged: (Boolean) -> Unit = { enabled -> applyAdminTelemetryChange(services, enabled) }
+
     val account = active
     when {
         account == null || !secure -> {
-            AdminSignInScreen(
-                signIn,
-                deviceSecure = secure,
-                onSignIn = { open(session.beginSignIn()) },
-                passkeySupported = authenticator.isSupported,
-                passkeyWorking = passkeyState == PasskeyUiState.Working(adding = false),
-                onPasskey = { passkeys.signIn(authenticator) { session.passkeySignedIn() } }
-            )
+            DiagnosticsOptOutScaffold(
+                telemetryEnabled = telemetryEnabled,
+                telemetryWarning = telemetryWarning,
+                lastPurgeFailed = lastPurgeFailed,
+                onDisableTelemetry = { onTelemetryChanged(false) }
+            ) {
+                AdminSignInScreen(
+                    signIn,
+                    deviceSecure = secure,
+                    onSignIn = { open(session.beginSignIn()) },
+                    passkeySupported = authenticator.isSupported,
+                    passkeyWorking = passkeyState == PasskeyUiState.Working(adding = false),
+                    onPasskey = { passkeys.signIn(authenticator) { session.passkeySignedIn() } }
+                )
+            }
             return
         }
         locked -> {
-            LockScreen(onUnlock = requestUnlock)
+            DiagnosticsOptOutScaffold(
+                telemetryEnabled = telemetryEnabled,
+                telemetryWarning = telemetryWarning,
+                lastPurgeFailed = lastPurgeFailed,
+                onDisableTelemetry = { onTelemetryChanged(false) }
+            ) {
+                LockScreen(onUnlock = requestUnlock)
+            }
             return
         }
     }
     LaunchedEffect(account.userId) { session.loadProfile() }
     when (val p = profile) {
-        ProfileState.Loading -> LoadingScreen()
-        ProfileState.NotStaff -> NotStaffScreen(onSignOut = signOut)
-        ProfileState.Offline, ProfileState.Failed -> ProfileErrorScreen(p == ProfileState.Offline, session::loadProfile, signOut)
+        ProfileState.Loading -> DiagnosticsOptOutScaffold(
+            telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
+            lastPurgeFailed = lastPurgeFailed,
+            onDisableTelemetry = { onTelemetryChanged(false) }
+        ) { LoadingScreen() }
+        ProfileState.NotStaff -> DiagnosticsOptOutScaffold(
+            telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
+            lastPurgeFailed = lastPurgeFailed,
+            onDisableTelemetry = { onTelemetryChanged(false) }
+        ) { NotStaffScreen(onSignOut = signOut) }
+        ProfileState.Offline, ProfileState.Failed -> DiagnosticsOptOutScaffold(
+            telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
+            lastPurgeFailed = lastPurgeFailed,
+            onDisableTelemetry = { onTelemetryChanged(false) }
+        ) { ProfileErrorScreen(p == ProfileState.Offline, session::loadProfile, signOut) }
         is ProfileState.Ready -> StaffHome(
             services, session, p.profile, openTargets, captures, clock, dark, onDark, onLanguage, signOut,
             requireStepUp = { force, action -> open(session.requireStepUp(force, action)) },
@@ -221,6 +259,55 @@ private fun AdminContent(
                 { passkeys.add(authenticator) }
             } else {
                 null
+            },
+            telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
+            onTelemetryChanged = onTelemetryChanged
+        )
+    }
+}
+
+@Composable
+private fun rememberAdminTelemetryWarning(warningRes: Int?, lastPurgeFailed: Boolean): String? = buildList {
+    warningRes?.let { add(stringResource(it)) }
+    if (lastPurgeFailed && warningRes != DesignR.string.aun_diagnostics_purge_warning) {
+        add(stringResource(DesignR.string.aun_diagnostics_purge_warning))
+    }
+}.takeIf { it.isNotEmpty() }?.joinToString("\n")
+
+private fun applyAdminTelemetryChange(services: AdminServices, enabled: Boolean) {
+    if (enabled) {
+        if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
+            if (services.prefs.setTelemetryEnabled(true)) {
+                services.prefs.setTelemetrySaveUncertain(false)
+                services.prefs.setTelemetryWarningRes(null)
+            } else {
+                val (rolledBack, _) = services.prefs.disableTelemetry {
+                    services.telemetry.setConsent(TelemetryConsent.OFF)
+                }
+                services.prefs.setTelemetrySaveUncertain(!rolledBack)
+                services.prefs.setTelemetryWarningRes(
+                    if (rolledBack) {
+                        DesignR.string.aun_diagnostics_enable_error
+                    } else {
+                        DesignR.string.aun_diagnostics_disable_error
+                    }
+                )
+            }
+        } else {
+            services.telemetry.setConsent(TelemetryConsent.OFF)
+            services.prefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
+        }
+    } else {
+        val (saved, purged) = services.prefs.disableTelemetry {
+            services.telemetry.setConsent(TelemetryConsent.OFF)
+        }
+        services.prefs.setTelemetrySaveUncertain(!saved)
+        services.prefs.setTelemetryWarningRes(
+            when {
+                !saved -> DesignR.string.aun_diagnostics_disable_error
+                !purged -> DesignR.string.aun_diagnostics_purge_warning
+                else -> null
             }
         )
     }
@@ -240,7 +327,10 @@ private fun StaffHome(
     onLanguage: (String) -> Unit,
     onSignOut: () -> Unit,
     requireStepUp: (Boolean, () -> Unit) -> Unit,
-    onAddPasskey: (() -> Unit)?
+    onAddPasskey: (() -> Unit)?,
+    telemetryEnabled: Boolean,
+    telemetryWarning: String?,
+    onTelemetryChanged: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -252,17 +342,6 @@ private fun StaffHome(
     val notice by session.notice.collectAsStateWithLifecycle()
     val account by services.session.active.collectAsStateWithLifecycle()
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    val telemetryEnabledPref by services.prefs.telemetryEnabledFlow.collectAsStateWithLifecycle()
-    val telemetrySaveUncertain by services.prefs.telemetrySaveUncertain.collectAsStateWithLifecycle()
-    val telemetryWarningRes by services.prefs.telemetryWarningRes.collectAsStateWithLifecycle()
-    val lastPurgeFailed by services.telemetry.lastPurgeFailedFlow.collectAsStateWithLifecycle()
-    val telemetryEnabled = telemetryEnabledPref || telemetrySaveUncertain
-    val telemetryWarning = buildList {
-        telemetryWarningRes?.let { add(stringResource(it)) }
-        if (lastPurgeFailed && telemetryWarningRes != DesignR.string.aun_diagnostics_purge_warning) {
-            add(stringResource(DesignR.string.aun_diagnostics_purge_warning))
-        }
-    }.takeIf { it.isNotEmpty() }?.joinToString("\n")
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     var reblurTick by remember { mutableLongStateOf(0L) }
     val queue: QueueViewModel =
@@ -403,41 +482,7 @@ private fun StaffHome(
             },
             telemetryEnabled = telemetryEnabled,
             telemetryWarning = telemetryWarning,
-            onTelemetryChanged = { enabled ->
-                if (enabled) {
-                    if (services.telemetry.setConsent(TelemetryConsent.FULL)) {
-                        if (services.prefs.setTelemetryEnabled(true)) {
-                            services.prefs.setTelemetrySaveUncertain(false)
-                            services.prefs.setTelemetryWarningRes(null)
-                        } else {
-                            services.telemetry.setConsent(TelemetryConsent.OFF)
-                            val rolledBack = services.prefs.setTelemetryEnabled(false)
-                            services.prefs.setTelemetrySaveUncertain(!rolledBack)
-                            services.prefs.setTelemetryWarningRes(
-                                if (rolledBack) {
-                                    DesignR.string.aun_diagnostics_enable_error
-                                } else {
-                                    DesignR.string.aun_diagnostics_disable_error
-                                }
-                            )
-                        }
-                    } else {
-                        services.telemetry.setConsent(TelemetryConsent.OFF)
-                        services.prefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_enable_error)
-                    }
-                } else {
-                    val purged = services.telemetry.setConsent(TelemetryConsent.OFF)
-                    val saved = services.prefs.setTelemetryEnabled(false)
-                    services.prefs.setTelemetrySaveUncertain(!saved)
-                    services.prefs.setTelemetryWarningRes(
-                        when {
-                            !saved -> DesignR.string.aun_diagnostics_disable_error
-                            !purged -> DesignR.string.aun_diagnostics_purge_warning
-                            else -> null
-                        }
-                    )
-                }
-            }
+            onTelemetryChanged = onTelemetryChanged
         )
     }
 }

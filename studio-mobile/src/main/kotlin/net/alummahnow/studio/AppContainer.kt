@@ -130,8 +130,7 @@ class AppContainer(context: Context) : StudioContainer {
             return false
         }
         if (!telemetryConsentStore.setEnabled(true)) {
-            telemetry.setConsent(TelemetryConsent.OFF)
-            val rolledBack = telemetryConsentStore.setEnabled(false)
+            val (rolledBack, _) = telemetryConsentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
             if (rolledBack) telemetryEnabledState.value = false
             telemetrySaveFailedState.value = !rolledBack
             telemetryWarningResState.value = if (rolledBack) {
@@ -148,8 +147,7 @@ class AppContainer(context: Context) : StudioContainer {
     }
 
     private fun disableTelemetry(): Boolean {
-        val purged = telemetry.setConsent(TelemetryConsent.OFF)
-        val saved = telemetryConsentStore.setEnabled(false)
+        val (saved, purged) = telemetryConsentStore.disable { telemetry.setConsent(TelemetryConsent.OFF) }
         if (saved) telemetryEnabledState.value = false
         telemetrySaveFailedState.value = !saved
         telemetryWarningResState.value = when {

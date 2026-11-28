@@ -466,6 +466,47 @@ class CoreTelemetryServiceTest {
     }
 
     @Test
+    fun `telemetryConsentStore disable removes marker and revokes live consent before prefs commit`() {
+        val marker = java.io.File.createTempFile("aun-consent-order-", ".flag")
+        marker.delete()
+        try {
+            val events = mutableListOf<String>()
+            val basePrefs = FakeFailingSharedPreferences()
+            val observingPrefs = object : android.content.SharedPreferences by basePrefs {
+                override fun edit(): android.content.SharedPreferences.Editor {
+                    val inner = basePrefs.edit()
+                    return object : android.content.SharedPreferences.Editor by inner {
+                        override fun putBoolean(key: String?, value: Boolean): android.content.SharedPreferences.Editor {
+                            inner.putBoolean(key, value)
+                            return this
+                        }
+
+                        override fun commit(): Boolean {
+                            events.add("prefs_commit")
+                            return inner.commit()
+                        }
+                    }
+                }
+            }
+            val store = TelemetryConsentStore(observingPrefs, "telemetry_enabled", marker)
+            assertTrue(store.setEnabled(true))
+            assertTrue(marker.exists())
+            events.clear()
+
+            val (saved, purged) = store.disable {
+                events.add(if (marker.exists()) "live_revoke_marker_still_present" else "live_revoke_after_marker_removed")
+                true
+            }
+            assertTrue(saved)
+            assertTrue(purged)
+            assertEquals(listOf("live_revoke_after_marker_removed", "prefs_commit"), events)
+            assertFalse(store.isEnabled())
+        } finally {
+            marker.delete()
+        }
+    }
+
+    @Test
     fun `nullTelemetryService stays silent and denies enabling`() = runTest {
         assertEquals(TelemetryConsent.OFF, NullTelemetryService.consent)
         assertEquals(0, NullTelemetryService.pendingCount)

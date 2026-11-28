@@ -408,11 +408,17 @@ class CoreTelemetryService(
                 "create|creating|load|loading|save|saving|access|accessing|unlink|" +
                 "file|path|directory|folder|document|filename|filepath"
         private const val BARE_FILENAME_EXTENSIONS =
-            "mov|mp4|m4v|mkv|webm|avi|ts|m3u8|mpd|mp3|m4a|wav|aac|flac|ogg|opus|" +
-                "jpg|jpeg|png|gif|webp|heic|svg|pdf|txt|md|rtf|doc|docx|xls|xlsx|ppt|pptx|" +
-                "csv|json|xml|yaml|yml|toml|ini|cfg|conf|log|srt|vtt|ass|ssa|" +
-                "zip|tar|gz|tgz|bz2|xz|7z|rar|dmg|pkg|msi|exe|apk|aab|ipa|" +
-                "pem|key|crt|cer|p12|pfx|jks|keystore|db|sqlite|sqlite3|bin|dat|tmp|bak|proj|aun|env"
+            "mov|mp4|m4v|mkv|webm|avi|flv|wmv|ogv|3gp|ts|m3u8|mpd|mp3|m4a|wav|aac|flac|ogg|opus|wma|aiff|alac|mid|midi|" +
+                "jpg|jpeg|png|gif|webp|heic|svg|tif|tiff|bmp|ico|avif|jxl|raw|cr2|cr3|nef|arw|dng|" +
+                "blend|psd|psb|ai|eps|indd|aep|prproj|drp|fcpx|fcpxml|kdenlive|mlt|veg|xcf|kra|fig|sketch|afdesign|afphoto|" +
+                "fbx|obj|gltf|glb|stl|usd|usdz|" +
+                "pdf|txt|md|rtf|doc|docx|xls|xlsx|ppt|pptx|odt|ods|odp|pages|numbers|keynote|epub|mobi|" +
+                "csv|json|xml|yaml|yml|toml|ini|cfg|conf|log|srt|vtt|ass|ssa|parquet|avro|orc|feather|hdf5|h5|" +
+                "zip|tar|gz|tgz|bz2|xz|7z|rar|dmg|pkg|msi|exe|apk|aab|ipa|iso|img|vhd|vhdx|vmdk|ova|ovf|" +
+                "deb|rpm|appimage|snap|flatpak|cab|jar|war|ear|whl|egg|nupkg|vsix|crx|xpi|" +
+                "pem|key|crt|cer|cert|der|p12|pfx|jks|jceks|keystore|kdbx|ovpn|ppk|pub|asc|gpg|pgp|sig|" +
+                "db|sqlite|sqlite3|sql|dump|pkl|pickle|joblib|pt|pth|onnx|safetensors|gguf|" +
+                "bin|dat|tmp|bak|old|orig|swp|swo|proj|aun|env|har|pcap|pcapng|dmp|hdmp|mdmp|heapsnapshot"
         private val sourceLineExtSet = setOf(
             "kt", "java", "swift", "cs", "cpp", "cc", "c", "h", "hpp", "rs", "py", "js", "ts", "go", "rb", "m", "mm"
         )
@@ -439,7 +445,7 @@ class CoreTelemetryService(
                 RegexOption.IGNORE_CASE
             ) to "[redacted-path]",
             Regex(
-                """(^|[\s(\[{"'=,:;<>)\u001F])[^\s\\/"'<>()\[{:,;=\u001E\u001F]+\\""" +
+                """(^|[\s(\[{"'=,:;<>)\u001F])(?:\\[^\s\\/"'<>()\[{:,;=\u001E\u001F]+|[^\s\\/"'<>()\[{:,;=\u001E\u001F]+)\\""" +
                     """[^\r\n\u001E\u001F\s\p{Zs}"]""" +
                     """(?:[^\r\n\u001E\u001F]*[^\r\n\u001E\u001F\s\p{Zs}])?"""
             ) to "$1[redacted-path]",

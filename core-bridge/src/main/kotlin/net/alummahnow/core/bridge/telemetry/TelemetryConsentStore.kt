@@ -36,6 +36,22 @@ class TelemetryConsentStore(
     /** Persists opt-in (`true`) or opt-out (`false`) fail-closed and returns whether it succeeded. */
     fun setEnabled(enabled: Boolean): Boolean = if (enabled) enable() else disable()
 
+    /**
+     * Atomically opts out without leaving an upload window during a slow [SharedPreferences]
+     * commit or a restart window after revoking live consent:
+     * 1. Remove the opt-in marker file first (fail-closed across restarts, even under `ENOSPC`).
+     * 2. Immediately invoke [revokeLiveTelemetry] so active native flushes stop before the commit.
+     * 3. Persist `false` to [SharedPreferences] last.
+     *
+     * Returns `(persistedOptOut, liveRevokeSucceeded)`.
+     */
+    fun disable(revokeLiveTelemetry: () -> Boolean): Pair<Boolean, Boolean> {
+        val markerRemoved = removeMarkerFile()
+        val liveRevoked = revokeLiveTelemetry()
+        val prefSaved = prefs.edit().putBoolean(prefKey, false).commit()
+        return Pair(markerRemoved || prefSaved, liveRevoked)
+    }
+
     private fun enable(): Boolean {
         if (!createMarkerFile()) return false
         if (prefs.edit().putBoolean(prefKey, true).commit()) return true
@@ -44,11 +60,7 @@ class TelemetryConsentStore(
         return false
     }
 
-    private fun disable(): Boolean {
-        val markerRemoved = removeMarkerFile()
-        val prefSaved = prefs.edit().putBoolean(prefKey, false).commit()
-        return markerRemoved || prefSaved
-    }
+    private fun disable(): Boolean = disable { true }.first
 
     private fun createMarkerFile(): Boolean = try {
         optInMarkerFile.parentFile?.mkdirs()

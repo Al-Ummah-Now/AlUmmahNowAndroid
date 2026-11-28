@@ -53,6 +53,7 @@ import net.alummahnow.core.bridge.studio.SignInMode
 import net.alummahnow.core.bridge.studio.StudioChannel
 import net.alummahnow.core.bridge.studio.deletion.DeletionStage
 import net.alummahnow.design.R as DesignR
+import net.alummahnow.design.components.DiagnosticsOptOutScaffold
 import net.alummahnow.design.components.FanousHeaderBar
 import net.alummahnow.design.components.FanousHeaderButton
 import net.alummahnow.design.components.FanousHeaderTitle
@@ -164,40 +165,6 @@ fun StudioApp(
         }
     )
 
-    val current = active
-    if (current == null) {
-        SignInScreen(
-            state = signInState,
-            onSignIn = {
-                deletion.noticeShown()
-                startSignIn(SignInMode.DEFAULT)
-            },
-            onAddAccount = null,
-            onBack = null,
-            passkeySupported = authenticator.isSupported,
-            passkeyWorking = passkeyState == PasskeyUiState.Working(adding = false),
-            onPasskey = {
-                deletion.noticeShown()
-                passkeys.signIn(authenticator)
-            },
-            notices = listOfNotNull(
-                deletionState.notice?.let { SignInNotice(deletionNoticeText(it)) },
-                openDeletions.firstOrNull { !it.dismissed }?.let {
-                    val text =
-                        if (it.unsure) StudioR.string.studio_delete_unsure_signed_out else StudioR.string.studio_delete_open_signed_out
-                    SignInNotice(aunString(text, isolate(it.label)), if (it.unsure) ({ deletion.dismiss(it.userId) }) else null)
-                }
-            )
-        )
-        return
-    }
-
-    val channels: ChannelsViewModel = viewModel { ChannelsViewModel(session, container.repository) }
-    val channelsState by channels.state.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-    val snackbar = remember { SnackbarHostState() }
-    val resources = LocalResources.current
-    var sheetOpen by remember { mutableStateOf(false) }
     val telemetryEnabledPref by container.telemetryEnabledFlow.collectAsStateWithLifecycle()
     val telemetrySaveFailed by container.telemetrySaveFailedFlow.collectAsStateWithLifecycle()
     val telemetryWarningRes by container.telemetryWarningResFlow.collectAsStateWithLifecycle()
@@ -209,6 +176,48 @@ fun StudioApp(
             add(stringResource(DesignR.string.aun_diagnostics_purge_warning))
         }
     }.takeIf { it.isNotEmpty() }?.joinToString("\n")
+
+    val current = active
+    if (current == null) {
+        DiagnosticsOptOutScaffold(
+            telemetryEnabled = telemetryEnabled,
+            telemetryWarning = telemetryWarning,
+            lastPurgeFailed = lastPurgeFailed,
+            onDisableTelemetry = { container.setTelemetryEnabled(false) }
+        ) {
+            SignInScreen(
+                state = signInState,
+                onSignIn = {
+                    deletion.noticeShown()
+                    startSignIn(SignInMode.DEFAULT)
+                },
+                onAddAccount = null,
+                onBack = null,
+                passkeySupported = authenticator.isSupported,
+                passkeyWorking = passkeyState == PasskeyUiState.Working(adding = false),
+                onPasskey = {
+                    deletion.noticeShown()
+                    passkeys.signIn(authenticator)
+                },
+                notices = listOfNotNull(
+                    deletionState.notice?.let { SignInNotice(deletionNoticeText(it)) },
+                    openDeletions.firstOrNull { !it.dismissed }?.let {
+                        val text =
+                            if (it.unsure) StudioR.string.studio_delete_unsure_signed_out else StudioR.string.studio_delete_open_signed_out
+                        SignInNotice(aunString(text, isolate(it.label)), if (it.unsure) ({ deletion.dismiss(it.userId) }) else null)
+                    }
+                )
+            )
+        }
+        return
+    }
+
+    val channels: ChannelsViewModel = viewModel { ChannelsViewModel(session, container.repository) }
+    val channelsState by channels.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    val resources = LocalResources.current
+    var sheetOpen by remember { mutableStateOf(false) }
     val termsModel: CreatorTermsViewModel = viewModel(key = "terms-${current.userId}") {
         // Pinned to this account: an acceptance can never be recorded for another one after a switch.
         CreatorTermsViewModel(container.repositoryFor(current.userId))
