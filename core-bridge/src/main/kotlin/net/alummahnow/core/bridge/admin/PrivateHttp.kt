@@ -40,7 +40,13 @@ object PrivateHttp {
             val keep = response.code == HTTP_TEMP_REDIRECT || response.code == HTTP_PERM_REDIRECT
             request = request.newBuilder().url(next).apply {
                 if (!keep && request.method != "GET" && request.method != "HEAD") method("GET", null)
-                if (next.host != url.host) removeHeader("Authorization")
+                val sameOrigin = next.scheme == url.scheme &&
+                    next.host.equals(url.host, ignoreCase = true) &&
+                    next.port == url.port
+                if (!sameOrigin) {
+                    removeHeader("Authorization")
+                    removeHeader("X-AUN-Native-Proof")
+                }
             }.build()
         }
         @Suppress("UNREACHABLE_CODE")

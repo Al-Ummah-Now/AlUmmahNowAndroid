@@ -117,4 +117,34 @@ class PendingExportsTest {
         index.writeText("not json")
         assertEquals(emptySet<Pair<String, String>>(), store().waiting.value)
     }
+
+    @Test
+    fun `blank or dot userId is rejected and traversal filenames are not returned`() {
+        val store = store()
+        for (badUser in listOf("", "   ", ".", "..")) {
+            val threw = try {
+                store.dir(badUser)
+                false
+            } catch (_: IllegalArgumentException) {
+                true
+            }
+            assertTrue("expected rejection for userId=$badUser", threw)
+        }
+        val escaped = File(root, "escape.mp4").apply {
+            parentFile?.mkdirs()
+            writeText("secret")
+        }
+        store.dir("a").mkdirs()
+        store.add(
+            "a",
+            "c1",
+            PickedFile(
+                uri = "content://net.alummahnow.studio.editor.exports/exports/a/escape.mp4",
+                name = "../escape.mp4",
+                sizeBytes = escaped.length(),
+                mimeType = "video/mp4"
+            )
+        )
+        assertEquals(PendingExports.Taken(emptyList(), 1), store.take("a", "c1"))
+    }
 }

@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import net.alummahnow.core.bridge.AunLog
 import net.alummahnow.core.bridge.CoreError
+import net.alummahnow.core.bridge.SafeInput
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -95,7 +96,9 @@ class HttpLiveRepository(
     }
 
     private fun url(path: String, vararg segments: String, query: HttpUrl.Builder.() -> Unit = {}): HttpUrl =
-        base.newBuilder().addPathSegments(path).apply { segments.forEach(::addPathSegment) }.apply(query).build()
+        base.newBuilder().addPathSegments(path).apply {
+            segments.forEach { addPathSegment(SafeInput.requirePathSegment(it, "path segment")) }
+        }.apply(query).build()
 
     private suspend inline fun <reified T> get(url: HttpUrl): T = decode(call(url))
 
