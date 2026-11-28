@@ -37,13 +37,7 @@ private val spaceDelimitedCredentialRegex = Regex(
     RegexOption.IGNORE_CASE
 )
 
-private val multiWordValueRegex = Regex(
-    """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]|\\u[0-9A-Fa-f]{4}){2,64})""" +
-        """((?:\\?["']|[\u201D\u2019\u00BB\u300D\u300F])?\s*[=:]\s*)""" +
-        """(?![\"'\u201C\u2018\u00AB\u201E\u300C\u300E\\])([^\r\n,;}\]]+)"""
-)
-
-private val nextKeyValueBoundaryRegex = Regex("""\s+(?:[A-Za-z0-9_.-]{2,48}\s*[=:])""")
+private const val REDACTED_SENTINEL = "__AUN_REDACTED__"
 
 private fun redactPercentEncodedUrls(text: String): String {
     if (text.indexOf('%') < 0) return text
@@ -68,31 +62,78 @@ private fun isMultiWordSensitiveKey(segments: List<String>): Boolean {
     return false
 }
 
-private fun needsQuotedPreRedaction(lowerKey: String, valText: String): Boolean {
-    val first = valText.firstOrNull() ?: return false
-    return first in "\"'\\\u201C\u2018\u00AB\u201E\u300C\u300E" ||
-        lowerKey in CoreTelemetryAuthEscapedHelpers.unquotedAuthHeaders
+private val multiWordKeySepRegex = Regex(
+    """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]|\\u[0-9A-Fa-f]{4}){2,64})""" +
+        """((?:\\?["']|[\u201D\u2019\u00BB\u300D\u300F])?\s*[=:]\s*)"""
+)
+
+private val nextKeyValueBoundaryRegex = Regex(
+    """^(?:[ \t]+|[,;][ \t]*)(?:[A-Za-z0-9_.-]|\\u[0-9A-Fa-f]{4}){2,48}""" +
+        """(?:\\?["']|[\u201D\u2019\u00BB\u300D\u300F])?\s*[=:]"""
+)
+
+private fun isMultiWordOpeningQuote(ch: Char): Boolean =
+    ch in "\"'\\\u201C\u2018\u00AB\u201E\u300C\u300E"
+
+private fun isMultiWordStopChar(ch: Char): Boolean =
+    ch in "\r\n}]\"'\u201D\u2019\u00BB\u300D\u300F"
+
+private fun isMultiWordEndAt(text: String, pos: Int): Boolean {
+    val ch = text[pos]
+    return isMultiWordStopChar(ch) ||
+        (ch in " \t,;" && nextKeyValueBoundaryRegex.containsMatchIn(text.substring(pos)))
+}
+
+private fun scanMultiWordValueEnd(text: String, valStart: Int): Int {
+    var valEnd = valStart
+    while (valEnd < text.length && !isMultiWordEndAt(text, valEnd)) {
+        valEnd++
+    }
+    return valEnd
+}
+
+private fun shouldScrubMultiWordKey(
+    rawKey: String,
+    text: String,
+    valStart: Int,
+    decode: (String) -> String,
+    split: (String) -> List<String>
+): Boolean {
+    val decoded = decode(rawKey)
+    val lower = decoded.trim('"', '\'').lowercase(Locale.ROOT)
+    val isAuth = lower == "authorization" || lower == "proxy-authorization"
+    val alreadyRedacted = text.startsWith("[redacted", valStart) || text.startsWith(REDACTED_SENTINEL, valStart)
+    return !isAuth &&
+        isMultiWordSensitiveKey(split(decoded)) &&
+        !isMultiWordOpeningQuote(text[valStart]) &&
+        !alreadyRedacted
 }
 
 private fun scrubUnquotedMultiWordSensitiveValues(
     text: String,
-    prePass: Boolean,
+    replacement: String,
     decode: (String) -> String,
     split: (String) -> List<String>
-): String = multiWordValueRegex.replace(text) { m ->
-    val key = m.groupValues[1]
-    val decoded = decode(key)
-    val lower = decoded.trim('"', '\'').lowercase(Locale.ROOT)
-    val valText = m.groupValues[3]
-    val isAuthHeader = lower == "authorization" || lower == "proxy-authorization"
-    if (isAuthHeader || valText.startsWith("[redacted") || !isMultiWordSensitiveKey(split(decoded))) {
-        m.value
-    } else {
-        val boundary = nextKeyValueBoundaryRegex.find(valText)
-        val tail = if (boundary != null) valText.substring(boundary.range.first) else ""
-        val repl = if (prePass && needsQuotedPreRedaction(lower, valText)) "\"[redacted]\"" else "[redacted]"
-        key + m.groupValues[2] + repl + tail
+): String {
+    var sb: StringBuilder? = null
+    var copied = 0
+    var match = multiWordKeySepRegex.find(text, 0)
+    while (match != null) {
+        val valStart = match.range.last + 1
+        var nextPos = valStart
+        if (valStart < text.length && shouldScrubMultiWordKey(match.groupValues[1], text, valStart, decode, split)) {
+            val valEnd = scanMultiWordValueEnd(text, valStart)
+            if (valEnd > valStart) {
+                val out = sb ?: StringBuilder(text.length).also { sb = it }
+                out.append(text, copied, valStart).append(replacement)
+                copied = valEnd
+                nextPos = valEnd
+            }
+        }
+        match = if (nextPos < text.length) multiWordKeySepRegex.find(text, nextPos) else null
     }
+    val out = sb ?: return text
+    return out.append(text, copied, text.length).toString()
 }
 
 internal object CoreTelemetryPropertySanitizer {
@@ -143,7 +184,9 @@ internal object CoreTelemetryPropertySanitizer {
         "card", "creditcard", "cvv", "cvc", "iban", "pan",
         "dob", "birthdate", "dateofbirth",
         "firstname", "lastname", "fullname", "displayname", "givenname", "familyname",
-        "username", "login", "passport"
+        "username", "login", "passport",
+        "userid", "accountid", "memberid", "profileid", "customerid",
+        "personid", "subscriberid", "deviceid", "uid", "handle"
     )
 
     private val highValueKeySubstrings = listOf(
@@ -154,7 +197,8 @@ internal object CoreTelemetryPropertySanitizer {
     private val keyValueCredentialRegex = Regex(
         """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]|\\u[0-9A-Fa-f]{4}){2,64})""" +
             """((?:\\?["']|[\u201D\u2019\u00BB\u300D\u300F])?\s*[=:]\s*)""" +
-            """(\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|""" +
+            """(\[redacted(?:-[a-z]+)?\]|__AUN_REDACTED__|\"__AUN_REDACTED__\"|\\"(?:\\\\.|[^"\\])*\\"|""" +
+            """"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|""" +
             """\u201C[^\u201D\r\n]*\u201D|\u2018[^\u2019\r\n]*\u2019|\u00AB[^\u00BB\r\n]*\u00BB|""" +
             """\u201E[^\u201D\r\n]*\u201D|\u300C[^\u300D\r\n]*\u300D|\u300E[^\u300F\r\n]*\u300F|""" +
             """[^\s,;}\]"'\u201C\u201D\u2018\u2019\u00AB\u00BB\u201E\u300C\u300D\u300E\u300F]+)"""
@@ -194,7 +238,7 @@ internal object CoreTelemetryPropertySanitizer {
         return sb.toString()
     }
 
-    private fun scrubSensitiveKeyValues(text: String, prePass: Boolean): String =
+    private fun scrubSensitiveKeyValues(text: String, replacement: String): String =
         keyValueCredentialRegex.replace(text) { m ->
             val key = m.groupValues[1]
             val decoded = decodeJsonUnicodeEscapes(key)
@@ -203,11 +247,14 @@ internal object CoreTelemetryPropertySanitizer {
             val skip = lower == "authorization" ||
                 lower == "proxy-authorization" ||
                 valText.startsWith("[redacted") ||
-                valText == "\"[redacted]\""
+                valText == "\"[redacted]\"" ||
+                valText == REDACTED_SENTINEL ||
+                valText == "\"$REDACTED_SENTINEL\""
             if (skip || !isSensitiveKeyName(decoded)) {
                 m.value
             } else {
-                val repl = if (prePass && needsQuotedPreRedaction(lower, valText)) "\"[redacted]\"" else "[redacted]"
+                val preserveQuotes = valText.length >= 2 && valText.startsWith("\"") && valText.endsWith("\"")
+                val repl = if (preserveQuotes) "\"$replacement\"" else replacement
                 key + m.groupValues[2] + repl
             }
         }
@@ -230,11 +277,11 @@ internal object CoreTelemetryPropertySanitizer {
 
     fun sanitizeDiagnosticText(text: String): String {
         var pre = redactPercentEncodedUrls(text)
-        pre = scrubUnquotedMultiWordSensitiveValues(pre, true, ::decodeJsonUnicodeEscapes, ::splitKeySegments)
-        pre = scrubSensitiveKeyValues(pre, true)
-        var safe = CoreTelemetryService.sanitizeLocalPaths(pre)
-        safe = scrubUnquotedMultiWordSensitiveValues(safe, false, ::decodeJsonUnicodeEscapes, ::splitKeySegments)
-        safe = scrubSensitiveKeyValues(safe, false)
+        pre = scrubUnquotedMultiWordSensitiveValues(pre, REDACTED_SENTINEL, ::decodeJsonUnicodeEscapes, ::splitKeySegments)
+        pre = scrubSensitiveKeyValues(pre, REDACTED_SENTINEL)
+        var safe = CoreTelemetryService.sanitizeLocalPaths(pre).replace(REDACTED_SENTINEL, "[redacted]")
+        safe = scrubUnquotedMultiWordSensitiveValues(safe, "[redacted]", ::decodeJsonUnicodeEscapes, ::splitKeySegments)
+        safe = scrubSensitiveKeyValues(safe, "[redacted]")
         safe = spaceDelimitedCredentialRegex.replace(safe, "$1[redacted]")
         safe = ipv6InKeyRegex.replace(safe, "[redacted-ip]")
         safe = ipv4InKeyRegex.replace(safe, "[redacted-ip]")

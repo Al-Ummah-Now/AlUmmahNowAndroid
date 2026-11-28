@@ -26,9 +26,11 @@ class CoreTelemetryDiagnosticSanitizerTest {
                 "nbText" to "+33\u202F6\u202F12\u202F34\u202F56\u202F78",
                 "detailText" to "12 34 56 78 and 2026-11-27",
                 "creds" to """{"challenge.verificationCode":"482731"} {"home\u0041ddress":"12 Cedar Rd"} """ +
+                    """status="password=first;second" """ +
                     "password=\u201Corchid velvet\u201D displayName=Alice Smith username=Jane Doe C:ProjectCodename " +
                     """pass="correct horse battery staple" """ +
                     """{"pass":"multi word phrase"} fullName="Alice Wonderland" pwd=shortsecret""",
+                "user_id" to "alice123",
                 "token violet7" to "ok",
                 "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K " +
                     "https://example.test/password%3Dshortcredential " +
@@ -38,31 +40,18 @@ class CoreTelemetryDiagnosticSanitizerTest {
         )
         assertNotNull(props)
         val json = props!!
-        assertFalse(json.contains("eyJzdWIiOiJhbGljZSJ9"))
-        assertFalse(json.contains("sigValue123"))
+        val forbidden = listOf(
+            "eyJzdWIiOiJhbGljZSJ9", "sigValue123", "56\u202F78", "12 34 56 78",
+            "482731", "first;second", "second", "alice123", "12 Cedar Rd",
+            "orchid", "velvet", "shortcredential", "horse battery staple", "word phrase",
+            "Alice", "Wonderland", "Smith", "Jane", "Doe", "ProjectCodename", "violet7",
+            "orchid-meadow", "shortsecret", "u:p@localhost", "u:[redacted-email]", "Aq82F1ZLPx0K"
+        )
+        for (token in forbidden) {
+            assertFalse("Expected redacted token: $token", json.contains(token))
+        }
         assertTrue(json.contains("eyJunction.load.failed"))
-        assertFalse(json.contains("56\u202F78"))
-        assertFalse(json.contains("12 34 56 78"))
         assertTrue(json.contains("2026-11-27"))
-        assertFalse(json.contains("482731"))
-        assertFalse(json.contains("12 Cedar Rd"))
-        assertFalse(json.contains("orchid"))
-        assertFalse(json.contains("velvet"))
-        assertFalse(json.contains("shortcredential"))
-        assertFalse(json.contains("horse battery staple"))
-        assertFalse(json.contains("word phrase"))
-        assertFalse(json.contains("Alice"))
-        assertFalse(json.contains("Wonderland"))
-        assertFalse(json.contains("Smith"))
-        assertFalse(json.contains("Jane"))
-        assertFalse(json.contains("Doe"))
-        assertFalse(json.contains("ProjectCodename"))
-        assertFalse(json.contains("violet7"))
-        assertFalse(json.contains("orchid-meadow"))
-        assertFalse(json.contains("shortsecret"))
-        assertFalse(json.contains("u:p@localhost"))
-        assertFalse(json.contains("u:[redacted-email]"))
-        assertFalse(json.contains("Aq82F1ZLPx0K"))
         assertFalse(CoreTelemetryService.sanitizePropertyKey("phone_2025550123").contains("2025550123"))
         assertEquals(
             "http://[redacted]@localhost/x",
