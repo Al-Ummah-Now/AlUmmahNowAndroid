@@ -129,6 +129,25 @@ class CoreTelemetryQuotedAuthTest {
             """{"[redacted-path]":"[redacted]"}""",
             CoreTelemetryService.serializeProperties(mapOf("/storage/emulated/0/Acquisition/client_token" to "dummy"))
         )
+        assertEquals(
+            """{"contact [redacted-phone]":true}""",
+            CoreTelemetryService.serializeProperties(mapOf("contact +1 2025550142" to true))
+        )
+        assertEquals(
+            "[redacted-path]",
+            CoreTelemetryService.sanitizeLocalPaths("smb://server/Confidential/Acquisition.mov")
+        )
+        val tmpBuf = java.io.File.createTempFile("aun-fallback-buf-", ".json")
+        try {
+            tmpBuf.writeText("""{"events":[]}""")
+            val fallback = UnavailableNativeTelemetryService(tmpBuf.absolutePath)
+            assertFalse(tmpBuf.exists())
+            assertFalse(fallback.lastPurgeFailed)
+            assertFalse(fallback.setConsent(TelemetryConsent.FULL))
+            assertTrue(fallback.setConsent(TelemetryConsent.OFF))
+        } finally {
+            tmpBuf.delete()
+        }
         val stack = CoreTelemetryService.formatSanitizedCrashStack(
             IllegalStateException("Could not load profile for Jane Doe")
         )

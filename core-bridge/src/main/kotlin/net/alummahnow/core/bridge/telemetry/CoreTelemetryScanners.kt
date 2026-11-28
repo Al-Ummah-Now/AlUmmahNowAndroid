@@ -6,6 +6,15 @@ import java.net.URI
  * Linear O(n) single-pass scanners for URL vaulting, quoted filename redaction, file:// URI
  * redaction, and email redaction — avoiding regex backtracking and JVM regex stack overflow.
  */
+internal val LOCAL_OR_SHARE_SCHEMES = setOf(
+    "file", "content", "smb", "cifs", "afp", "nfs",
+    "sftp", "ftp", "ftps", "dav", "davs", "webdav", "webdavs"
+)
+internal val LOCAL_OR_SHARE_URI_PREFIXES = listOf(
+    "file://", "file:/", "content://", "smb://", "cifs://", "afp://", "nfs://",
+    "sftp://", "ftps://", "ftp://", "davs://", "dav://", "webdavs://", "webdav://"
+)
+
 internal object CoreTelemetryScanners {
     private const val MAX_EXT_LEN = 16
     private const val MAX_EXT_CHECK = 17
@@ -24,9 +33,6 @@ internal object CoreTelemetryScanners {
     private const val QUERY_STOP = "\"<>"
     private const val OPENING_WRAPPERS = "([{\"'"
     private const val SCHEME_PUNCT = "+.-"
-    private const val FILE_SCHEME_PREFIX = "file://"
-    private const val SINGLE_FILE_SCHEME_PREFIX = "file:/"
-    private const val CONTENT_SCHEME_PREFIX = "content://"
 
     internal data class UrlSpan(val start: Int, val baseEnd: Int, val totalEnd: Int, val hasQf: Boolean)
 
@@ -38,8 +44,8 @@ internal object CoreTelemetryScanners {
         val validPrefix = sep - start >= 2 && isAsciiLetter(text[start])
         val prevBlocked = !stepped && start > 0 && isBlockedBeforeScheme(text[start - 1])
         val schemeLen = sep - start
-        val isLocal = (schemeLen == 4 && text.regionMatches(start, "file", 0, 4, ignoreCase = true)) ||
-            (schemeLen == 7 && text.regionMatches(start, "content", 0, 7, ignoreCase = true))
+        val isLocal = schemeLen in 3..7 &&
+            text.substring(start, sep).lowercase(java.util.Locale.ROOT) in LOCAL_OR_SHARE_SCHEMES
         return if (validPrefix && !prevBlocked && !isLocal) start else null
     }
 
@@ -638,15 +644,10 @@ internal object CoreTelemetryScanners {
 
     fun localUriSchemeLengthAt(text: String, pos: Int): Int {
         if (pos > 0 && isUrlSchemeChar(text[pos - 1])) return 0
-        return when {
-            text.regionMatches(pos, FILE_SCHEME_PREFIX, 0, FILE_SCHEME_PREFIX.length, ignoreCase = true) ->
-                FILE_SCHEME_PREFIX.length
-            text.regionMatches(pos, SINGLE_FILE_SCHEME_PREFIX, 0, SINGLE_FILE_SCHEME_PREFIX.length, ignoreCase = true) ->
-                SINGLE_FILE_SCHEME_PREFIX.length
-            text.regionMatches(pos, CONTENT_SCHEME_PREFIX, 0, CONTENT_SCHEME_PREFIX.length, ignoreCase = true) ->
-                CONTENT_SCHEME_PREFIX.length
-            else -> 0
+        val matched = LOCAL_OR_SHARE_URI_PREFIXES.firstOrNull { prefix ->
+            text.regionMatches(pos, prefix, 0, prefix.length, ignoreCase = true)
         }
+        return matched?.length ?: 0
     }
 
     fun isUrlWindowsDriveStopAt(text: String, pos: Int): Boolean {

@@ -505,8 +505,8 @@ class CoreTelemetryService(
         } catch (e: Throwable) {
             when (e) {
                 is UnsatisfiedLinkError, is NoClassDefFoundError, is AunException, is IllegalArgumentException -> {
-                    AunLog.w("telemetry", "telemetry unavailable, using no-op service", "error" to e.message)
-                    NullTelemetryService
+                    AunLog.w("telemetry", "telemetry unavailable, using purge-capable fallback service", "error" to e.message)
+                    UnavailableNativeTelemetryService(bufferPath)
                 }
                 else -> throw e
             }
@@ -1176,13 +1176,34 @@ class CoreTelemetryService(
             return if (obj.isEmpty()) null else obj.toString()
         }
 
+        private val phoneInKeyRegex = Regex("""(?<![A-Za-z0-9_])\+?\d[\d\s().-]{7,}\d(?![A-Za-z0-9_])""")
+        private val opaqueSecretInKeyRegex = Regex("""(?<![A-Za-z0-9_])[A-Za-z0-9+/=_-]{32,}(?![A-Za-z0-9_])""")
+        private val uuidRegex = Regex("""^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$""")
+
+        private fun sanitizePropertyKey(key: String): String {
+            var safe = sanitizeLocalPaths(key)
+            safe = phoneInKeyRegex.replace(safe) { m ->
+                val digits = m.value.count { it in '0'..'9' }
+                if (digits >= MIN_PHONE_DIGITS) "[redacted-phone]" else m.value
+            }
+            safe = opaqueSecretInKeyRegex.replace(safe) { m ->
+                val v = m.value
+                val hasLetter = v.any { it in 'a'..'z' || it in 'A'..'Z' }
+                val hasDigit = v.any { it in '0'..'9' }
+                if (hasLetter && hasDigit && !uuidRegex.matches(v)) "[redacted]" else v
+            }
+            return safe
+        }
+
+        private const val MIN_PHONE_DIGITS = 9
+
         private fun kotlinx.serialization.json.JsonObjectBuilder.putSanitizedProperty(
             key: String,
             value: Any,
             usedKeys: MutableSet<String>,
             nextSuffixByBase: MutableMap<String, Int>
         ) {
-            val safeKey = sanitizeLocalPaths(key)
+            val safeKey = sanitizePropertyKey(key)
             if (safeKey.isBlank()) return
             val uniqueKey = resolveUniquePropertyKey(usedKeys, nextSuffixByBase, safeKey)
             if (isAuthHeaderPropertyKey(key)) {
