@@ -26,10 +26,12 @@ class CoreTelemetryDiagnosticSanitizerTest {
                 "nbText" to "+33\u202F6\u202F12\u202F34\u202F56\u202F78",
                 "detailText" to "12 34 56 78 and 2026-11-27",
                 "creds" to """{"challenge.verificationCode":"482731"} {"home\u0041ddress":"12 Cedar Rd"} """ +
-                    "password=\u201Corchid velvet\u201D " +
+                    "password=\u201Corchid velvet\u201D displayName=Alice Smith " +
                     """pass="correct horse battery staple" """ +
                     """{"pass":"multi word phrase"} fullName="Alice Wonderland" pwd=shortsecret""",
-                "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K https://example.test/password%3Dshortcredential",
+                "http://u:p@localhost/x" to "https://1drv.ms/u/s!Aq82F1ZLPx0K " +
+                    "https://example.test/password%3Dshortcredential " +
+                    "https%3A%2F%2Fexample.test%2F%3Fcode%3Dorchid-meadow",
                 "badVal" to throwingProp
             )
         )
@@ -50,6 +52,8 @@ class CoreTelemetryDiagnosticSanitizerTest {
         assertFalse(json.contains("word phrase"))
         assertFalse(json.contains("Alice"))
         assertFalse(json.contains("Wonderland"))
+        assertFalse(json.contains("Smith"))
+        assertFalse(json.contains("orchid-meadow"))
         assertFalse(json.contains("shortsecret"))
         assertFalse(json.contains("u:p@localhost"))
         assertFalse(json.contains("u:[redacted-email]"))

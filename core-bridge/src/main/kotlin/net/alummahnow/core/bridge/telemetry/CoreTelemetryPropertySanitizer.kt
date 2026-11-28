@@ -2,12 +2,80 @@ package net.alummahnow.core.bridge.telemetry
 
 import java.math.BigDecimal
 import java.math.BigInteger
+import java.net.URLDecoder
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.truncate
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+
+private val percentEncodedUrlRegex = Regex(
+    """(?<![A-Za-z0-9+.-])(?:[a-zA-Z][a-zA-Z0-9+.-]*(?:%3[aA]%2[fF]%2[fF]|%253[aA]%252[fF]%252[fF]))[^\s"'<>]+"""
+)
+
+private val multiWordSensitiveSegments = setOf(
+    "fullname", "displayname", "firstname", "lastname", "givenname", "familyname",
+    "address", "street", "streetaddress", "homeaddress", "passphrase", "pass", "password", "passwd"
+)
+
+private val multiWordValueRegex = Regex(
+    """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]|\\u[0-9A-Fa-f]{4}){2,64})""" +
+        """((?:\\?["']|[\u201D\u2019\u00BB\u300D\u300F])?\s*[=:]\s*)""" +
+        """(?![\"'\u201C\u2018\u00AB\u201E\u300C\u300E\\])([^\r\n,;}\]]+)"""
+)
+
+private val nextKeyValueBoundaryRegex = Regex("""\s+(?:[A-Za-z0-9_.-]{2,48}\s*[=:])""")
+
+private fun redactPercentEncodedUrls(text: String): String {
+    if (text.indexOf('%') < 0) return text
+    return percentEncodedUrlRegex.replace(text) { m ->
+        val raw = m.value
+        if (raw.contains("%253", ignoreCase = true)) {
+            "[redacted-url]"
+        } else {
+            runCatching {
+                val decoded = URLDecoder.decode(raw.replace("+", "%2B"), Charsets.UTF_8.name())
+                CoreTelemetryService.sanitizeLocalPaths(decoded)
+            }.getOrDefault("[redacted-url]")
+        }
+    }
+}
+
+private fun isMultiWordSensitiveKey(segments: List<String>): Boolean {
+    for (i in segments.indices) {
+        if (segments[i] in multiWordSensitiveSegments) return true
+        if (i + 1 < segments.size && (segments[i] + segments[i + 1]) in multiWordSensitiveSegments) return true
+    }
+    return false
+}
+
+private fun needsQuotedPreRedaction(lowerKey: String, valText: String): Boolean {
+    val first = valText.firstOrNull() ?: return false
+    return first in "\"'\\\u201C\u2018\u00AB\u201E\u300C\u300E" ||
+        lowerKey in CoreTelemetryAuthEscapedHelpers.unquotedAuthHeaders
+}
+
+private fun scrubUnquotedMultiWordSensitiveValues(
+    text: String,
+    prePass: Boolean,
+    decode: (String) -> String,
+    split: (String) -> List<String>
+): String = multiWordValueRegex.replace(text) { m ->
+    val key = m.groupValues[1]
+    val decoded = decode(key)
+    val lower = decoded.trim('"', '\'').lowercase(Locale.ROOT)
+    val valText = m.groupValues[3]
+    val isAuthHeader = lower == "authorization" || lower == "proxy-authorization"
+    if (isAuthHeader || valText.startsWith("[redacted") || !isMultiWordSensitiveKey(split(decoded))) {
+        m.value
+    } else {
+        val boundary = nextKeyValueBoundaryRegex.find(valText)
+        val tail = if (boundary != null) valText.substring(boundary.range.first) else ""
+        val repl = if (prePass && needsQuotedPreRedaction(lower, valText)) "\"[redacted]\"" else "[redacted]"
+        key + m.groupValues[2] + repl + tail
+    }
+}
 
 internal object CoreTelemetryPropertySanitizer {
     private const val MIN_PHONE_DIGITS = 9
@@ -68,7 +136,7 @@ internal object CoreTelemetryPropertySanitizer {
     private val keyValueCredentialRegex = Regex(
         """(?<![A-Za-z0-9_])((?:[A-Za-z0-9_.-]|\\u[0-9A-Fa-f]{4}){2,64})""" +
             """((?:\\?["']|[\u201D\u2019\u00BB\u300D\u300F])?\s*[=:]\s*)""" +
-            """(?:\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|""" +
+            """(\[redacted(?:-[a-z]+)?\]|\\"(?:\\\\.|[^"\\])*\\"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|""" +
             """\u201C[^\u201D\r\n]*\u201D|\u2018[^\u2019\r\n]*\u2019|\u00AB[^\u00BB\r\n]*\u00BB|""" +
             """\u201E[^\u201D\r\n]*\u201D|\u300C[^\u300D\r\n]*\u300D|\u300E[^\u300F\r\n]*\u300F|""" +
             """[^\s,;}\]"'\u201C\u201D\u2018\u2019\u00AB\u00BB\u201E\u300C\u300D\u300E\u300F]+)"""
@@ -108,17 +176,21 @@ internal object CoreTelemetryPropertySanitizer {
         return sb.toString()
     }
 
-    private fun scrubSensitiveKeyValues(text: String): String =
+    private fun scrubSensitiveKeyValues(text: String, prePass: Boolean): String =
         keyValueCredentialRegex.replace(text) { m ->
             val key = m.groupValues[1]
             val decoded = decodeJsonUnicodeEscapes(key)
             val lower = decoded.trim('"', '\'').lowercase(Locale.ROOT)
-            if (lower == "authorization" || lower == "proxy-authorization") {
+            val valText = m.groupValues[3]
+            val skip = lower == "authorization" ||
+                lower == "proxy-authorization" ||
+                valText.startsWith("[redacted") ||
+                valText == "\"[redacted]\""
+            if (skip || !isSensitiveKeyName(decoded)) {
                 m.value
-            } else if (isSensitiveKeyName(decoded)) {
-                key + m.groupValues[2] + "[redacted]"
             } else {
-                m.value
+                val repl = if (prePass && needsQuotedPreRedaction(lower, valText)) "\"[redacted]\"" else "[redacted]"
+                key + m.groupValues[2] + repl
             }
         }
 
@@ -139,9 +211,12 @@ internal object CoreTelemetryPropertySanitizer {
     }
 
     fun sanitizeDiagnosticText(text: String): String {
-        val pre = scrubSensitiveKeyValues(text)
+        var pre = redactPercentEncodedUrls(text)
+        pre = scrubUnquotedMultiWordSensitiveValues(pre, true, ::decodeJsonUnicodeEscapes, ::splitKeySegments)
+        pre = scrubSensitiveKeyValues(pre, true)
         var safe = CoreTelemetryService.sanitizeLocalPaths(pre)
-        safe = scrubSensitiveKeyValues(safe)
+        safe = scrubUnquotedMultiWordSensitiveValues(safe, false, ::decodeJsonUnicodeEscapes, ::splitKeySegments)
+        safe = scrubSensitiveKeyValues(safe, false)
         safe = ipv6InKeyRegex.replace(safe, "[redacted-ip]")
         safe = ipv4InKeyRegex.replace(safe, "[redacted-ip]")
         safe = phoneInKeyRegex.replace(safe) { m ->
