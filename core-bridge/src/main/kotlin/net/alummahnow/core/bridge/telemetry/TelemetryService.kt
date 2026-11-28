@@ -7,61 +7,34 @@ enum class TelemetryConsent {
     FULL
 }
 
-/** Severity level for diagnostic breadcrumbs attached to crash reports. */
-enum class TelemetryBreadcrumbSeverity {
-    DEBUG,
-    INFO,
-    WARNING,
-    ERROR
-}
-
 /**
- * Privacy-first opt-in telemetry and crash reporting contract shared across Android apps.
- * Silent by default: zero disk writes and zero network traffic until explicitly enabled.
+ * Opt-in diagnostics and crash reports, shared by the Android apps. Off until the person turns it on.
+ * aun-core's telemetry does the scrubbing, the on-disk buffer, the purge on opt-out and the delivery;
+ * the apps only pass consent and crashes and ask for a flush. Never throws.
  */
 interface TelemetryService {
     val consent: TelemetryConsent
-    val pendingCount: Int
-    val lastPurgeFailed: Boolean
 
-    /**
-     * Applies [consent]. Opting out immediately denies collection in the wrapper, cancels in-flight
-     * flush waits, revokes native consent, and purges memory + disk buffer. Returns `true` when the
-     * requested transition (and purge on opt-out) succeeded.
-     */
+    /** Applies [consent]; turning it off deletes what was kept. Returns `false` when the core refused. */
     fun setConsent(consent: TelemetryConsent): Boolean
 
-    fun track(name: String, properties: Map<String, Any?> = emptyMap())
-    fun trackError(code: String, properties: Map<String, Any?> = emptyMap())
-    fun addBreadcrumb(
-        category: String,
-        message: String,
-        level: TelemetryBreadcrumbSeverity = TelemetryBreadcrumbSeverity.INFO
-    )
+    /** Records a crash and writes it to disk at once, so it survives the process ending. */
+    fun reportCrash(kind: String, message: String, stack: String? = null)
 
-    fun reportCrash(
-        kind: String,
-        message: String,
-        stack: String? = null,
-        fromPreviousSession: Boolean = false
-    )
-
+    /** Writes the buffer to disk (call when the app goes to the background). */
     fun persist()
+
+    /** Sends what is buffered; does nothing while off or offline. */
     suspend fun flush()
+
     fun close()
 }
 
-/** Silent no-op implementation used in tests, previews, and environments without the native library. */
+/** Used in tests, previews and where the native library cannot load. */
 object NullTelemetryService : TelemetryService {
     override val consent: TelemetryConsent = TelemetryConsent.OFF
-    override val pendingCount: Int = 0
-    override val lastPurgeFailed: Boolean = false
-
     override fun setConsent(consent: TelemetryConsent): Boolean = consent == TelemetryConsent.OFF
-    override fun track(name: String, properties: Map<String, Any?>) = Unit
-    override fun trackError(code: String, properties: Map<String, Any?>) = Unit
-    override fun addBreadcrumb(category: String, message: String, level: TelemetryBreadcrumbSeverity) = Unit
-    override fun reportCrash(kind: String, message: String, stack: String?, fromPreviousSession: Boolean) = Unit
+    override fun reportCrash(kind: String, message: String, stack: String?) = Unit
     override fun persist() = Unit
     override suspend fun flush() = Unit
     override fun close() = Unit

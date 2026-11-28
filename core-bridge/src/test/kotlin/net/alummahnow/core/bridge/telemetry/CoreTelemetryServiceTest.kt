@@ -43,52 +43,26 @@ class CoreTelemetryServiceTest {
     }
 
     @Test
-    fun `sanitizeLocalPaths redacts unix unicode windows unc file uri and spaced filenames`() {
-        val raw = buildString {
-            appendLine("Opened /workspace/E\u0301lodie/Very Secret Client Project Name.mov")
-            appendLine("Opened /workspace/alice/O'Brien.mov; /Client Files/Private.mov")
-            appendLine("""Failed reading /workspace/alice/Private (Confidential).mov; "C:\Users\Alice Smith\Private Draft.mov"""")
-            appendLine("""Could not open C:\Users\Alice Smith\Private (Confidential).mp4; file:///Users/alice/private.txt""")
-            appendLine("at Foo.open() in /data/user/0/net.alummahnow.viewer/files/Final Cut.kt:42")
-            appendLine("""\\fileserver\share\secret.mp4; ~/private/key.pem""")
-        }
-        val scrubbed = CoreTelemetryService.sanitizeLocalPaths(raw)
-        assertFalse(scrubbed.contains("alice", ignoreCase = true))
-        assertFalse(scrubbed.contains("smith", ignoreCase = true))
-        assertFalse(scrubbed.contains("lodie", ignoreCase = true))
-        assertFalse(scrubbed.contains("brien", ignoreCase = true))
-        assertFalse(scrubbed.contains("client files", ignoreCase = true))
-        assertFalse(scrubbed.contains("name.mov", ignoreCase = true))
-        assertFalse(scrubbed.contains("confidential", ignoreCase = true))
-        assertFalse(scrubbed.contains("draft.mov", ignoreCase = true))
-        assertFalse(scrubbed.contains("final cut", ignoreCase = true))
-        assertFalse(scrubbed.contains("workspace", ignoreCase = true))
-        assertFalse(scrubbed.contains("fileserver", ignoreCase = true))
-        assertFalse(scrubbed.contains("private/key.pem", ignoreCase = true))
-        assertTrue(scrubbed.contains(":42"))
-        assertTrue(scrubbed.contains("[redacted-path]"))
-    }
-
-    @Test
-    fun `nullTelemetryService stays silent and denies enabling`() = runTest {
+    fun `the null service is off and accepts only off`() = runTest {
         assertEquals(TelemetryConsent.OFF, NullTelemetryService.consent)
-        assertEquals(0, NullTelemetryService.pendingCount)
-        assertFalse(NullTelemetryService.lastPurgeFailed)
         assertTrue(NullTelemetryService.setConsent(TelemetryConsent.OFF))
         assertFalse(NullTelemetryService.setConsent(TelemetryConsent.FULL))
-        NullTelemetryService.track("screen_view", mapOf("screen" to "home"))
         NullTelemetryService.reportCrash("IllegalStateException", "boom")
         NullTelemetryService.flush()
-        assertEquals(0, NullTelemetryService.pendingCount)
     }
 
     @Test
-    fun `serializeProperties omits blank keys nulls and non-finite floats`() {
-        assertNull(CoreTelemetryService.serializeProperties(emptyMap()))
-        assertNull(CoreTelemetryService.serializeProperties(mapOf("" to "x", "n" to null, "d" to Double.NaN)))
-        val json = CoreTelemetryService.serializeProperties(
-            mapOf("screen" to "home", "count" to 2, "ok" to true, "drop" to null)
+    fun `without the native library the factory falls back to the null service`() {
+        // JVM unit tests have no libaun_core: the app must still start, with telemetry off
+        val service = CoreTelemetryService.createOrNull(
+            appVersion = "1.0.0",
+            deviceClass = "phone",
+            videosApiBaseUrl = "https://videos.api.alummahnow.net",
+            userAgent = "AlUmmahNow-Android/1.0.0",
+            clientHeader = "aun-android/1.0.0 (Android 15)",
+            bufferPath = null,
+            initialEnabled = true
         )
-        assertEquals("""{"screen":"home","count":2,"ok":true}""", json)
+        assertEquals(NullTelemetryService, service)
     }
 }
