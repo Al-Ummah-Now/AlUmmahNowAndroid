@@ -334,10 +334,13 @@ class CoreTelemetryService(
         }
     }
 
-    override suspend fun flush() {
+    override suspend fun flush() = flushInternal(fromRetryTimer = false)
+
+    private suspend fun flushInternal(fromRetryTimer: Boolean) {
         val job: Job
         gate.withLock {
             if (closed || clientClosed || _consent == TelemetryConsent.OFF) return
+            if (inFlightFlushes > 0 || (!fromRetryTimer && retryFlushJob != null)) return
             inFlightFlushes++
             val flushEpoch = consentEpoch
             job = flushScope.launch(start = CoroutineStart.LAZY) {
@@ -392,44 +395,30 @@ class CoreTelemetryService(
     }
 
     private fun onFlushFailed(flushEpoch: Long, error: AunException) {
-        val delayToSchedule: Long? = gate.withLock {
+        val scheduled: Job? = gate.withLock {
             if (revoked || !isActiveConsentLocked(requiresFull = false, expectedEpoch = flushEpoch)) {
                 return
             }
             AunLog.w("telemetry", "telemetry flush skipped", "error" to error.message)
             val hasPending = runCatching { client.pendingCount().toInt() > 0 }.getOrDefault(false)
-            if (!hasPending || retryFlushJob?.isActive == true) {
+            if (!hasPending || retryFlushJob != null) {
                 null
             } else {
                 val delayMs = retryBackoffMs
                 retryBackoffMs = (retryBackoffMs * 2).coerceAtMost(MAX_RETRY_BACKOFF_MS)
-                delayMs
+                val retryJob = flushScope.launch(start = CoroutineStart.LAZY) {
+                    delay(delayMs)
+                    val stillActive = gate.withLock {
+                        retryFlushJob = null
+                        !revoked && isActiveConsentLocked(requiresFull = false, expectedEpoch = flushEpoch)
+                    }
+                    if (stillActive) flushInternal(fromRetryTimer = true)
+                }
+                retryFlushJob = retryJob
+                retryJob
             }
         }
-        if (delayToSchedule != null) {
-            scheduleFlushRetry(flushEpoch, delayToSchedule)
-        }
-    }
-
-    private fun scheduleFlushRetry(expectedEpoch: Long, delayMs: Long) {
-        val scheduled = flushScope.launch(start = CoroutineStart.LAZY) {
-            delay(delayMs)
-            val stillActive = gate.withLock {
-                retryFlushJob = null
-                !revoked && isActiveConsentLocked(requiresFull = false, expectedEpoch = expectedEpoch)
-            }
-            if (stillActive) flush()
-        }
-        val accepted = gate.withLock {
-            val canSchedule = !revoked && isActiveConsentLocked(requiresFull = false, expectedEpoch = expectedEpoch)
-            if (!canSchedule || retryFlushJob?.isActive == true) {
-                false
-            } else {
-                retryFlushJob = scheduled
-                true
-            }
-        }
-        if (accepted) scheduled.start() else scheduled.cancel()
+        scheduled?.start()
     }
 
     private fun releaseInFlightFlush(job: Job, flushEpoch: Long) {

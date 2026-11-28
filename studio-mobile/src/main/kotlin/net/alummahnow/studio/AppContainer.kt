@@ -40,6 +40,26 @@ import net.alummahnow.integrity.PlayIntegrityTokenSource
 
 /** Manual DI for Studio. Everything network- or token-related goes through aun-core. */
 class AppContainer(context: Context) : StudioContainer {
+    private val telemetryConsentStore = TelemetryConsentStore(
+        prefs = context.applicationContext.getSharedPreferences("aun_studio_telemetry", Context.MODE_PRIVATE),
+        prefKey = KEY_TELEMETRY_ENABLED,
+        optInMarkerFile = File(context.applicationContext.noBackupFilesDir, "studio-telemetry-opt-in")
+    )
+
+    private val initialTelemetryEnabled = telemetryConsentStore.isEnabled()
+
+    override val telemetry: TelemetryService = CoreTelemetryService.createOrNull(
+        appVersion = BuildConfig.VERSION_NAME,
+        deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
+        videosApiBaseUrl = BuildConfig.API_BASE_URL,
+        userAgent = "AlUmmahNow-Studio-Android/${BuildConfig.VERSION_NAME}",
+        clientHeader = AunClient.value("studio", BuildConfig.VERSION_NAME),
+        bufferPath = File(context.applicationContext.noBackupFilesDir, "studio-telemetry-buffer.json").absolutePath,
+        initialEnabled = initialTelemetryEnabled
+    ).also { service ->
+        CoreTelemetryService.installUncaughtExceptionHandler(service)
+    }
+
     private val coreSession = CoreAccountSession(
         OAuthClientSettings(issuer = BuildConfig.AUTH_ISSUER, clientId = BuildConfig.AUTH_CLIENT_ID, redirectUri = REDIRECT_URI),
         KeystoreSecureStorage(context)
@@ -83,24 +103,6 @@ class AppContainer(context: Context) : StudioContainer {
     override fun repositoryFor(userId: String): StudioRepository = CoreStudioRepository({ clientFor(userId) }, proofs)
 
     override val exports = PendingExports(editorExportDir(context), File(context.filesDir, "pending-exports.json"))
-
-    private val telemetryConsentStore = TelemetryConsentStore(
-        prefs = context.applicationContext.getSharedPreferences("aun_studio_telemetry", Context.MODE_PRIVATE),
-        prefKey = KEY_TELEMETRY_ENABLED,
-        optInMarkerFile = File(context.applicationContext.noBackupFilesDir, "studio-telemetry-opt-in")
-    )
-
-    private val initialTelemetryEnabled = telemetryConsentStore.isEnabled()
-
-    override val telemetry: TelemetryService = CoreTelemetryService.createOrNull(
-        appVersion = BuildConfig.VERSION_NAME,
-        deviceClass = if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone",
-        videosApiBaseUrl = BuildConfig.API_BASE_URL,
-        userAgent = "AlUmmahNow-Studio-Android/${BuildConfig.VERSION_NAME}",
-        clientHeader = AunClient.value("studio", BuildConfig.VERSION_NAME),
-        bufferPath = File(context.applicationContext.noBackupFilesDir, "studio-telemetry-buffer.json").absolutePath,
-        initialEnabled = initialTelemetryEnabled
-    )
 
     private val startupClearFailed = initialTelemetryEnabled &&
         telemetry.consent == TelemetryConsent.OFF &&
