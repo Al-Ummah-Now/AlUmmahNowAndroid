@@ -34,13 +34,7 @@ interface ViewerContainer {
  * `GuestOnly*` bindings here for the core-backed implementations; nothing else changes.
  */
 class AppContainer(context: Context) : ViewerContainer {
-    override val catalog: CatalogRepository = TemporaryCatalogRepository(BuildConfig.API_BASE_URL)
-    override val live: LiveRepository = HttpLiveRepository(BuildConfig.API_BASE_URL)
-    val auth: AuthBridge = GuestOnlyAuthBridge()
     override val displayPrefs = DisplayPrefsStore(context.applicationContext)
-    override val blockStore = ViewerBlockStore(
-        context.applicationContext.getSharedPreferences("aun_viewer_blocks", Context.MODE_PRIVATE)
-    )
     override val telemetry: TelemetryService = run {
         val initialEnabled = displayPrefs.isTelemetryEnabled()
         CoreTelemetryService.createOrNull(
@@ -56,9 +50,16 @@ class AppContainer(context: Context) : ViewerContainer {
                 displayPrefs.setTelemetrySaveUncertain(true)
                 displayPrefs.setTelemetryWarningRes(DesignR.string.aun_diagnostics_disable_error)
             }
+            CoreTelemetryService.installUncaughtExceptionHandler(service)
             if (service.consent != TelemetryConsent.OFF) {
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { service.flush() }
             }
         }
     }
+    override val catalog: CatalogRepository = TemporaryCatalogRepository(BuildConfig.API_BASE_URL)
+    override val live: LiveRepository = HttpLiveRepository(BuildConfig.API_BASE_URL)
+    val auth: AuthBridge = GuestOnlyAuthBridge()
+    override val blockStore = ViewerBlockStore(
+        context.applicationContext.getSharedPreferences("aun_viewer_blocks", Context.MODE_PRIVATE)
+    )
 }

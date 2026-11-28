@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,6 +73,8 @@ class CoreTelemetryService(
     private var revokedFlushesRemaining: Int = 0
     private var clientClosed: Boolean = false
     private val flushJobs = mutableSetOf<Job>()
+    private var retryFlushJob: Job? = null
+    private var retryBackoffMs: Long = INITIAL_RETRY_BACKOFF_MS
 
     init {
         val app = TelemetryAppInfo(
@@ -162,8 +165,13 @@ class CoreTelemetryService(
         consentEpoch++
         analyticsEpoch++
         revokedFlushesRemaining = inFlightFlushes
-        val jobsToCancel = flushJobs.toList()
+        val jobsToCancel = buildList {
+            addAll(flushJobs)
+            retryFlushJob?.let { add(it) }
+        }
         flushJobs.clear()
+        retryFlushJob = null
+        retryBackoffMs = INITIAL_RETRY_BACKOFF_MS
         if (clientClosed) {
             _lastPurgeFailedFlow.value = !tryDeleteBufferFallback()
             return Pair(!_lastPurgeFailedFlow.value, jobsToCancel)
@@ -251,12 +259,10 @@ class CoreTelemetryService(
         stack: String?,
         fromPreviousSession: Boolean
     ): TelemetryCrashReport {
-        val safeKind = if (kind.isBlank()) "UnhandledException" else sanitizePropertyKey(kind)
-        val safeMessage = if (message.isBlank()) {
-            "Unhandled exception"
-        } else {
-            CoreTelemetryPropertySanitizer.sanitizeDiagnosticText(message)
-        }
+        val safeKind = sanitizeCrashKindIdentifier(kind)
+        // Never persist arbitrary free-form crash message prose (which may contain user names
+        // or other personal text that regexes cannot reliably distinguish from English prose).
+        val safeMessage = if (message.isBlank()) safeKind else safeKind
         val safeStack = stack?.let(CoreTelemetryPropertySanitizer::sanitizeDiagnosticText)
         return TelemetryCrashReport(
             kind = safeKind,
@@ -337,13 +343,11 @@ class CoreTelemetryService(
             job = flushScope.launch(start = CoroutineStart.LAZY) {
                 try {
                     client.flush()
+                    onFlushSucceeded(flushEpoch)
                 } catch (_: CancellationException) {
                     // Cancelled by opt-out or shutdown.
                 } catch (e: AunException) {
-                    val isRevoked = gate.withLock { revoked || closed }
-                    if (!isRevoked) {
-                        AunLog.w("telemetry", "telemetry flush skipped", "error" to e.message)
-                    }
+                    onFlushFailed(flushEpoch, e)
                 }
             }
             // Register completion cleanup before start so even a pre-dispatch cancel releases inFlightFlushes.
@@ -361,14 +365,71 @@ class CoreTelemetryService(
             closed = true
             _consent = TelemetryConsent.OFF
             fastConsent = TelemetryConsent.OFF
-            jobsToCancel = flushJobs.toList()
+            jobsToCancel = buildList {
+                addAll(flushJobs)
+                retryFlushJob?.let { add(it) }
+            }
             flushJobs.clear()
+            retryFlushJob = null
+            retryBackoffMs = INITIAL_RETRY_BACKOFF_MS
             if (inFlightFlushes == 0 && !clientClosed) {
                 clientClosed = true
                 client.close()
             }
         }
         jobsToCancel.forEach { it.cancel() }
+    }
+
+    private fun onFlushSucceeded(flushEpoch: Long) {
+        val toCancel = gate.withLock {
+            if (flushEpoch != consentEpoch) return
+            retryBackoffMs = INITIAL_RETRY_BACKOFF_MS
+            val prior = retryFlushJob
+            retryFlushJob = null
+            prior
+        }
+        toCancel?.cancel()
+    }
+
+    private fun onFlushFailed(flushEpoch: Long, error: AunException) {
+        val delayToSchedule: Long? = gate.withLock {
+            if (revoked || !isActiveConsentLocked(requiresFull = false, expectedEpoch = flushEpoch)) {
+                return
+            }
+            AunLog.w("telemetry", "telemetry flush skipped", "error" to error.message)
+            val hasPending = runCatching { client.pendingCount().toInt() > 0 }.getOrDefault(false)
+            if (!hasPending || retryFlushJob?.isActive == true) {
+                null
+            } else {
+                val delayMs = retryBackoffMs
+                retryBackoffMs = (retryBackoffMs * 2).coerceAtMost(MAX_RETRY_BACKOFF_MS)
+                delayMs
+            }
+        }
+        if (delayToSchedule != null) {
+            scheduleFlushRetry(flushEpoch, delayToSchedule)
+        }
+    }
+
+    private fun scheduleFlushRetry(expectedEpoch: Long, delayMs: Long) {
+        val scheduled = flushScope.launch(start = CoroutineStart.LAZY) {
+            delay(delayMs)
+            val stillActive = gate.withLock {
+                retryFlushJob = null
+                !revoked && isActiveConsentLocked(requiresFull = false, expectedEpoch = expectedEpoch)
+            }
+            if (stillActive) flush()
+        }
+        val accepted = gate.withLock {
+            val canSchedule = !revoked && isActiveConsentLocked(requiresFull = false, expectedEpoch = expectedEpoch)
+            if (!canSchedule || retryFlushJob?.isActive == true) {
+                false
+            } else {
+                retryFlushJob = scheduled
+                true
+            }
+        }
+        if (accepted) scheduled.start() else scheduled.cancel()
     }
 
     private fun releaseInFlightFlush(job: Job, flushEpoch: Long) {
@@ -600,6 +661,15 @@ class CoreTelemetryService(
         private const val MAX_CRASH_STACK_FRAMES = 128
         private const val MAX_CRASH_STACK_CHARS = 16_384
         private const val CRASH_LOCK_TIMEOUT_MS = 250L
+        private const val INITIAL_RETRY_BACKOFF_MS = 30_000L
+        private const val MAX_RETRY_BACKOFF_MS = 300_000L
+        private const val MAX_CRASH_KIND_LEN = 128
+        private val crashKindRegex = Regex("""^[A-Za-z][A-Za-z0-9_.$:-]{0,127}$""")
+
+        internal fun sanitizeCrashKindIdentifier(kind: String): String {
+            val trimmed = kind.trim().take(MAX_CRASH_KIND_LEN)
+            return if (crashKindRegex.matches(trimmed)) trimmed else "UnhandledException"
+        }
 
         internal fun tryLockUninterruptibly(lock: ReentrantLock, timeoutMs: Long): Boolean {
             if (lock.tryLock()) return true

@@ -124,5 +124,10 @@ class CoreTelemetryDiagnosticSanitizerTest {
         contendedWorker.join(5_000)
         assertTrue(acquiredContended)
         assertTrue(contendedInterrupted)
+        assertEquals("IllegalStateException", CoreTelemetryService.sanitizeCrashKindIdentifier("IllegalStateException"))
+        assertEquals(
+            "UnhandledException",
+            CoreTelemetryService.sanitizeCrashKindIdentifier("Could not load profile for Jane Doe")
+        )
     }
 }

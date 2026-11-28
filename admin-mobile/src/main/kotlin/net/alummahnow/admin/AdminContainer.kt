@@ -43,26 +43,7 @@ class AdminContainer(context: Context) : AdminServices {
         PrivateHttp.aunClient = AunClient.value("admin", BuildConfig.VERSION_NAME)
     }
 
-    override val session: AccountSession = CoreAccountSession(
-        OAuthClientSettings(issuer = BuildConfig.AUTH_ISSUER, clientId = BuildConfig.AUTH_CLIENT_ID, redirectUri = REDIRECT_URI),
-        // Its own key store, separate from Studio's: signing out of one app never touches the other.
-        KeystoreSecureStorage(context, name = "aun_admin_secure")
-    )
-    private val http = HttpReviewService(
-        adminApi = BuildConfig.ADMIN_API_BASE_URL,
-        videosApi = BuildConfig.API_BASE_URL,
-        accessToken = { session.accessToken() },
-        proofs = PlayIntegrityProofProvider(
-            HttpAttestationApi(BuildConfig.API_BASE_URL, "AlUmmahNow-Admin-Android/${BuildConfig.VERSION_NAME}", PrivateHttp.client),
-            PlayIntegrityTokenSource(context),
-            context.packageName
-        )
-    )
-    override val review: ReviewService = http
-    override val push: PushRegistrar = http
     override val prefs = AdminPrefs(context)
-    override val lock = AppLock()
-    override val stepUp = StepUp()
     override val telemetry: TelemetryService = run {
         val initialEnabled = prefs.telemetryEnabled
         CoreTelemetryService.createOrNull(
@@ -84,6 +65,25 @@ class AdminContainer(context: Context) : AdminServices {
             }
         }
     }
+    override val session: AccountSession = CoreAccountSession(
+        OAuthClientSettings(issuer = BuildConfig.AUTH_ISSUER, clientId = BuildConfig.AUTH_CLIENT_ID, redirectUri = REDIRECT_URI),
+        // Its own key store, separate from Studio's: signing out of one app never touches the other.
+        KeystoreSecureStorage(context, name = "aun_admin_secure")
+    )
+    private val http = HttpReviewService(
+        adminApi = BuildConfig.ADMIN_API_BASE_URL,
+        videosApi = BuildConfig.API_BASE_URL,
+        accessToken = { session.accessToken() },
+        proofs = PlayIntegrityProofProvider(
+            HttpAttestationApi(BuildConfig.API_BASE_URL, "AlUmmahNow-Admin-Android/${BuildConfig.VERSION_NAME}", PrivateHttp.client),
+            PlayIntegrityTokenSource(context),
+            context.packageName
+        )
+    )
+    override val review: ReviewService = http
+    override val push: PushRegistrar = http
+    override val lock = AppLock()
+    override val stepUp = StepUp()
 
     companion object {
         const val REDIRECT_URI = "alummahnow-admin://auth/callback"

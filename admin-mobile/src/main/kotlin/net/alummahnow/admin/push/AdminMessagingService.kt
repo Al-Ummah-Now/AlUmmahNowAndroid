@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import net.alummahnow.admin.AdminApplication
+import net.alummahnow.core.bridge.telemetry.TelemetryConsent
 
 /** FCM entry point. The token and the message contents are never logged. */
 class AdminMessagingService : FirebaseMessagingService() {
@@ -19,7 +20,10 @@ class AdminMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        (application as? AdminApplication)?.container
+        val container = (application as? AdminApplication)?.container
+        if (container != null && container.telemetry.consent != TelemetryConsent.OFF && container.telemetry.pendingCount > 0) {
+            scope.launch { container.telemetry.flush() }
+        }
         AdminNotifications.handle(this, message.data, message.notification?.title, message.notification?.body)
     }
 }
