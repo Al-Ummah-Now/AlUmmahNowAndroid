@@ -254,7 +254,7 @@ private fun decodeUrlSegmentFull(raw: String): Pair<String, IntArray> {
             null
         }
         val decodable = decodedByte != null &&
-            decodedByte in 0x21..0x7E &&
+            decodedByte in 0x20..0x7E &&
             decodedByte != '?'.code &&
             decodedByte != '#'.code
         if (decodable) {
@@ -315,14 +315,40 @@ private fun isDecodedPhoneUrlSegment(seg: String): Boolean {
         (digits == MIN_FORMATTED_PHONE_URL_DIGITS && hasFormatting && !urlIsoDateExactRegex.matches(seg))
 }
 
-private fun isDecodedSensitiveUrlSegment(seg: String): Boolean =
-    isOpaqueUrlSecretSegment(seg) ||
-        isDecodedPhoneUrlSegment(seg) ||
-        CoreTelemetryPropertySanitizer.matchesIpLiteral(seg)
+private const val MAX_URL_DECODE_ROUNDS = 4
+
+private fun decodeRepeatedForCheck(seg: String): String {
+    var cur = seg
+    var round = 0
+    var changed = true
+    while (round < MAX_URL_DECODE_ROUNDS && changed && cur.indexOf('%') >= 0) {
+        val next = decodeUrlSegmentFull(cur).first
+        changed = next != cur
+        cur = next
+        round++
+    }
+    return cur
+}
+
+private fun isDecodedEmailUrlSegment(seg: String): Boolean {
+    val at = seg.indexOf('@')
+    if (at <= 0 || at + 1 >= seg.length) return false
+    val domain = seg.substring(at + 1)
+    return domain.indexOf('.') > 0 && domain.indexOf('@') < 0
+}
+
+private fun isDecodedSensitiveUrlSegment(seg: String, checkEmail: Boolean): Boolean {
+    val expanded = if (seg.indexOf('%') >= 0) decodeRepeatedForCheck(seg) else seg
+    return isOpaqueUrlSecretSegment(expanded) ||
+        isDecodedPhoneUrlSegment(expanded) ||
+        CoreTelemetryPropertySanitizer.matchesIpLiteral(expanded) ||
+        (checkEmail && isDecodedEmailUrlSegment(expanded))
+}
 
 private fun collectOpaqueSegmentSpans(rawSeg: String, baseOffset: Int): List<IntRange> {
+    val doubleEncoded = rawSeg.contains("%25", ignoreCase = true)
     val (decoded, offsets) = decodeUrlSegmentFull(rawSeg)
-    if (!decoded.startsWith("[redacted") && isDecodedSensitiveUrlSegment(decoded)) {
+    if (!decoded.startsWith("[redacted") && isDecodedSensitiveUrlSegment(decoded, doubleEncoded)) {
         return listOf(baseOffset until (baseOffset + rawSeg.length))
     }
     if (decoded.indexOf('/') < 0) return emptyList()
@@ -332,7 +358,7 @@ private fun collectOpaqueSegmentSpans(rawSeg: String, baseOffset: Int): List<Int
         val slash = decoded.indexOf('/', subStart)
         val subEnd = if (slash < 0) decoded.length else slash
         val sub = decoded.substring(subStart, subEnd)
-        if (sub.isNotEmpty() && !sub.startsWith("[redacted") && isDecodedSensitiveUrlSegment(sub)) {
+        if (sub.isNotEmpty() && !sub.startsWith("[redacted") && isDecodedSensitiveUrlSegment(sub, doubleEncoded)) {
             spans.add((baseOffset + offsets[subStart]) until (baseOffset + offsets[subEnd]))
         }
         subStart = if (slash < 0) decoded.length else slash + 1

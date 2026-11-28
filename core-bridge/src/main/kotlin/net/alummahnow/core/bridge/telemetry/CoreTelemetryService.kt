@@ -286,6 +286,9 @@ class CoreTelemetryService(
         }
     }
 
+    internal fun isUncaughtCrashEligible(): Boolean =
+        fastConsent != TelemetryConsent.OFF && !gate.isHeldByCurrentThread
+
     internal fun reportCrashFromUncaughtHandler(kind: String, message: String, stack: String?) {
         if (fastConsent == TelemetryConsent.OFF || gate.isHeldByCurrentThread) return
         val captureEpoch = tryCaptureCrashEpochBounded() ?: return
@@ -563,16 +566,26 @@ class CoreTelemetryService(
          * previously installed handler. Subsequent calls swap the active service without chaining
          * stale instances.
          */
+        private fun hasCrashStackBudget(depth: Int, totalFrames: Int, chars: Int): Boolean =
+            depth < MAX_CRASH_CAUSE_DEPTH &&
+                totalFrames < MAX_CRASH_STACK_FRAMES &&
+                chars < MAX_CRASH_STACK_CHARS
+
         internal fun formatSanitizedCrashStack(throwable: Throwable): String {
             val sb = StringBuilder()
             val seen = java.util.IdentityHashMap<Throwable, Boolean>()
             var current: Throwable? = throwable
             var depth = 0
-            while (current != null && depth < MAX_CRASH_CAUSE_DEPTH && seen.put(current, true) == null) {
+            var totalFrames = 0
+            while (current != null && hasCrashStackBudget(depth, totalFrames, sb.length) && seen.put(current, true) == null) {
                 if (depth > 0) sb.append("Caused by: ")
                 sb.append(current.javaClass.name).append('\n')
-                for (frame in current.stackTrace) {
-                    sb.append("\tat ").append(frame.toString()).append('\n')
+                val frames = current.stackTrace
+                var idx = 0
+                while (idx < frames.size && hasCrashStackBudget(depth, totalFrames, sb.length)) {
+                    sb.append("\tat ").append(frames[idx].toString()).append('\n')
+                    idx++
+                    totalFrames++
                 }
                 current = current.cause
                 depth++
@@ -581,6 +594,8 @@ class CoreTelemetryService(
         }
 
         private const val MAX_CRASH_CAUSE_DEPTH = 16
+        private const val MAX_CRASH_STACK_FRAMES = 128
+        private const val MAX_CRASH_STACK_CHARS = 16_384
         private const val CRASH_LOCK_TIMEOUT_MS = 250L
 
         fun installUncaughtExceptionHandler(service: TelemetryService) {
@@ -591,21 +606,26 @@ class CoreTelemetryService(
                 val previous = Thread.getDefaultUncaughtExceptionHandler()
                 Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     runCatching {
-                        val kind = throwable.javaClass.name
-                        val simple = throwable.javaClass.simpleName.ifBlank { kind }
-                        val stack = formatSanitizedCrashStack(throwable)
-                        when (val current = activeCrashService) {
-                            is CoreTelemetryService -> current.reportCrashFromUncaughtHandler(kind, simple, stack)
-                            else -> current?.reportCrash(
-                                kind = kind,
-                                message = simple,
-                                stack = stack,
-                                fromPreviousSession = false
-                            )
-                        }
+                        recordUncaughtCrashIfEnabled(activeCrashService, throwable)
                     }
                     previous?.uncaughtException(thread, throwable)
                 }
+            }
+        }
+
+        private fun recordUncaughtCrashIfEnabled(current: TelemetryService?, throwable: Throwable) {
+            if (current == null) return
+            val eligible = when (current) {
+                is CoreTelemetryService -> current.isUncaughtCrashEligible()
+                else -> current.consent != TelemetryConsent.OFF
+            }
+            if (!eligible) return
+            val kind = throwable.javaClass.name
+            val simple = throwable.javaClass.simpleName.ifBlank { kind }
+            val stack = formatSanitizedCrashStack(throwable)
+            when (current) {
+                is CoreTelemetryService -> current.reportCrashFromUncaughtHandler(kind, simple, stack)
+                else -> current.reportCrash(kind = kind, message = simple, stack = stack, fromPreviousSession = false)
             }
         }
 
